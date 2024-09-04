@@ -1,0 +1,453 @@
+<!-- 通知模板 -->
+<template>
+    <j-page-container>
+        <pro-search
+            :columns="columns"
+            target="notice-template"
+            @search="handleSearch"
+        />
+        <FullPage>
+            <JProTable
+                ref="configRef"
+                :columns="columns"
+                :request="TemplateApi.list"
+                :defaultParams="{
+                    sorts: [{ name: 'createTime', order: 'desc' }],
+                }"
+                :params="params"
+                :gridColumn="3"
+            >
+                <template #headerLeftRender>
+                    <a-space>
+                        <j-permission-button
+                            type="primary"
+                            @click="handleAdd"
+                            hasPermission="notice/Template:add"
+                        >
+                            新增
+                        </j-permission-button>
+                        <a-upload
+                            name="file"
+                            accept=".json"
+                            :showUploadList="false"
+                            :before-upload="beforeUpload"
+                        >
+                            <j-permission-button
+                                hasPermission="notice/Template:import"
+                            >
+                                导入
+                            </j-permission-button>
+                        </a-upload>
+                        <j-permission-button
+                            hasPermission="notice/Template:export"
+                            :popConfirm="{
+                                title: '确认导出？',
+                                onConfirm: handleExport,
+                            }"
+                        >
+                            导出
+                        </j-permission-button>
+                    </a-space>
+                </template>
+                <template #card="slotProps">
+                    <CardBox
+                        :showStatus="false"
+                        :value="slotProps"
+                        :actions="getActions(slotProps, 'card')"
+                        :statusNames="{}"
+                    >
+                        <template #img>
+                            <slot name="img">
+                                <img
+                                    :src="
+                                        getLogo(
+                                            slotProps.type,
+                                            slotProps.provider,
+                                        )
+                                    "
+                                    class="logo"
+                                />
+                            </slot>
+                        </template>
+                        <template #content>
+                            <h3 class="card-item-content-title">
+                                {{ slotProps.name }}
+                            </h3>
+                            <a-row>
+                                <a-col :span="12">
+                                    <div class="card-item-content-text">
+                                        通知方式
+                                    </div>
+                                    <div>
+                                        {{ getMethodTxt(slotProps.type) }}
+                                    </div>
+                                </a-col>
+                                <a-col :span="12">
+                                    <div class="card-item-content-text">
+                                        说明
+                                    </div>
+                                    <j-ellipsis>
+                                        {{ slotProps.description }}
+                                    </j-ellipsis>
+                                </a-col>
+                            </a-row>
+                        </template>
+                        <template #actions="item">
+                            <a-tooltip
+                                v-bind="item.tooltip"
+                                :title="item.disabled && item.tooltip.title"
+                            >
+                                <a-dropdown
+                                    placement="bottomRight"
+                                    v-if="item.key === 'others'"
+                                >
+                                    <a-button>
+                                        <AIcon :type="item.icon" />
+                                        <span>{{ item.text }}</span>
+                                    </a-button>
+                                    <template #overlay>
+                                        <a-menu>
+                                            <a-menu-item
+                                                v-for="(o, i) in item.children"
+                                                :key="i"
+                                            >
+                                                <j-permission-button
+                                                    type="link"
+                                                    @click="o.onClick"
+                                                    :hasPermission="`notice/Template:${o.key}`"
+                                                >
+                                                    <template #icon>
+                                                        <AIcon :type="o.icon" />
+                                                    </template>
+                                                    <span>{{ o.text }}</span>
+                                                </j-permission-button>
+                                            </a-menu-item>
+                                        </a-menu>
+                                    </template>
+                                </a-dropdown>
+                                <j-permission-button
+                                    v-else-if="item.key === 'delete'"
+                                    :disabled="item.disabled"
+                                    :hasPermission="`notice/Template:${item.key}`"
+                                    :popConfirm="item.popConfirm"
+                                >
+                                    <template #icon>
+                                        <AIcon type="DeleteOutlined" />
+                                    </template>
+                                </j-permission-button>
+                                <template v-else>
+                                    <j-permission-button
+                                        :disabled="item.disabled"
+                                        @click="item.onClick"
+                                        :hasPermission="`notice/Template:${item.key}`"
+                                    >
+                                        <template #icon>
+                                            <AIcon :type="item.icon" />
+                                        </template>
+                                        <span>{{ item.text }}</span>
+                                    </j-permission-button>
+                                </template>
+                            </a-tooltip>
+                        </template>
+                    </CardBox>
+                </template>
+                <template #type="slotProps">
+                    <span> {{ getMethodTxt(slotProps.type) }}</span>
+                </template>
+                <template #provider="slotProps">
+                    <span>
+                        {{ getProviderTxt(slotProps.type, slotProps.provider) }}
+                    </span>
+                </template>
+                <template #description="slotProps">
+                    <j-ellipsis>
+                        {{ slotProps.description }}
+                    </j-ellipsis>
+                </template>
+                <template #action="slotProps">
+                    <a-space :size="16">
+                        <template
+                            v-for="i in getActions(slotProps, 'table')"
+                            :key="i.key"
+                        >
+                            <j-permission-button
+                                :danger="i.key === 'delete'"
+                                :disabled="i.disabled"
+                                :popConfirm="i.popConfirm"
+                                :tooltip="{
+                                    ...i.tooltip,
+                                }"
+                                @click="i.onClick"
+                                type="link"
+                                style="padding: 0px"
+                                :hasPermission="'notice/Template:' + i.key"
+                            >
+                                <template #icon
+                                    ><AIcon :type="i.icon"
+                                /></template>
+                            </j-permission-button>
+                        </template>
+                    </a-space>
+                </template>
+            </JProTable>
+        </FullPage>
+
+        <Debug v-model:visible="debugVis" :data="currentConfig" />
+        <Log v-if="logVis" :data="currentConfig" @cancel="logVis = false" />
+    </j-page-container>
+</template>
+
+<script setup lang="ts">
+import TemplateApi from '../../api/template';
+import { NOTICE_METHOD,MSG_TYPE } from '../const';
+import Debug from './Debug/index.vue';
+import Log from './Log/index.vue';
+import { downloadObject } from '../../utils/utils';
+import { useMenuStore } from '@/store/menu';
+import { onlyMessage } from '@jetlinks-web/utils';
+
+const menuStory = useMenuStore();
+
+let providerList: any = [];
+Object.keys(MSG_TYPE).forEach((key) => {
+    providerList = [...providerList, ...MSG_TYPE[key]];
+});
+
+const configRef = ref<Record<string, any>>({});
+const params = ref<Record<string, any>>({});
+
+const columns = [
+    {
+        title: '模板名称',
+        dataIndex: 'name',
+        key: 'name',
+        ellipsis: true,
+        search: {
+            type: 'string',
+        },
+    },
+    {
+        title: '通知方式',
+        dataIndex: 'type',
+        key: 'type',
+        scopedSlots: true,
+        search: {
+            type: 'select',
+            options: NOTICE_METHOD,
+            handleValue: (v: any) => {
+                return v;
+            },
+        },
+    },
+    {
+        title: '类型',
+        dataIndex: 'provider',
+        key: 'provider',
+        scopedSlots: true,
+        search: {
+            type: 'select',
+            options: providerList,
+            handleValue: (v: any) => {
+                return v;
+            },
+        },
+    },
+    {
+        title: '说明',
+        dataIndex: 'description',
+        key: 'description',
+        scopedSlots: true,
+        ellipsis: true,
+        search: {
+            type: 'string',
+        },
+    },
+    {
+        title: '操作',
+        key: 'action',
+        fixed: 'right',
+        width: 180,
+        scopedSlots: true,
+    },
+];
+
+/**
+ * 搜索
+ * @param params
+ */
+const handleSearch = (e: any) => {
+    // console.log('handleSearch:', e);
+    params.value = e;
+    // console.log('params.value: ', params.value);
+};
+
+/**
+ * 根据通知方式展示对应logo
+ */
+const getLogo = (type: string, provider: string) => {
+    return MSG_TYPE[type].find((f: any) => f.value === provider)?.logo;
+};
+/**
+ * 通知方式字段展示对应文字
+ */
+const getMethodTxt = (type: string) => {
+    return NOTICE_METHOD.find((f) => f.value === type)?.label;
+};
+/**
+ * 根据类型展示对应文案
+ * @param type
+ * @param provider
+ */
+const getProviderTxt = (type: string, provider: string) => {
+    return MSG_TYPE[type].find((f: any) => f.value === provider)?.label;
+};
+
+/**
+ * 新增
+ */
+const handleAdd = () => {
+    menuStory.jumpPage('notice/Template/Detail', {
+       query:{
+        id: ':id',
+       } 
+    });
+};
+
+/**
+ * 导入
+ */
+const beforeUpload = (file: any) => {
+    // console.log('file: ', file);
+    const reader = new FileReader();
+    reader.readAsText(file);
+    reader.onload = async (result) => {
+        const text = result.target?.result;
+        console.log('text: ', text);
+        if (!file.type.includes('json')) {
+            onlyMessage('请上传json格式文件', 'error');
+            return false;
+        }
+        try {
+            const data = JSON.parse(text || '{}');
+            const { success } = await TemplateApi.update(data);
+            if (success) {
+                onlyMessage('操作成功');
+                configRef.value.reload();
+            }
+            return true;
+        } catch {
+            // onlyMessage('请上传json格式文件', 'error');
+        }
+        return true;
+    };
+    return false;
+};
+
+/**
+ * 导出
+ */
+const handleExport = () => {
+    downloadObject(configRef.value._dataSource, `通知模板数据`);
+};
+
+const syncVis = ref(false);
+const debugVis = ref(false);
+const logVis = ref(false);
+const currentConfig = ref<Partial<Record<string, any>>>();
+const getActions = (
+    data: Partial<Record<string, any>>,
+    type: 'card' | 'table',
+): any[] => {
+    if (!data) return [];
+    const actions = [
+        {
+            key: 'update',
+            text: '编辑',
+            tooltip: {
+                title: '编辑',
+            },
+            icon: 'EditOutlined',
+            onClick: () => {
+                menuStory.jumpPage('notice/Template/Detail', {
+                   query:{
+                    id: data.id,
+                   } 
+                });
+            },
+        },
+        {
+            key: 'debug',
+            text: '调试',
+            tooltip: {
+                title: '调试',
+            },
+            icon: 'BugOutlined',
+            onClick: () => {
+                debugVis.value = true;
+                currentConfig.value = data;
+            },
+        },
+        {
+            key: 'delete',
+            text: '删除',
+            popConfirm: {
+                title: '确认删除?',
+                onConfirm: async () => {
+                    const resp = await TemplateApi.del(data.id);
+                    if (resp.status === 200) {
+                        onlyMessage('操作成功！');
+                        configRef.value?.reload();
+                    } else {
+                        onlyMessage('操作失败！', 'error');
+                    }
+                    return
+                },
+            },
+            icon: 'DeleteOutlined',
+        },
+    ];
+
+    const others: any = {
+        key: 'others',
+        text: '其他',
+        icon: 'EllipsisOutlined',
+        children: [
+            {
+                key: 'export',
+                text: '导出',
+                tooltip: {
+                    title: '导出',
+                },
+                icon: 'ArrowDownOutlined',
+                onClick: () => {
+                    downloadObject(data, `${data.name}`);
+                },
+            },
+            {
+                key: 'log',
+                text: '通知记录',
+                tooltip: {
+                    title: '通知记录',
+                },
+                icon: 'BarsOutlined',
+                onClick: () => {
+                    logVis.value = true;
+                    currentConfig.value = data;
+                },
+            },
+        ],
+    };
+
+    type === 'card'
+        ? actions.splice(actions.length - 1, 0, others)
+        : actions.splice(actions.length - 1, 0, ...others.children);
+    return actions;
+};
+</script>
+
+<style lang="less" scoped>
+.logo {
+    width: 88px;
+    height: 88px;
+}
+</style>
