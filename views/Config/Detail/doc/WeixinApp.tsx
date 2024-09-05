@@ -1,6 +1,6 @@
 import './index.less';
 import { Image } from 'ant-design-vue';
-import { configImages } from '../../data';
+import { configImages } from '../../../../assets/index';
 
 const WeixinApp = () => {
     const appId = configImages.AppID;

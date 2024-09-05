@@ -1,7 +1,7 @@
 
 import './index.less';
 import { Image } from 'ant-design-vue';
-import { templateImages } from '../../data';
+import { templateImages } from '../../../../assets/index';
 
 const DingTalk = () => {
   const agentId = templateImages.AgentId;

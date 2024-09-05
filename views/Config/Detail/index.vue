@@ -332,7 +332,7 @@ import regionList from './regionId';
 import EditTable from './components/EditTable.vue';
 import configApi from '../../../api/config';
 import Doc from './doc/index';  
-import { configImages } from '../data';
+import { configImages } from '../../../assets/index';
 import RadioCard from '../../../components/RadioCard/index.vue'
 
 const router = useRouter();

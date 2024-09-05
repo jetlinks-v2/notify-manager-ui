@@ -1,4 +1,4 @@
-import { constImages } from "./data";
+import { constImages } from "../assets/index";
 interface INoticeMethod {
     label: string;
     value: string;

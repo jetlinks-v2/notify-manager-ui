@@ -648,7 +648,7 @@ import { LocalStore } from "@jetlinks-web/utils";
 import { TOKEN_KEY } from "@jetlinks-web/constants";
 import { phoneRegEx } from "@/utils/validate";
 import type { Rule } from "ant-design-vue/es/form";
-import { templateImages } from "../data";
+import { templateImages } from "../../../assets/index";
 import RadioCard from "../../../components/RadioCard/index.vue";
 
 

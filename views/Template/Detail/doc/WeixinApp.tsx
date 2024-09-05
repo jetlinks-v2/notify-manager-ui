@@ -1,6 +1,6 @@
 import './index.less';
 import { Image } from 'ant-design-vue';
-import { templateImages } from '../../data';
+import { templateImages } from '../../../../assets/index';
 
 const WeixinApp = () => {
   const appId = templateImages.miniProgramAppid;
