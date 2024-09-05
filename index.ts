@@ -5,7 +5,7 @@ const getAsyncRoutesMap = () => {
     const modules = {}
     Object.keys(routerModules).forEach(item => {
         const code = item.replace('./views/', '').replace('/index.vue', '')
-        const key = `${code}`
+        const key = `notice/${code}`
         modules[key] = routerModules[item]
     })
 
@@ -14,16 +14,26 @@ const getAsyncRoutesMap = () => {
 
 const getExtraRoutesMap = () => {
     return {
-        // [`${MODULE_CODE}/Product`]: {
-        //     children: [
-        //         {
-        //             code: 'Detail',
-        //             url: '/detail:id',
-        //             name: '详情信息',
-        //             component: () => import('./views/Product/Detail/index.vue')
-        //         }
-        //     ]
-        // }
+        'notice/Config': {
+            children: [
+                {
+                    code: 'Detail',
+                    url: '/Detail/:id',
+                    name: '详情信息',
+                    component: () => import('./views/Config/Detail/index.vue')
+                }
+            ]
+        },
+        'notice/Template': {
+            children: [
+                {
+                    code: 'Detail',
+                    url: '/Detail/:id',
+                    name: '详情信息',
+                    component: () => import('./views/Template/Detail/index.vue')
+                }
+            ]
+        }
     }
 }
 
