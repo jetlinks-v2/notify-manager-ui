@@ -18,7 +18,7 @@ const getExtraRoutesMap = () => {
             children: [
                 {
                     code: 'Detail',
-                    url: '/detail/:id',
+                    url: '/Detail/:id',
                     name: '详情信息',
                     component: () => import('./views/Config/Detail/index.vue')
                 }
@@ -28,7 +28,7 @@ const getExtraRoutesMap = () => {
             children: [
                 {
                     code: 'Detail',
-                    url: '/detail/:id',
+                    url: '/Detail/:id',
                     name: '详情信息',
                     component: () => import('./views/Template/Detail/index.vue')
                 }

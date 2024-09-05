@@ -553,7 +553,7 @@
                   :rows="5"
                 />
                 <div v-else style="height: 400px">
-                  <MonacoEditor
+                  <j-monacoEditor
                     theme="vs"
                     v-model:modelValue="formData.template.body"
                     language="JavaScript"
@@ -628,7 +628,6 @@
 <script setup lang="ts">
 import { onlyMessage } from "@jetlinks-web/utils";
 import { UploadChangeParam } from "ant-design-vue";
-
 import type { IVariableDefinitions, TemplateFormData } from "../types";
 import {
   NOTICE_METHOD,
@@ -650,6 +649,8 @@ import { TOKEN_KEY } from "@jetlinks-web/constants";
 import { phoneRegEx } from "@/utils/validate";
 import type { Rule } from "ant-design-vue/es/form";
 import { templateImages } from "../data";
+import RadioCard from "../../../components/RadioCard/index.vue";
+
 
 const router = useRouter();
 const route = useRoute();

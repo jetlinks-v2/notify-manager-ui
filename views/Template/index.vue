@@ -15,7 +15,7 @@
                     sorts: [{ name: 'createTime', order: 'desc' }],
                 }"
                 :params="params"
-                :gridColumn="3"
+                :gridColumns="[3]"
             >
                 <template #headerLeftRender>
                     <a-space>
@@ -307,7 +307,7 @@ const getProviderTxt = (type: string, provider: string) => {
  */
 const handleAdd = () => {
     menuStory.jumpPage('notice/Template/Detail', {
-       query:{
+       params:{
         id: ':id',
        } 
     });
@@ -369,7 +369,7 @@ const getActions = (
             icon: 'EditOutlined',
             onClick: () => {
                 menuStory.jumpPage('notice/Template/Detail', {
-                   query:{
+                   params:{
                     id: data.id,
                    } 
                 });

@@ -40,7 +40,7 @@
                     <a-button type="primary" @click="handleAutoBind">
                         自动绑定
                     </a-button>
-                    <JTable
+                    <a-table
                         ref="tableRef"
                         :columns="columns"
                         :dataSource="dataSource"
@@ -90,7 +90,7 @@
                                 </a-space>
                             </template>
                         </template>
-                    </JTable>
+                    </a-table>
                 </a-col>
             </a-row>
         </a-modal>

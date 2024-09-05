@@ -83,14 +83,14 @@
                                         :config-id="formData.configId"
                                         v-model:toTag="record.value"
                                     />
-                                    <ValueItem
+                                    <j-value-item
                                         v-else
                                         v-model:modelValue="record.value"
                                         :itemType="record.type"
                                     />
                                 </template>
                                 <template v-else>
-                                    <ValueItem
+                                    <j-value-item
                                         v-model:modelValue="record.value"
                                         :itemType="record.type"
                                     />
