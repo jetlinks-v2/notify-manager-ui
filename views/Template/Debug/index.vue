@@ -18,10 +18,11 @@
                 <a-select
                     v-model:value="formData.configId"
                     placeholder="请选择通知配置"
+                    :getPopupContainer="(node)=>node"
                 >
                     <a-select-option
                         v-for="(item, index) in configList"
-                        :key="index"
+                        :key="item.id"
                         :value="item.id"
                     >
                         {{ item.name }}
@@ -104,7 +105,7 @@
     </a-modal>
 </template>
 
-<script setup lang="ts">
+<script setup lang="ts" name="TemplateDebugger">
 import { PropType } from 'vue';
 import TemplateApi from '../../../api/template';
 import { IVariableDefinitions,BindConfig } from '../types';

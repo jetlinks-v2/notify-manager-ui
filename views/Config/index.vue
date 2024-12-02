@@ -31,6 +31,7 @@
               accept=".json"
               :showUploadList="false"
               :before-upload="beforeUpload"
+              :disabled="!hasPerm"
             >
               <j-permission-button hasPermission="notice/Config:import">
                 导入
@@ -185,9 +186,11 @@ import { NOTICE_METHOD, MSG_TYPE } from "../const";
 import SyncUser from "./SyncUser/index.vue";
 import Debug from "./Debug/index.vue";
 import Log from "./Log/index.vue";
+import { isNoCommunity } from '@/utils/utils';
 import { downloadObject } from "../../utils/utils";
 import { useMenuStore } from "@/store/menu";
 import { onlyMessage } from "@jetlinks-web/utils";
+import { usePermission } from '@jetlinks-web/hooks'
 
 const menuStory = useMenuStore();
 
@@ -198,6 +201,12 @@ Object.keys(MSG_TYPE).forEach((key) => {
 
 const configRef = ref<Record<string, any>>({});
 const params = ref<Record<string, any>>({});
+
+const { hasPerm } = usePermission(
+  `notice/Config:import`,
+)
+
+console.log(hasPerm)
 
 const columns = [
   {
@@ -251,7 +260,7 @@ const columns = [
     title: "操作",
     key: "action",
     fixed: "right",
-    width: 210,
+    width: 250,
     scopedSlots: true,
   },
 ];
@@ -402,18 +411,18 @@ const getActions = (
           downloadObject(data, `${data.name}`);
         },
       },
-      {
-        key: "bind",
-        text: "同步用户",
-        tooltip: {
-          title: "同步用户",
-        },
-        icon: "TeamOutlined",
-        onClick: () => {
-          syncVis.value = true;
-          currentConfig.value = data;
-        },
-      },
+      // {
+      //   key: "bind",
+      //   text: "同步用户",
+      //   tooltip: {
+      //     title: "同步用户",
+      //   },
+      //   icon: "TeamOutlined",
+      //   onClick: () => {
+      //     syncVis.value = true;
+      //     currentConfig.value = data;
+      //   },
+      // },
       {
         key: "log",
         text: "通知记录",
@@ -428,18 +437,34 @@ const getActions = (
       },
     ],
   };
-
-  if (type === "card") {
-    if (data.provider !== "dingTalkMessage" && data.provider !== "corpMessage")
-      others.children?.splice(1, 1);
-    actions.splice(actions.length - 1, 0, others);
-    return actions;
-  } else {
-    if (data.provider !== "dingTalkMessage" && data.provider !== "corpMessage")
-      others.children?.splice(1, 1);
-    actions.splice(actions.length - 1, 0, ...others.children);
-    return actions;
+  if(isNoCommunity){
+    others.children?.push({
+      key: 'bind',
+      text: '同步用户',
+      tooltip: {
+        title: '同步用户',
+      },
+      icon: 'TeamOutlined',
+      onClick: () => {
+        syncVis.value = true;
+        currentConfig.value = data;
+      },
+    })
   }
+  if (
+    data.provider !== 'dingTalkMessage' &&
+    data.provider !== 'corpMessage'
+  ) {
+    others.children = others.children?.filter(item => item.key !== 'bind')
+  }
+
+
+  if (type === 'card') {
+    actions.splice(actions.length - 1, 0, others);
+  } else {
+    actions.splice(actions.length - 1, 0, ...others.children);
+  }
+  return actions;
 };
 </script>
 <style lang="less" scoped>
