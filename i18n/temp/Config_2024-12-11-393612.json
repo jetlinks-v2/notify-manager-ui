@@ -1,0 +1,40 @@
+{
+	"zh": {
+		"SyncUser.index.935207-0": "同步用户",
+		"SyncUser.index.935207-1": "请输入部门名称",
+		"SyncUser.index.935207-2": "自动绑定",
+		"SyncUser.index.935207-3": "第 {0} - {1} 条/总共 {2} 条",
+		"SyncUser.index.935207-4": "绑定用户",
+		"SyncUser.index.935207-5": "用户",
+		"SyncUser.index.935207-6": "请选择用户",
+		"SyncUser.index.935207-7": "企业微信用户名",
+		"SyncUser.index.935207-8": "钉钉用户名",
+		"SyncUser.index.935207-9": "绑定状态",
+		"SyncUser.index.935207-10": "操作",
+		"SyncUser.index.935207-11": "绑定",
+		"SyncUser.index.935207-12": "解绑",
+		"SyncUser.index.935207-13": "确认解绑?",
+		"SyncUser.index.935207-14": "操作成功",
+		"SyncUser.index.935207-15": "已绑定",
+		"SyncUser.index.935207-16": "未绑定"
+	},
+	"en": {
+		"SyncUser.index.935207-0": "Synchronize users",
+		"SyncUser.index.935207-1": "Please enter the department name",
+		"SyncUser.index.935207-2": "Automatic binding",
+		"SyncUser.index.935207-3": "Articles {0} - {1}/Total of {2}",
+		"SyncUser.index.935207-4": "Bind user",
+		"SyncUser.index.935207-5": "user",
+		"SyncUser.index.935207-6": "Please select a user",
+		"SyncUser.index.935207-7": "Enterprise WeChat username",
+		"SyncUser.index.935207-8": "DingTalk username",
+		"SyncUser.index.935207-9": "Binding status",
+		"SyncUser.index.935207-10": "operation",
+		"SyncUser.index.935207-11": "binding",
+		"SyncUser.index.935207-12": "Unbind",
+		"SyncUser.index.935207-13": "Confirm unbinding?",
+		"SyncUser.index.935207-14": "Operation successful",
+		"SyncUser.index.935207-15": "Already bound",
+		"SyncUser.index.935207-16": "Unbound"
+	}
+}

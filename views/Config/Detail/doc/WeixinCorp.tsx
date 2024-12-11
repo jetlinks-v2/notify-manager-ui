@@ -1,14 +1,15 @@
 import './index.less';
 import { Image } from 'ant-design-vue';
 import { configImages } from '../../../../assets/index';
-
+import i18n from '@/locales/index'
+const $t = i18n.global.t
 const WeixinCorp = () => {
     const corpId = configImages.corpId;
     const corpSecret = configImages.corpSecret;
     return (
         <div class={'doc'}>
             <div class={'url'}>
-                企业微信管理后台：
+                {$t('doc.WeixinCorp.707692-0')}
                 <a
                     href="https://work.weixin.qq.com"
                     target="_blank"
@@ -17,15 +18,15 @@ const WeixinCorp = () => {
                     https://work.weixin.qq.com
                 </a>
             </div>
-            <h1>1. 概述</h1>
+            <h1>{$t('doc.WeixinCorp.707692-1')}</h1>
             <div>
-                通知配置可以结合通知配置为告警消息通知提供支撑。也可以用于系统中其他自定义模块的调用。
+                {$t('doc.WeixinCorp.707692-2')}
             </div>
-            <h1>2.通知配置说明</h1>
+            <h1>{$t('doc.WeixinCorp.707692-3')}</h1>
             <div>
                 <h2>1、corpId</h2>
-                <div>企业号的唯一专属编号。</div>
-                <div>获取路径：“企业微信”管理后台--“我的企业”--“企业ID”</div>
+                <div>{$t('doc.WeixinCorp.707692-4')}</div>
+                <div>{$t('doc.WeixinCorp.707692-5')}</div>
                 <div class={'image'}>
                     <Image width="100%" src={corpId} />
                 </div>
@@ -33,9 +34,9 @@ const WeixinCorp = () => {
 
             <h2>2、corpSecret</h2>
             <div>
-                <div>应用的唯一secret,一个企业微信中可以有多个corpSecret</div>
+                <div>{$t('doc.WeixinCorp.707692-6')}</div>
                 <div>
-                    获取路径：“企业微信”--“应用与小程序”--“自建应用”中获取
+                    {$t('doc.WeixinCorp.707692-7')}
                 </div>
                 <div class={'image'}>
                     <Image width="100%" src={corpSecret} />

@@ -1,7 +1,8 @@
 import './index.less';
 import { Image } from 'ant-design-vue';
 import { configImages } from '../../../../assets/index';
-
+import i18n from '@/locales/index'
+const $t = i18n.global.t
 const DingTalk = () => {
     const appKey = configImages.AppKey
     const appSecret = configImages.AppSecret
@@ -9,7 +10,7 @@ const DingTalk = () => {
     return (
         <div class={'doc'}>
             <div class={'url'}>
-                钉钉开放平台：
+                {$t('doc.DingTalk.707709-0')}
                 <a
                     href="https://open-dev.dingtalk.com"
                     target="_blank"
@@ -18,25 +19,25 @@ const DingTalk = () => {
                     https://open-dev.dingtalk.com
                 </a>
             </div>
-            <h1>1. 概述</h1>
+            <h1>{$t('doc.DingTalk.707709-1')}</h1>
             <div>
-                通知配置可以结合通知配置为告警消息通知提供支撑。也可以用于系统中其他自定义模块的调用。
+                {$t('doc.DingTalk.707709-2')}
             </div>
-            <h1>2.通知配置说明</h1>
+            <h1>{$t('doc.DingTalk.707709-3')}</h1>
             <div>
                 <h2>1、AppKey</h2>
                 <div>
-                    企业内部应用的唯一身份标识。在钉钉开发者后台创建企业内部应用后，系统会自动生成一对AppKey和AppSecret。
+                    {$t('doc.DingTalk.707709-4')}
                 </div>
-                <div>获取路径：“钉钉开放平台”--“应用开发”--“应用信息”</div>
+                <div>{$t('doc.DingTalk.707709-5')}</div>
                 <div class={'image'}>
                     <Image width="100%" src={appKey} />
                 </div>
             </div>
             <h2>2、AppSecret</h2>
             <div>
-                <div>钉钉应用对应的调用密钥</div>
-                <div>获取路径：“钉钉开放平台”--“应用开发”--“应用信息”</div>
+                <div>{$t('doc.DingTalk.707709-6')}</div>
+                <div>{$t('doc.DingTalk.707709-5')}</div>
                 <div class={'image'}>
                     <Image width="100%" src={appSecret} />
                 </div>

@@ -10,10 +10,10 @@
             ref="formRef"
             :model="formData"
           >
-            <a-form-item label="通知方式" name="type">
+            <a-form-item :label="$t('Detail.index.640090-0')" name="type">
               <a-select
                 v-model:value="formData.type"
-                placeholder="请选择通知方式"
+                :placeholder="$t('Detail.index.640090-1')"
                 :disabled="!!formData.id"
                 @change="handleTypeChange"
               >
@@ -26,11 +26,11 @@
                 </a-select-option>
               </a-select>
             </a-form-item>
-            <a-form-item label="名称" name="name">
-              <a-input v-model:value="formData.name" placeholder="请输入名称" />
+            <a-form-item :label="$t('Detail.index.640090-2')" name="name">
+              <a-input v-model:value="formData.name" :placeholder="$t('Detail.index.640090-3')" />
             </a-form-item>
             <a-form-item
-              label="类型"
+              :label="$t('Detail.index.640090-4')"
               name="provider"
               v-if="formData.type !== 'email' && formData.type !== 'webhook'"
             >
@@ -49,8 +49,8 @@
             >
               <template #label>
                 <span>
-                  绑定配置
-                  <a-tooltip title="使用固定的通知配置来发送此通知模板">
+                  {{ $t('Detail.index.640090-5') }}
+                  <a-tooltip :title="$t('Detail.index.640090-6')">
                     <AIcon
                       type="QuestionCircleOutlined"
                       style="margin-left: 2px"
@@ -60,7 +60,7 @@
               </template>
               <a-select
                 v-model:value="formData.configId"
-                placeholder="请选择绑定配置"
+                :placeholder="$t('Detail.index.640090-7')"
                 @change="handleConfigChange"
                 :disabled="flag"
               >
@@ -80,7 +80,7 @@
                   <template #label>
                     <span>
                       AgentId
-                      <a-tooltip title="应用唯一标识">
+                      <a-tooltip :title="$t('Detail.index.640090-8')">
                         <AIcon
                           type="QuestionCircleOutlined"
                           style="margin-left: 2px"
@@ -90,12 +90,12 @@
                   </template>
                   <a-input
                     v-model:value="formData.template.agentId"
-                    placeholder="请输入AgentId"
+                    :placeholder="$t('Detail.index.640090-9')"
                   />
                 </a-form-item>
                 <a-row :gutter="10">
                   <a-col :span="12">
-                    <a-form-item label="收信人部门">
+                    <a-form-item :label="$t('Detail.index.640090-10')">
                       <ToOrg
                         v-model:toParty="formData.template.departmentIdList"
                         :type="formData.type"
@@ -107,9 +107,9 @@
                     <a-form-item>
                       <template #label>
                         <span>
-                          收信人
+                          {{ $t('Detail.index.640090-11') }}
                           <a-tooltip
-                            title="如果不填写该字段，将在使用此模板发送通知时进行指定"
+                            :title="$t('Detail.index.640090-12')"
                           >
                             <AIcon
                               type="QuestionCircleOutlined"
@@ -130,12 +130,12 @@
               </template>
               <template v-if="formData.provider === 'dingTalkRobotWebHook'">
                 <a-form-item
-                  label="消息类型"
+                  :label="$t('Detail.index.640090-13')"
                   :name="['template', 'messageType']"
                 >
                   <a-select
                     v-model:value="formData.template.messageType"
-                    placeholder="请选择消息类型"
+                    :placeholder="$t('Detail.index.640090-14')"
                     @change="handleMessageTypeChange"
                   >
                     <a-select-option
@@ -149,29 +149,29 @@
                 </a-form-item>
                 <template v-if="formData.template.messageType === 'markdown'">
                   <a-form-item
-                    label="标题"
+                    :label="$t('Detail.index.640090-15')"
                     :name="['template', 'markdown', 'title']"
                   >
                     <a-input
                       v-model:value="formData.template.markdown.title"
-                      placeholder="请输入标题"
+                      :placeholder="$t('Detail.index.640090-16')"
                     />
                   </a-form-item>
                 </template>
                 <template v-if="formData.template.messageType === 'link'">
                   <a-form-item
-                    label="标题"
+                    :label="$t('Detail.index.640090-15')"
                     :name="['template', 'link', 'title']"
                   >
                     <a-input
                       v-model:value="formData.template.link.title"
-                      placeholder="请输入标题"
+                      :placeholder="$t('Detail.index.640090-16')"
                     />
                   </a-form-item>
-                  <a-form-item label="图片链接">
+                  <a-form-item :label="$t('Detail.index.640090-17')">
                     <a-input
                       v-model:value="formData.template.link.picUrl"
-                      placeholder="请输入图片链接"
+                      :placeholder="$t('Detail.index.640090-18')"
                     >
                       <template #addonAfter>
                         <a-upload
@@ -188,10 +188,10 @@
                       </template>
                     </a-input>
                   </a-form-item>
-                  <a-form-item label="内容链接">
+                  <a-form-item :label="$t('Detail.index.640090-19')">
                     <a-input
                       v-model:value="formData.template.link.messageUrl"
-                      placeholder="请输入内容链接"
+                      :placeholder="$t('Detail.index.640090-20')"
                     />
                   </a-form-item>
                 </template>
@@ -203,7 +203,7 @@
                 <template #label>
                   <span>
                     AgentId
-                    <a-tooltip title="应用唯一标识">
+                    <a-tooltip :title="$t('Detail.index.640090-8')">
                       <AIcon
                         type="QuestionCircleOutlined"
                         style="margin-left: 2px"
@@ -213,7 +213,7 @@
                 </template>
                 <a-input
                   v-model:value="formData.template.agentId"
-                  placeholder="请输入AgentId"
+                  :placeholder="$t('Detail.index.640090-9')"
                 />
               </a-form-item>
               <a-row :gutter="10">
@@ -221,9 +221,9 @@
                   <a-form-item>
                     <template #label>
                       <span>
-                        收信人
+                        {{ $t('Detail.index.640090-11') }}
                         <a-tooltip
-                          title="如果不填写该字段,将在使用此模板发送通知时进行指定。"
+                          :title="$t('Detail.index.640090-21')"
                         >
                           <AIcon
                             type="QuestionCircleOutlined"
@@ -240,7 +240,7 @@
                   </a-form-item>
                 </a-col>
                 <a-col :span="12">
-                  <a-form-item label="收信人部门">
+                  <a-form-item :label="$t('Detail.index.640090-10')">
                     <ToOrg
                       v-model:toParty="formData.template.toParty"
                       :type="formData.type"
@@ -252,9 +252,9 @@
               <a-form-item>
                 <template #label>
                   <span>
-                    收信人标签
+                    {{ $t('Detail.index.640090-22') }}
                     <a-tooltip
-                      title="本企业微信的标签ID列表,最多支持100个,如果不填写该字段,将在使用此模板发送通知时进行指定"
+                      :title="$t('Detail.index.640090-23')"
                     >
                       <AIcon
                         type="QuestionCircleOutlined"
@@ -275,8 +275,8 @@
               <a-form-item :name="['template', 'subject']">
                 <template #label>
                   <span>
-                    标题
-                    <a-tooltip title="邮件标题">
+                    {{ $t('Detail.index.640090-15') }}
+                    <a-tooltip :title="$t('Detail.index.640090-24')">
                       <AIcon
                         type="QuestionCircleOutlined"
                         style="margin-left: 2px"
@@ -286,14 +286,14 @@
                 </template>
                 <a-input
                   v-model:value="formData.template.subject"
-                  placeholder="请输入标题"
+                  :placeholder="$t('Detail.index.640090-16')"
                 />
               </a-form-item>
               <a-form-item :name="['template', 'sendTo']">
                 <template #label>
                   <span>
-                    收件人
-                    <a-tooltip title="多个收件人用换行分隔 最大支持1000个号码">
+                    {{ $t('Detail.index.640090-25') }}
+                    <a-tooltip :title="$t('Detail.index.640090-26')">
                       <AIcon
                         type="QuestionCircleOutlined"
                         style="margin-left: 2px"
@@ -304,15 +304,15 @@
                 <a-select
                   mode="tags"
                   v-model:value="formData.template.sendTo"
-                  placeholder="请输入收件人邮箱,多个收件人用换行分隔"
+                  :placeholder="$t('Detail.index.640090-27')"
                 />
               </a-form-item>
               <a-form-item>
                 <template #label>
                   <span>
-                    附件信息
+                    {{ $t('Detail.index.640090-28') }}
                     <a-tooltip
-                      title="附件只输入文件名称将在发送邮件时进行文件上传"
+                      :title="$t('Detail.index.640090-29')"
                     >
                       <AIcon
                         type="QuestionCircleOutlined"
@@ -331,9 +331,9 @@
               <a-form-item :name="['template', 'templateType']">
                 <template #label>
                   <span>
-                    类型
+                    {{ $t('Detail.index.640090-4') }}
                     <a-tooltip
-                      title="语音验证码类型可配置变量，并且只支持数字和英文字母"
+                      :title="$t('Detail.index.640090-30')"
                     >
                       <AIcon
                         type="QuestionCircleOutlined"
@@ -344,7 +344,7 @@
                 </template>
                 <a-select
                   v-model:value="formData.template.templateType"
-                  placeholder="请选择类型"
+                  :placeholder="$t('Detail.index.640090-31')"
                   @change="onVoiceTemplateTypeChange"
                 >
                   <a-select-option
@@ -363,10 +363,10 @@
                       <span>
                         {{
                           formData.template.templateType === "voice"
-                            ? "语音ID"
-                            : "模板ID"
+                            ? $t('Detail.index.640090-32')
+                            : $t('Detail.index.640090-33')
                         }}
-                        <a-tooltip title="阿里云内部分配的唯一ID标识">
+                        <a-tooltip :title="$t('Detail.index.640090-34')">
                           <AIcon
                             type="QuestionCircleOutlined"
                             style="margin-left: 2px"
@@ -376,7 +376,7 @@
                     </template>
                     <a-input
                       v-model:value="formData.template.templateCode"
-                      placeholder="请输入模板ID"
+                      :placeholder="$t('Detail.index.640090-35')"
                     />
                   </a-form-item>
                 </a-col>
@@ -384,8 +384,8 @@
                   <a-form-item :name="['template', 'calledNumber']">
                     <template #label>
                       <span>
-                        被叫号码
-                        <a-tooltip title="仅支持中国大陆号码">
+                        {{ $t('Detail.index.640090-36') }}
+                        <a-tooltip :title="$t('Detail.index.640090-37')">
                           <AIcon
                             type="QuestionCircleOutlined"
                             style="margin-left: 2px"
@@ -395,7 +395,7 @@
                     </template>
                     <a-input
                       v-model:value="formData.template.calledNumber"
-                      placeholder="请输入被叫号码"
+                      :placeholder="$t('Detail.index.640090-38')"
                     />
                   </a-form-item>
                 </a-col>
@@ -403,8 +403,8 @@
               <a-form-item :name="['template', 'calledShowNumbers']">
                 <template #label>
                   <span>
-                    被叫显号
-                    <a-tooltip title="必须是已购买的号码,用于呼叫号码显示">
+                    {{ $t('Detail.index.640090-39') }}
+                    <a-tooltip :title="$t('Detail.index.640090-40')">
                       <AIcon
                         type="QuestionCircleOutlined"
                         style="margin-left: 2px"
@@ -414,14 +414,14 @@
                 </template>
                 <a-input
                   v-model:value="formData.template.calledShowNumbers"
-                  placeholder="请输入被叫显号"
+                  :placeholder="$t('Detail.index.640090-41')"
                 />
               </a-form-item>
               <a-form-item :name="['template', 'playTimes']">
                 <template #label>
                   <span>
-                    播放次数
-                    <a-tooltip title="语音文件的播放次数">
+                    {{ $t('Detail.index.640090-42') }}
+                    <a-tooltip :title="$t('Detail.index.640090-43')">
                       <AIcon
                         type="QuestionCircleOutlined"
                         style="margin-left: 2px"
@@ -431,7 +431,7 @@
                 </template>
                 <a-input-number
                   v-model:value="formData.template.playTimes"
-                  placeholder="请输入播放次数"
+                  :placeholder="$t('Detail.index.640090-44')"
                   style="width: 100%"
                 />
               </a-form-item>
@@ -441,9 +441,9 @@
               >
                 <template #label>
                   <span>
-                    模板内容
+                    {{ $t('Detail.index.640090-45') }}
                     <a-tooltip
-                      title="语音验证码内容输入框，用于渲染验语音证码变量。"
+                      :title="$t('Detail.index.640090-46')"
                     >
                       <AIcon
                         type="QuestionCircleOutlined"
@@ -455,7 +455,7 @@
                 <a-textarea
                   v-model:value="formData.template.ttsmessage"
                   :rows="5"
-                  placeholder="内容中的变量将用于阿里云语音验证码"
+                  :placeholder="$t('Detail.index.640090-47')"
                 />
               </a-form-item>
             </template>
@@ -466,8 +466,8 @@
                   <a-form-item :name="['template', 'code']">
                     <template #label>
                       <span>
-                        模板
-                        <a-tooltip title="阿里云短信平台自定义的模板名称">
+                        {{ $t('Detail.index.640090-48') }}
+                        <a-tooltip :title="$t('Detail.index.640090-49')">
                           <AIcon
                             type="QuestionCircleOutlined"
                             style="margin-left: 2px"
@@ -477,7 +477,7 @@
                     </template>
                     <a-select
                       v-model:value="formData.template.code"
-                      placeholder="请选择模板"
+                      :placeholder="$t('Detail.index.640090-50')"
                       @change="handleTemplateChange"
                     >
                       <a-select-option
@@ -494,8 +494,8 @@
                   <a-form-item :name="['template', 'phoneNumber']">
                     <template #label>
                       <span>
-                        收信人
-                        <a-tooltip title="仅支持中国大陆号码">
+                        {{ $t('Detail.index.640090-11') }}
+                        <a-tooltip :title="$t('Detail.index.640090-37')">
                           <AIcon
                             type="QuestionCircleOutlined"
                             style="margin-left: 2px"
@@ -505,7 +505,7 @@
                     </template>
                     <a-input
                       v-model:value="formData.template.phoneNumber"
-                      placeholder="请输入收信人"
+                      :placeholder="$t('Detail.index.640090-51')"
                     />
                   </a-form-item>
                 </a-col>
@@ -513,8 +513,8 @@
               <a-form-item :name="['template', 'signName']">
                 <template #label>
                   <span>
-                    签名
-                    <a-tooltip title="用于短信内容签名信息显示">
+                    {{ $t('Detail.index.640090-52') }}
+                    <a-tooltip :title="$t('Detail.index.640090-53')">
                       <AIcon
                         type="QuestionCircleOutlined"
                         style="margin-left: 2px"
@@ -524,7 +524,7 @@
                 </template>
                 <a-select
                   v-model:value="formData.template.signName"
-                  placeholder="请选择签名"
+                  :placeholder="$t('Detail.index.640090-54')"
                 >
                   <a-select-option
                     v-for="(item, index) in signsList"
@@ -538,16 +538,16 @@
             </template>
             <!-- webhook -->
             <template v-if="formData.type === 'webhook'">
-              <a-form-item label="请求体">
+              <a-form-item :label="$t('Detail.index.640090-55')">
                 <a-radio-group
                   v-model:value="formData.template.contextAsBody"
                   style="margin-bottom: 20px"
                 >
-                  <a-radio :value="true">默认</a-radio>
-                  <a-radio :value="false">自定义</a-radio>
+                  <a-radio :value="true">{{ $t('Detail.index.640090-56') }}</a-radio>
+                  <a-radio :value="false">{{ $t('Detail.index.640090-57') }}</a-radio>
                 </a-radio-group>
                 <a-textarea
-                  placeholder="请求体中的数据来自于发送通知时指定的所有变量"
+                  :placeholder="$t('Detail.index.640090-58')"
                   v-if="formData.template.contextAsBody"
                   disabled
                   :rows="5"
@@ -567,8 +567,8 @@
               <a-form-item :name="['template', 'message']">
                 <template #label>
                   <span>
-                    模板内容
-                    <a-tooltip title="发送的内容，支持录入变量">
+                    {{ $t('Detail.index.640090-45') }}
+                    <a-tooltip :title="$t('Detail.index.640090-59')">
                       <AIcon
                         type="QuestionCircleOutlined"
                         style="margin-left: 2px"
@@ -580,13 +580,13 @@
                   v-model:value="formData.template.message"
                   :rows="5"
                   :disabled="formData.type === 'sms'"
-                  placeholder="变量格式:${name};
-    示例:尊敬的${name},${time}有设备触发告警,请注意处理"
+                  :placeholder="$t('Detail.index.640090-60') + '{name};' + '\n'+ $t('Detail.index.640090-61')  + '{name},' + '${time}' + $t('Detail.index.640090-62')
+"
                 />
               </a-form-item>
             </template>
             <a-form-item
-              label="变量列表"
+              :label="$t('Detail.index.640090-63')"
               v-if="
                 formData.variableDefinitions &&
                 formData.variableDefinitions.length
@@ -596,13 +596,13 @@
                 v-model:variableDefinitions="formData.variableDefinitions"
               />
             </a-form-item>
-            <a-form-item label="说明">
+            <a-form-item :label="$t('Detail.index.640090-64')">
               <a-textarea
                 v-model:value="formData.description"
                 show-count
                 :maxlength="200"
                 :rows="5"
-                placeholder="请输入说明"
+                :placeholder="$t('Detail.index.640090-65')"
               />
             </a-form-item>
             <a-form-item>
@@ -612,7 +612,7 @@
                 @click="handleSubmit"
                 :loading="btnLoading"
               >
-                保存
+                {{ $t('Detail.index.640090-66') }}
               </a-button>
             </a-form-item>
           </a-form>
@@ -650,7 +650,9 @@ import { phoneRegEx } from "@/utils/validate";
 import type { Rule } from "ant-design-vue/es/form";
 import { templateImages } from "../../../assets/index";
 import RadioCard from "../../../components/RadioCard/index.vue";
+import { useI18n } from 'vue-i18n';
 
+const { t: $t } = useI18n();
 
 const router = useRouter();
 const route = useRoute();
@@ -660,12 +662,12 @@ const flag = ref<boolean>(false);
 // 消息类型
 const msgType = ref([
   {
-    label: "钉钉消息",
+    label: $t('Detail.index.640090-67'),
     value: "dingTalkMessage",
     logo: templateImages.dingtalk,
   },
   {
-    label: "群机器人消息",
+    label: $t('Detail.index.640090-68'),
     value: "dingTalkRobotWebHook",
     logo: templateImages.dingtalkRebot,
   },
@@ -776,34 +778,34 @@ watch(
 
 // 验证规则
 const formRules = {
-  type: [{ required: true, message: "请选择通知方式" }],
+  type: [{ required: true, message: $t('Detail.index.640090-1') }],
   name: [
-    { required: true, message: "请输入名称" },
-    { max: 64, message: "最多可输入64个字符" },
+    { required: true, message: $t('Detail.index.640090-3') },
+    { max: 64, message: $t('Detail.index.640090-69') },
   ],
-  provider: [{ required: true, message: "请选择类型" }],
-  configId: [{ required: true, message: "请选择绑定配置" }],
+  provider: [{ required: true, message: $t('Detail.index.640090-31') }],
+  configId: [{ required: true, message: $t('Detail.index.640090-7') }],
   template: {
     agentId: [
-      { required: true, message: "请输入AgentId" },
-      { max: 64, message: "最多可输入64个字符" },
+      { required: true, message: $t('Detail.index.640090-9') },
+      { max: 64, message: $t('Detail.index.640090-69') },
     ],
-    messageType: [{ required: true, message: "请选择消息类型" }],
+    messageType: [{ required: true, message: $t('Detail.index.640090-14') }],
     markdown: {
       title: [
-        { required: true, message: "请输入标题" },
-        { max: 64, message: "最多可输入64个字符" },
+        { required: true, message: $t('Detail.index.640090-16') },
+        { max: 64, message: $t('Detail.index.640090-69') },
       ],
     },
     link: {
       title: [
-        { required: true, message: "请输入标题" },
-        { max: 64, message: "最多可输入64个字符" },
+        { required: true, message: $t('Detail.index.640090-16') },
+        { max: 64, message: $t('Detail.index.640090-69') },
       ],
     },
     subject: [
-      { required: true, message: "请输入标题" },
-      { max: 64, message: "最多可输入64个字符" },
+      { required: true, message: $t('Detail.index.640090-16') },
+      { max: 64, message: $t('Detail.index.640090-69') },
     ],
     sendTo: [
       {
@@ -819,30 +821,30 @@ const formRules = {
               return false;
             });
           }
-          if (error) return Promise.reject(error ? `${error}邮件格式错误` : "");
+          if (error) return Promise.reject(error ? $t('Detail.index.640090-70', [error]) : "");
           else return Promise.resolve();
         },
       },
     ],
-    templateType: [{ required: true, message: "请选择类型" }],
-    templateCode: [{ required: true, message: "请输入模板ID" }],
+    templateType: [{ required: true, message: $t('Detail.index.640090-31') }],
+    templateCode: [{ required: true, message: $t('Detail.index.640090-35') }],
     calledNumber: [
-      { max: 64, message: "最多可输入64个字符" },
+      { max: 64, message: $t('Detail.index.640090-69') },
       {
         validator(_rule: Rule, value: string) {
           if (!value) return Promise.resolve();
-          if (!phoneRegEx(value)) return Promise.reject("请输入有效号码");
+          if (!phoneRegEx(value)) return Promise.reject($t('Detail.index.640090-71'));
           return Promise.resolve();
         },
       },
     ],
     calledShowNumbers: [
-      // { required: true, message: '请输入被叫显号' },
-      { max: 64, message: "最多可输入64个字符" },
+      // { required: true, message: $t('Detail.index.640090-41') },
+      { max: 64, message: $t('Detail.index.640090-69') },
       {
         validator(_rule: Rule, value: string) {
           if (!value) return Promise.resolve();
-          if (!phoneRegEx(value)) return Promise.reject("请输入有效号码");
+          if (!phoneRegEx(value)) return Promise.reject($t('Detail.index.640090-71'));
           return Promise.resolve();
         },
       },
@@ -850,20 +852,20 @@ const formRules = {
     playTimes: [
       {
         validator(_rule: Rule, value: number) {
-          if (value < 1 || value > 3) return Promise.reject("仅支持1～3次");
+          if (value < 1 || value > 3) return Promise.reject($t('Detail.index.640090-72'));
           else return Promise.resolve();
         },
       },
     ],
-    code: [{ required: true, message: "请选择模板" }],
-    signName: [{ required: true, message: "请选择签名" }],
+    code: [{ required: true, message: $t('Detail.index.640090-50') }],
+    signName: [{ required: true, message: $t('Detail.index.640090-54') }],
     phoneNumber: [
-      { max: 64, message: "最多可输入64个字符" },
+      { max: 64, message: $t('Detail.index.640090-69') },
       {
         validator(_rule: Rule, value: string) {
           if (!value) return Promise.resolve();
           if (!phoneRegEx(value))
-            return Promise.reject("该字段不是有效的手机号");
+            return Promise.reject($t('Detail.index.640090-73'));
           return Promise.resolve();
         },
       },
@@ -871,13 +873,13 @@ const formRules = {
     message: [
       {
         required: true,
-        message: "请输入模板内容",
+        message: $t('Detail.index.640090-74'),
       },
-      { max: 500, message: "最多可输入500个字符" },
+      { max: 500, message: $t('Detail.index.640090-75') },
     ],
-    ttsmessage: [{ max: 500, message: "最多可输入500个字符" }],
+    ttsmessage: [{ max: 500, message: $t('Detail.index.640090-75') }],
   },
-  description: [{ max: 200, message: "最多可输入200个字符" }],
+  description: [{ max: 200, message: $t('Detail.index.640090-76') }],
 };
 
 // 字段提取变量
@@ -1138,7 +1140,7 @@ const handleSubmit = () => {
         : await templateApi.save(formData.value);
 
       if (res?.success) {
-        onlyMessage("保存成功");
+        onlyMessage($t('Detail.index.640090-77'));
         if (route.query?.notifyType) {
           // @ts-ignore
           if ((window as any).onTabSaveSuccess) {

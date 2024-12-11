@@ -25,9 +25,9 @@
                         class="error-text"
                         v-show="!record.name || record.name.length > 64"
                     >
-                        <span v-show="!record.name"> 该字段是必填字段 </span>
+                        <span v-show="!record.name"> {{ $t('components.VariableDefinitions.6401011-0') }} </span>
                         <span v-show="record.name.length > 64">
-                            最多可输入64个字符
+                            {{ $t('components.VariableDefinitions.6401011-1') }}
                         </span>
                     </div>
                 </template>
@@ -36,9 +36,9 @@
                     v-model:value="record.type"
                     @change="handleTypeChange(record)"
                 >
-                    <a-select-option value="string">字符串</a-select-option>
-                    <a-select-option value="date">时间</a-select-option>
-                    <a-select-option value="double">数字</a-select-option>
+                    <a-select-option value="string">{{ $t('components.VariableDefinitions.6401011-2') }}</a-select-option>
+                    <a-select-option value="date">{{ $t('components.VariableDefinitions.6401011-3') }}</a-select-option>
+                    <a-select-option value="double">{{ $t('components.VariableDefinitions.6401011-4') }}</a-select-option>
                 </a-select>
                 <template v-if="column.dataIndex === 'format'">
                     <span v-if="record.type === 'string'">
@@ -64,7 +64,7 @@
                     >
                         <template #suffix>
                             <a-tooltip
-                                title="格式为：%.xf x代表数字保留的小数位数。当x=0时,代表格式为整数"
+                                :title="$t('components.VariableDefinitions.6401011-5')"
                             >
                                 <AIcon type="QuestionCircleOutlined" />
                             </a-tooltip>
@@ -78,7 +78,9 @@
 
 <script setup lang="ts">
 import { PropType } from 'vue';
+import { useI18n } from 'vue-i18n';
 
+const { t: $t } = useI18n();
 interface IVariable {
     id: string;
     name: string;
@@ -100,23 +102,23 @@ const props = defineProps({
 
 const columns = [
     {
-        title: '变量',
+        title: $t('components.VariableDefinitions.6401011-6'),
         dataIndex: 'id',
         width: 80,
         ellipsis: true
     },
     {
-        title: '名称',
+        title: $t('components.VariableDefinitions.6401011-7'),
         dataIndex: 'name',
         width: 160,
     },
     {
-        title: '类型',
+        title: $t('components.VariableDefinitions.6401011-8'),
         dataIndex: 'type',
         // width: 160,
     },
     {
-        title: '格式',
+        title: $t('components.VariableDefinitions.6401011-9'),
         dataIndex: 'format',
         width: 150,
     },

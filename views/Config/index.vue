@@ -24,7 +24,7 @@
               @click="handleAdd"
               hasPermission="notice/Config:add"
             >
-              新增
+              {{ $t('Config.index.133246-0') }}
             </j-permission-button>
             <a-upload
               name="file"
@@ -34,17 +34,17 @@
               :disabled="!hasPerm"
             >
               <j-permission-button hasPermission="notice/Config:import">
-                导入
+                {{ $t('Config.index.133246-1') }}
               </j-permission-button>
             </a-upload>
             <j-permission-button
               :popConfirm="{
-                title: '确认导出？',
+                title: $t('Config.index.133246-2'),
                 onConfirm: handleExport,
               }"
               hasPermission="notice/Config:export"
             >
-              导出
+              {{ $t('Config.index.133246-3') }}
             </j-permission-button>
           </a-space>
         </template>
@@ -69,13 +69,13 @@
               </h3>
               <a-row>
                 <a-col :span="12">
-                  <div class="card-item-content-text">通知方式</div>
+                  <div class="card-item-content-text">{{ $t('Config.index.133246-4') }}</div>
                   <div>
                     {{ getMethodTxt(slotProps.type) }}
                   </div>
                 </a-col>
                 <a-col :span="12">
-                  <div class="card-item-content-text">说明</div>
+                  <div class="card-item-content-text">{{ $t('Config.index.133246-5') }}</div>
                   <j-ellipsis>
                     {{ slotProps.description }}
                   </j-ellipsis>
@@ -191,7 +191,9 @@ import { downloadObject } from "../../utils/utils";
 import { useMenuStore } from "@/store/menu";
 import { onlyMessage } from "@jetlinks-web/utils";
 import { usePermission } from '@jetlinks-web/hooks'
+import { useI18n } from 'vue-i18n';
 
+const { t: $t } = useI18n();
 const menuStory = useMenuStore();
 
 let providerList: any = [];
@@ -210,7 +212,7 @@ console.log(hasPerm)
 
 const columns = [
   {
-    title: "配置名称",
+    title: $t('Config.index.133246-6'),
     dataIndex: "name",
     key: "name",
     ellipsis: true,
@@ -219,7 +221,7 @@ const columns = [
     },
   },
   {
-    title: "通知方式",
+    title: $t('Config.index.133246-4'),
     dataIndex: "type",
     key: "type",
     scopedSlots: true,
@@ -233,7 +235,7 @@ const columns = [
     },
   },
   {
-    title: "类型",
+    title: $t('Config.index.133246-7'),
     dataIndex: "provider",
     key: "provider",
     scopedSlots: true,
@@ -247,7 +249,7 @@ const columns = [
     },
   },
   {
-    title: "说明",
+    title: $t('Config.index.133246-5'),
     dataIndex: "description",
     key: "description",
     scopedSlots: true,
@@ -257,7 +259,7 @@ const columns = [
     },
   },
   {
-    title: "操作",
+    title: $t('Config.index.133246-8'),
     key: "action",
     fixed: "right",
     width: 250,
@@ -312,19 +314,19 @@ const beforeUpload = (file: any) => {
     const text = result.target?.result;
     console.log("text: ", text);
     if (!file.type.includes("json")) {
-      onlyMessage("请上传json格式文件", "error");
+      onlyMessage($t('Config.index.133246-9'), "error");
       return false;
     }
     try {
       const data = JSON.parse(text || "{}");
       const { success } = await ConfigApi.update(data);
       if (success) {
-        onlyMessage("操作成功");
+        onlyMessage($t('Config.index.133246-10'));
         configRef.value.reload();
       }
       return true;
     } catch {
-      // onlyMessage('请上传json格式文件', 'error');
+      // onlyMessage($t('Config.index.133246-9'), 'error');
     }
     return true;
   };
@@ -335,7 +337,7 @@ const beforeUpload = (file: any) => {
  * 导出
  */
 const handleExport = () => {
-  downloadObject(configRef.value._dataSource, `通知配置数据`);
+  downloadObject(configRef.value._dataSource, $t('Config.index.133246-11'));
 };
 
 const syncVis = ref(false);
@@ -350,9 +352,9 @@ const getActions = (
   const actions = [
     {
       key: "update",
-      text: "编辑",
+      text: $t('Config.index.133246-12'),
       tooltip: {
-        title: "编辑",
+        title: $t('Config.index.133246-12'),
       },
       icon: "EditOutlined",
       onClick: () => {
@@ -365,9 +367,9 @@ const getActions = (
     },
     {
       key: "debug",
-      text: "调试",
+      text: $t('Config.index.133246-13'),
       tooltip: {
-        title: "调试",
+        title: $t('Config.index.133246-13'),
       },
       icon: "BugOutlined",
       onClick: () => {
@@ -377,16 +379,16 @@ const getActions = (
     },
     {
       key: "delete",
-      text: "删除",
+      text: $t('Config.index.133246-14'),
       popConfirm: {
-        title: "确认删除?",
+        title: $t('Config.index.133246-15'),
         onConfirm: async () => {
           const resp = await ConfigApi.del(data.id);
           if (resp.status === 200) {
-            onlyMessage("操作成功！");
+            onlyMessage($t('Config.index.133246-16'));
             configRef.value?.reload();
           } else {
-            onlyMessage("操作失败！", "error");
+            onlyMessage($t('Config.index.133246-17'), "error");
           }
           return;
         },
@@ -397,14 +399,14 @@ const getActions = (
 
   const others: any = {
     key: "others",
-    text: "其他",
+    text: $t('Config.index.133246-18'),
     icon: "EllipsisOutlined",
     children: [
       {
         key: "export",
-        text: "导出",
+        text: $t('Config.index.133246-3'),
         tooltip: {
-          title: "导出",
+          title: $t('Config.index.133246-3'),
         },
         icon: "ArrowDownOutlined",
         onClick: () => {
@@ -413,9 +415,9 @@ const getActions = (
       },
       // {
       //   key: "bind",
-      //   text: "同步用户",
+      //   text: $t('Config.index.133246-20'),
       //   tooltip: {
-      //     title: "同步用户",
+      //     title: $t('Config.index.133246-20'),
       //   },
       //   icon: "TeamOutlined",
       //   onClick: () => {
@@ -425,9 +427,9 @@ const getActions = (
       // },
       {
         key: "log",
-        text: "通知记录",
+        text: $t('Config.index.133246-19'),
         tooltip: {
-          title: "通知记录",
+          title: $t('Config.index.133246-19'),
         },
         icon: "BarsOutlined",
         onClick: () => {
@@ -440,9 +442,9 @@ const getActions = (
   if(isNoCommunity){
     others.children?.push({
       key: 'bind',
-      text: '同步用户',
+      text: $t('Config.index.133246-20'),
       tooltip: {
-        title: '同步用户',
+        title: $t('Config.index.133246-20'),
       },
       icon: 'TeamOutlined',
       onClick: () => {

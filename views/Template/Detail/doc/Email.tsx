@@ -1,27 +1,28 @@
 import './index.less';
-
+import i18n from '@/locales/index'
+const $t = i18n.global.t
 const Email = () => {
-  const a = '{标题}';
-  const b = '{name}';
+  const a = `{${$t('doc.Email.640106-0')}}`;
+  const b = `{name}`;
   return (
     <div class="doc">
-      <h1>1. 概述</h1>
+      <h1>{$t('doc.Email.640106-1')}</h1>
       <div>
-        通知模板结合通知配置为告警消息通知提供支撑。通知模板只能调用同一类型的通知配置服务。
-        服务器地址支持自定义输入。
+        {$t('doc.Email.640106-2')}
+        {$t('doc.Email.640106-3')}
       </div>
-      <h1>2.模板配置说明</h1>
+      <h1>{$t('doc.Email.640106-4')}</h1>
       <div>
         {/* <h2> 1、服务器地址</h2>
         <div>服务器地址支持自定义输入</div> */}
-        <h2> 1、标题</h2>
-        <div>支持输入变量，变量格式${a}</div>
-        <h2> 2、收件人</h2>
-        <div> 支持录入多个邮箱地址，可填写变量参数。</div>
-        <h2> 3、模板内容</h2>
+        <h2> 1、{$t('doc.Email.640106-0')}</h2>
+        <div>{$t('doc.Email.640106-6')}{a}</div>
+        <h2> {$t('doc.Email.640106-7')}</h2>
+        <div> {$t('doc.Email.640106-8')}</div>
+        <h2> {$t('doc.Email.640106-9')}</h2>
         <div>
-          支持填写带变量的动态模板。变量填写规范示例：${b}
-          。填写动态参数后，可对变量的名称、类型、格式进行配置，以便告警通知时填写。
+          {$t('doc.Email.640106-10') + b}
+          {$t('doc.Email.640106-11')}
         </div>
       </div>
     </div>

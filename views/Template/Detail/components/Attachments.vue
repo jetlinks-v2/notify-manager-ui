@@ -32,7 +32,7 @@
       <template #icon>
         <AIcon type="UploadOutlined" />
       </template>
-      添加
+      {{ $t('components.Attachments.6401015-0') }}
     </a-button>
   </div>
 </template>
@@ -43,7 +43,9 @@ import type { IAttachments } from "../../types";
 import { LocalStore } from "@jetlinks-web/utils";
 import { TOKEN_KEY , BASE_API} from "@jetlinks-web/constants";
 import { UploadChangeParam } from "ant-design-vue";
+import { useI18n } from 'vue-i18n';
 
+const { t: $t } = useI18n();
 type Emits = {
   (e: "update:attachments", data: IAttachments[]): void;
 };

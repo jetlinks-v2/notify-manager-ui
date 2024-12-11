@@ -1,4 +1,7 @@
+
 import { constImages } from "../assets/index";
+import i18n from '@/locales/index'
+const $t = i18n.global.t
 interface INoticeMethod {
     label: string;
     value: string;
@@ -7,23 +10,23 @@ interface INoticeMethod {
 // 通知方式
 export const NOTICE_METHOD: INoticeMethod[] = [
     {
-        label: '钉钉',
+        label: $t('views.const.373821-0'),
         value: 'dingTalk',
     },
     {
-        label: '微信',
+        label: $t('views.const.373821-1'),
         value: 'weixin',
     },
     {
-        label: '邮件',
+        label: $t('views.const.373821-2'),
         value: 'email',
     },
     {
-        label: '语音',
+        label: $t('views.const.373821-3'),
         value: 'voice',
     },
     {
-        label: '短信',
+        label: $t('views.const.373821-4'),
         value: 'sms',
     },
     {
@@ -36,19 +39,19 @@ export const NOTICE_METHOD: INoticeMethod[] = [
 export const MSG_TYPE = {
     dingTalk: [
         {
-            label: '钉钉消息',
+            label: $t('views.const.373821-5'),
             value: 'dingTalkMessage',
             logo: constImages.dingtalk,
         },
         {
-            label: '群机器人消息',
+            label: $t('views.const.373821-6'),
             value: 'dingTalkRobotWebHook',
             logo: constImages.dingtalkRebot,
         },
     ],
     weixin: [
         {
-            label: '企业消息',
+            label: $t('views.const.373821-7'),
             value: 'corpMessage',
             logo: constImages.weixinCorp,
         },
@@ -60,14 +63,14 @@ export const MSG_TYPE = {
     ],
     voice: [
         {
-            label: '阿里云语音',
+            label: $t('views.const.373821-8'),
             value: 'aliyun',
             logo: constImages.voice,
         },
     ],
     sms: [
         {
-            label: '阿里云短信',
+            label: $t('views.const.373821-9'),
             value: 'aliyunSms',
             logo: constImages.sms,
         },
@@ -81,7 +84,7 @@ export const MSG_TYPE = {
     ],
     email: [
         {
-            label: '邮件',
+            label: $t('views.const.373821-2'),
             value: 'embedded',
             logo: constImages.email,
         },
@@ -219,6 +222,6 @@ export const ROBOT_MSG_TYPE = [
 ]
 // 语音通知类型
 export const VOICE_TYPE = [
-    { label: '语音通知', value: 'voice' },
-    { label: '语音验证码', value: 'tts' },
+    { label: $t('views.const.373821-10'), value: 'voice' },
+    { label: $t('views.const.373821-11'), value: 'tts' },
 ]

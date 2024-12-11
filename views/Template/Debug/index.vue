@@ -2,22 +2,22 @@
 <template>
     <a-modal
         v-model:visible="_vis"
-        title="调试"
-        cancelText="取消"
-        okText="确定"
+        :title="$t('Debug.index.329614-0')"
+        :cancelText="$t('Debug.index.329614-1')"
+        :okText="$t('Debug.index.329614-2')"
         @ok="handleOk"
         @cancel="handleCancel"
         :confirmLoading="btnLoading"
     >
         <a-form ref="formRef" layout="vertical" :model="formData">
             <a-form-item
-                label="通知配置"
+                :label="$t('Debug.index.329614-3')"
                 name="configId"
-                :rules="{ required: true, message: '请选择通知配置' }"
+                :rules="{ required: true, message: $t('Debug.index.329614-4') }"
             >
                 <a-select
                     v-model:value="formData.configId"
-                    placeholder="请选择通知配置"
+                    :placeholder="$t('Debug.index.329614-4')"
                     :getPopupContainer="(node)=>node"
                 >
                     <a-select-option
@@ -30,7 +30,7 @@
                 </a-select>
             </a-form-item>
             <a-form-item
-                label="变量"
+                :label="$t('Debug.index.329614-5')"
                 v-if="
                     formData.templateDetailTable &&
                     formData.templateDetailTable.length
@@ -55,7 +55,7 @@
                                 :rules="[
                                     {
                                         required: record.required,
-                                        message: '该字段为必填字段',
+                                        message: $t('Debug.index.329614-6'),
                                     },
                                     ...record.otherRules,
                                 ]"
@@ -115,7 +115,9 @@ import ToTag from '../Detail/components/ToTag.vue';
 import type { Rule } from 'ant-design-vue/es/form';
 import { phoneRegEx } from '@/utils/validate';
 import { onlyMessage } from '@jetlinks-web/utils';
+import { useI18n } from 'vue-i18n';
 
+const { t: $t } = useI18n();
 type Emits = {
     (e: 'update:visible', data: boolean): void;
 };
@@ -141,19 +143,19 @@ const configList = ref<BindConfig[]>([]);
 
 const columns = [
     {
-        title: '变量',
+        title: $t('Debug.index.329614-5'),
         dataIndex: 'id',
         width: 100,
         ellipsis: true,
         scopedSlots: { customRender: 'id' },
     },
     {
-        title: '名称',
+        title: $t('Debug.index.329614-7'),
         dataIndex: 'name',
         scopedSlots: { customRender: 'name' },
     },
     {
-        title: '值',
+        title: $t('Debug.index.329614-8'),
         dataIndex: 'type',
         width: 160,
         scopedSlots: { customRender: 'type' },
@@ -206,7 +208,7 @@ const getTemplateDetail = async () => {
                     ? [
                           {
                               max: 64,
-                              message: '最多可输入64个字符',
+                              message: $t('Debug.index.329614-9'),
                               trigger: 'change',
                           },
                           {
@@ -214,7 +216,7 @@ const getTemplateDetail = async () => {
                               validator(_rule: Rule, value: string) {
                                   if (!value) return Promise.resolve();
                                   if (!phoneRegEx(value))
-                                      return Promise.reject('请输入有效号码');
+                                      return Promise.reject($t('Debug.index.329614-10'));
                                   return Promise.resolve();
                               },
                           },
@@ -237,11 +239,11 @@ const handleOk = () => {
           })
         : true;
     if (!pass && props.data.type === 'dingTalk') {
-        onlyMessage('收信人，收信人部门至少填写一个', 'warning');
+        onlyMessage($t('Debug.index.329614-11'), 'warning');
         return;
     }
     if (!pass && props.data.type === 'weixin') {
-        onlyMessage('收信人，收信人部门，收信人标签至少填写一个', 'warning');
+        onlyMessage($t('Debug.index.329614-12'), 'warning');
         return;
     }
     formRef.value
@@ -256,7 +258,7 @@ const handleOk = () => {
             TemplateApi.debug(params, formData.value.configId, props.data.id)
                 .then((res) => {
                     if (res.success) {
-                        onlyMessage('操作成功');
+                        onlyMessage($t('Debug.index.329614-13'));
                         handleCancel();
                     }
                 })

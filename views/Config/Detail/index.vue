@@ -6,12 +6,12 @@
                 <a-col :span="10">
                     <a-form layout="vertical">
                         <a-form-item
-                            label="通知方式"
+                            :label="$t('Detail.index.707691-0')"
                             v-bind="validateInfos.type"
                         >
                             <a-select
                                 v-model:value="formData.type"
-                                placeholder="请选择通知方式"
+                                :placeholder="$t('Detail.index.707691-1')"
                                 :disabled="_disabled"
                                 @change="handleTypeChange"
                             >
@@ -24,14 +24,14 @@
                                 </a-select-option>
                             </a-select>
                         </a-form-item>
-                        <a-form-item label="名称" v-bind="validateInfos.name">
+                        <a-form-item :label="$t('Detail.index.707691-2')" v-bind="validateInfos.name">
                             <a-input
                                 v-model:value="formData.name"
-                                placeholder="请输入名称"
+                                :placeholder="$t('Detail.index.707691-3')"
                             />
                         </a-form-item>
                         <a-form-item
-                            label="类型"
+                            :label="$t('Detail.index.707691-4')"
                             v-bind="validateInfos.provider"
                             v-if="formData.type !== 'email'"
                         >
@@ -57,7 +57,7 @@
                                         v-model:value="
                                             formData.configuration.appKey
                                         "
-                                        placeholder="请输入AppKey"
+                                        :placeholder="$t('Detail.index.707691-5')"
                                     />
                                 </a-form-item>
                                 <a-form-item
@@ -70,7 +70,7 @@
                                         v-model:value="
                                             formData.configuration.appSecret
                                         "
-                                        placeholder="请输入AppSecret"
+                                        :placeholder="$t('Detail.index.707691-6')"
                                     />
                                 </a-form-item>
                             </template>
@@ -82,13 +82,13 @@
                                 <a-form-item
                                     label="WebHook"
                                     v-bind="validateInfos['configuration.url']"
-                                    :rules='[{ max: 64, message: "最多可输入64个字符" }]'
+                                    :rules="[{ max: 64, message: $t('Detail.index.707691-7') }]"
                                 >
                                     <a-input
                                         v-model:value="
                                             formData.configuration.url
                                         "
-                                        placeholder="请输入WebHook"
+                                        :placeholder="$t('Detail.index.707691-8')"
                                     />
                                 </a-form-item>
                             </template>
@@ -103,7 +103,7 @@
                                     v-model:value="
                                         formData.configuration.corpId
                                     "
-                                    placeholder="请输入corpId"
+                                    :placeholder="$t('Detail.index.707691-9')"
                                 />
                             </a-form-item>
                             <a-form-item
@@ -116,14 +116,14 @@
                                     v-model:value="
                                         formData.configuration.corpSecret
                                     "
-                                    placeholder="请输入corpSecret"
+                                    :placeholder="$t('Detail.index.707691-10')"
                                 />
                             </a-form-item>
                         </template>
                         <!-- 邮件 -->
                         <template v-if="formData.type === 'email'">
                             <a-form-item
-                                label="服务器地址"
+                                :label="$t('Detail.index.707691-11')"
                                 v-bind="validateInfos['configuration.host']"
                             >
                                 <a-space>
@@ -131,7 +131,7 @@
                                         v-model:value="
                                             formData.configuration.host
                                         "
-                                        placeholder="请输入服务器地址"
+                                        :placeholder="$t('Detail.index.707691-12')"
                                         style="width: 180px"
                                         :options="[
                                             {
@@ -186,12 +186,12 @@
                                         "
                                         @change="handleSslChange"
                                     >
-                                        开启SSL
+                                        {{ $t('Detail.index.707691-13') }}
                                     </a-checkbox>
                                 </a-space>
                             </a-form-item>
                             <a-form-item
-                                label="发件人"
+                                :label="$t('Detail.index.707691-14')"
                                 v-bind="validateInfos['configuration.sender']"
                             >
                                 <a-input
@@ -202,25 +202,25 @@
                                 />
                             </a-form-item>
                             <a-form-item
-                                label="用户名"
+                                :label="$t('Detail.index.707691-15')"
                                 v-bind="validateInfos['configuration.username']"
                             >
                                 <a-input
                                     v-model:value="
                                         formData.configuration.username
                                     "
-                                    placeholder="请输入用户名"
+                                    :placeholder="$t('Detail.index.707691-16')"
                                 />
                             </a-form-item>
                             <a-form-item
-                                label="密码"
+                                :label="$t('Detail.index.707691-17')"
                                 v-bind="validateInfos['configuration.password']"
                             >
                                 <a-input
                                     v-model:value="
                                         formData.configuration.password
                                     "
-                                    placeholder="请输入密码"
+                                    :placeholder="$t('Detail.index.707691-18')"
                                 />
                             </a-form-item>
                         </template>
@@ -239,7 +239,7 @@
                                     v-model:value="
                                         formData.configuration.regionId
                                     "
-                                    placeholder="请选择RegionId"
+                                    :placeholder="$t('Detail.index.707691-19')"
                                 >
                                     <a-select-option
                                         v-for="(item, index) in regionList"
@@ -260,7 +260,7 @@
                                     v-model:value="
                                         formData.configuration.accessKeyId
                                     "
-                                    placeholder="请输入AccessKeyId"
+                                    :placeholder="$t('Detail.index.707691-20')"
                                 />
                             </a-form-item>
                             <a-form-item
@@ -271,7 +271,7 @@
                                     v-model:value="
                                         formData.configuration.secret
                                     "
-                                    placeholder="请输入Secret"
+                                    :placeholder="$t('Detail.index.707691-21')"
                                 />
                             </a-form-item>
                         </template>
@@ -283,10 +283,10 @@
                             >
                                 <a-input
                                     v-model:value="formData.configuration.url"
-                                    placeholder="请输入WebHook"
+                                    :placeholder="$t('Detail.index.707691-8')"
                                 />
                             </a-form-item>
-                            <a-form-item label="请求头">
+                            <a-form-item :label="$t('Detail.index.707691-22')">
                                 <EditTable
                                     ref="editTable"
                                     :headers="
@@ -295,13 +295,13 @@
                                 />
                             </a-form-item>
                         </template>
-                        <a-form-item label="说明">
+                        <a-form-item :label="$t('Detail.index.707691-23')">
                             <a-textarea
                                 v-model:value="formData.description"
                                 show-count
                                 :maxlength="200"
                                 :rows="5"
-                                placeholder="请输入说明"
+                                :placeholder="$t('Detail.index.707691-24')"
                             />
                         </a-form-item>
                         <a-form-item>
@@ -310,7 +310,7 @@
                                 @click="handleSubmit"
                                 :loading="btnLoading"
                             >
-                                保存
+                                {{ $t('Detail.index.707691-25') }}
                             </a-button>
                         </a-form-item>
                     </a-form>
@@ -334,7 +334,9 @@ import configApi from '../../../api/config';
 import Doc from './doc/index';  
 import { configImages } from '../../../assets/index';
 import RadioCard from '../../../components/RadioCard/index.vue'
+import { useI18n } from 'vue-i18n';
 
+const { t: $t } = useI18n();
 const router = useRouter();
 const route = useRoute();
 const useForm = Form.useForm;
@@ -344,12 +346,12 @@ const editTable = ref();
 // 消息类型
 const msgType = ref([
     {
-        label: '钉钉消息',
+        label: $t('Detail.index.707691-26'),
         value: 'dingTalkMessage',
         logo: configImages.dingtalk,
     },
     {
-        label: '群机器人消息',
+        label: $t('Detail.index.707691-27'),
         value: 'dingTalkRobotWebHook',
         logo: configImages.dingTalkRebot,
     },
@@ -386,73 +388,73 @@ watch(
 
 // 验证规则
 const formRules = ref({
-    type: [{ required: true, message: '请选择通知方式' }],
+    type: [{ required: true, message: $t('Detail.index.707691-1') }],
     name: [
-        { required: true, message: '请输入名称' },
-        { max: 64, message: '最多可输入64个字符' },
+        { required: true, message: $t('Detail.index.707691-3') },
+        { max: 64, message: $t('Detail.index.707691-7') },
     ],
-    provider: [{ required: true, message: '请选择类型' }],
+    provider: [{ required: true, message: $t('Detail.index.707691-28') }],
     // 钉钉
     'configuration.appKey': [
-        { required: true, message: '请输入AppKey', trigger: 'blur' },
-        { max: 64, message: '最多可输入64个字符', trigger: 'change' },
+        { required: true, message: $t('Detail.index.707691-5'), trigger: 'blur' },
+        { max: 64, message: $t('Detail.index.707691-7'), trigger: 'change' },
     ],
     'configuration.appSecret': [
-        { required: true, message: '请输入AppSecret', trigger: 'blur' },
-        { max: 64, message: '最多可输入64个字符', trigger: 'change' },
+        { required: true, message: $t('Detail.index.707691-6'), trigger: 'blur' },
+        { max: 64, message: $t('Detail.index.707691-7'), trigger: 'change' },
     ],
-    // 'configuration.url': [{ required: true, message: '请输入WebHook' }],
+    // 'configuration.url': [{ required: true, message: $t('Detail.index.707691-8') }],
     // 微信
     'configuration.corpId': [
-        { required: true, message: '请输入corpId', trigger: 'blur' },
-        { max: 64, message: '最多可输入64个字符' },
+        { required: true, message: $t('Detail.index.707691-9'), trigger: 'blur' },
+        { max: 64, message: $t('Detail.index.707691-7') },
     ],
     'configuration.corpSecret': [
-        { required: true, message: '请输入corpSecret', trigger: 'blur' },
-        { max: 64, message: '最多可输入64个字符' },
+        { required: true, message: $t('Detail.index.707691-10'), trigger: 'blur' },
+        { max: 64, message: $t('Detail.index.707691-7') },
     ],
     // 阿里云语音/短信
     'configuration.regionId': [
-        { required: true, message: '请输入RegionId', trigger: 'blur' },
-        { max: 64, message: '最多可输入64个字符' },
+        { required: true, message: $t('Detail.index.707691-29'), trigger: 'blur' },
+        { max: 64, message: $t('Detail.index.707691-7') },
     ],
     'configuration.accessKeyId': [
-        { required: true, message: '请输入AccessKeyId', trigger: 'blur' },
-        { max: 64, message: '最多可输入64个字符' },
+        { required: true, message: $t('Detail.index.707691-20'), trigger: 'blur' },
+        { max: 64, message: $t('Detail.index.707691-7') },
     ],
     'configuration.secret': [
-        { required: true, message: '请输入Secret', trigger: 'blur' },
-        { max: 64, message: '最多可输入64个字符' },
+        { required: true, message: $t('Detail.index.707691-21'), trigger: 'blur' },
+        { max: 64, message: $t('Detail.index.707691-7') },
     ],
     // 邮件
-    'configuration.host': [{ required: true, message: '请输入服务器地址', trigger: 'blur' }],
+    'configuration.host': [{ required: true, message: $t('Detail.index.707691-12'), trigger: 'blur' }],
     'configuration.sender': [
-        { required: true, message: '请输入发件人', trigger: 'blur' },
-        // { max: 64, message: '最多可输入64个字符' },
+        { required: true, message: $t('Detail.index.707691-30'), trigger: 'blur' },
+        // { max: 64, message: $t('Detail.index.707691-7') },
         {
             pattern:
                 /^\w+([-+.]\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$/,
-            message: '请输入正确的邮箱',
+            message: $t('Detail.index.707691-31'),
         },
     ],
     'configuration.username': [
-        { required: true, message: '请输入用户名', trigger: 'blur' },
-        { max: 64, message: '最多可输入64个字符' },
+        { required: true, message: $t('Detail.index.707691-16'), trigger: 'blur' },
+        { max: 64, message: $t('Detail.index.707691-7') },
     ],
     'configuration.password': [
-        { required: true, message: '请输入密码', trigger: 'blur' },
-        { max: 64, message: '最多可输入64个字符' },
+        { required: true, message: $t('Detail.index.707691-18'), trigger: 'blur' },
+        { max: 64, message: $t('Detail.index.707691-7') },
     ],
     // webhook
     'configuration.url': [
-        { required: true, message: '请输入WebHook', trigger: 'blur' },
+        { required: true, message: $t('Detail.index.707691-8'), trigger: 'blur' },
         // {
         //     pattern:
         //         /^(((ht|f)tps?):\/\/)?([^!@#$%^&*?.\s-]([^!@#$%^&*?.\s]{0,63}[^!@#$%^&*?.\s])?\.)+[j-z]{2,6}\/?/,
         //     message: 'Webhook需要是一个合法的URL',
         // },
     ],
-    description: [{ max: 200, message: '最多可输入200个字符' }],
+    description: [{ max: 200, message: $t('Detail.index.707691-32') }],
 });
 
 const { resetFields, validate, validateInfos, clearValidate } = useForm(
@@ -555,7 +557,7 @@ const handleSubmit = () => {
                 res = await configApi.update(formData.value);
             }
             if (res?.success) {
-                onlyMessage('保存成功');
+                onlyMessage($t('Detail.index.707691-33'));
                 if (route.query?.notifyType) {
                     // @ts-ignore
                     if((window as any).onTabSaveSuccess){
@@ -584,7 +586,7 @@ const handleSubmit = () => {
                 res = await configApi.update(formData.value);
             }
             if (res?.success) {
-                onlyMessage('保存成功');
+                onlyMessage($t('Detail.index.707691-33'));
                 if (route.query?.notifyType) {
                     // @ts-ignore
                     if((window as any).onTabSaveSuccess){

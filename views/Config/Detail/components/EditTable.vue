@@ -8,9 +8,9 @@
                         <a-form-item :name="[index, column.dataIndex]"  :rules="[
                             {
                             max: 64,
-                            message: '最多可输入64个字符'
+                            message: $t('components.EditTable.7077012-0')
                             }, 
-                            { required: true, message: `请输入${column.title}`, trigger: 'blur' }]"
+                            { required: true, message: $t('components.EditTable.7077012-1', [column.title]), trigger: 'blur' }]"
                             >
                             <a-input v-model:value="record[column.dataIndex]"/></a-form-item>
                     </template>
@@ -27,7 +27,7 @@
                 <template #icon>
                     <AIcon type="PlusOutlined"/>
                 </template>
-                添加
+                {{ $t('components.EditTable.7077012-2') }}
             </a-button>
         </a-form>
     </div>
@@ -37,6 +37,9 @@
 import { PropType } from 'vue';
 import type { IHeaders } from '../../types';
 import { randomString } from '@jetlinks-web/utils'
+import { useI18n } from 'vue-i18n';
+
+const { t: $t } = useI18n();
 type Emits = {
     (e: 'update:headers', data: IHeaders[]): void;
 };
@@ -63,7 +66,7 @@ const columns = [
         dataIndex: 'value',
     },
     {
-        title: '操作',
+        title: $t('components.EditTable.7077012-3'),
         dataIndex: 'operation',
         width: 80,
         fixed: 'right',

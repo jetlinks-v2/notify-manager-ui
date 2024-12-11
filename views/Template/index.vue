@@ -24,7 +24,7 @@
                             @click="handleAdd"
                             hasPermission="notice/Template:add"
                         >
-                            新增
+                            {{ $t('Template.index.216836-0') }}
                         </j-permission-button>
                         <a-upload
                             name="file"
@@ -35,17 +35,17 @@
                             <j-permission-button
                                 hasPermission="notice/Template:import"
                             >
-                                导入
+                                {{ $t('Template.index.216836-1') }}
                             </j-permission-button>
                         </a-upload>
                         <j-permission-button
                             hasPermission="notice/Template:export"
                             :popConfirm="{
-                                title: '确认导出？',
+                                title: $t('Template.index.216836-2'),
                                 onConfirm: handleExport,
                             }"
                         >
-                            导出
+                            {{ $t('Template.index.216836-3') }}
                         </j-permission-button>
                     </a-space>
                 </template>
@@ -76,7 +76,7 @@
                             <a-row>
                                 <a-col :span="12">
                                     <div class="card-item-content-text">
-                                        通知方式
+                                        {{ $t('Template.index.216836-4') }}
                                     </div>
                                     <div>
                                         {{ getMethodTxt(slotProps.type) }}
@@ -84,7 +84,7 @@
                                 </a-col>
                                 <a-col :span="12">
                                     <div class="card-item-content-text">
-                                        说明
+                                        {{ $t('Template.index.216836-5') }}
                                     </div>
                                     <j-ellipsis>
                                         {{ slotProps.description }}
@@ -205,7 +205,9 @@ import Log from './Log/index.vue';
 import { downloadObject } from '../../utils/utils';
 import { useMenuStore } from '@/store/menu';
 import { onlyMessage } from '@jetlinks-web/utils';
+import { useI18n } from 'vue-i18n';
 
+const { t: $t } = useI18n();
 const menuStory = useMenuStore();
 
 let providerList: any = [];
@@ -218,7 +220,7 @@ const params = ref<Record<string, any>>({});
 
 const columns = [
     {
-        title: '模板名称',
+        title: $t('Template.index.216836-6'),
         dataIndex: 'name',
         key: 'name',
         ellipsis: true,
@@ -227,7 +229,7 @@ const columns = [
         },
     },
     {
-        title: '通知方式',
+        title: $t('Template.index.216836-4'),
         dataIndex: 'type',
         key: 'type',
         scopedSlots: true,
@@ -240,7 +242,7 @@ const columns = [
         },
     },
     {
-        title: '类型',
+        title: $t('Template.index.216836-7'),
         dataIndex: 'provider',
         key: 'provider',
         scopedSlots: true,
@@ -253,7 +255,7 @@ const columns = [
         },
     },
     {
-        title: '说明',
+        title: $t('Template.index.216836-5'),
         dataIndex: 'description',
         key: 'description',
         scopedSlots: true,
@@ -263,7 +265,7 @@ const columns = [
         },
     },
     {
-        title: '操作',
+        title: $t('Template.index.216836-8'),
         key: 'action',
         fixed: 'right',
         width: 180,
@@ -324,19 +326,19 @@ const beforeUpload = (file: any) => {
         const text = result.target?.result;
         console.log('text: ', text);
         if (!file.type.includes('json')) {
-            onlyMessage('请上传json格式文件', 'error');
+            onlyMessage($t('Template.index.216836-9'), 'error');
             return false;
         }
         try {
             const data = JSON.parse(text || '{}');
             const { success } = await TemplateApi.update(data);
             if (success) {
-                onlyMessage('操作成功');
+                onlyMessage($t('Template.index.216836-10'));
                 configRef.value.reload();
             }
             return true;
         } catch {
-            // onlyMessage('请上传json格式文件', 'error');
+            // onlyMessage($t('Template.index.216836-9'), 'error');
         }
         return true;
     };
@@ -347,7 +349,7 @@ const beforeUpload = (file: any) => {
  * 导出
  */
 const handleExport = () => {
-    downloadObject(configRef.value._dataSource, `通知模板数据`);
+    downloadObject(configRef.value._dataSource, $t('Template.index.216836-11'));
 };
 
 const syncVis = ref(false);
@@ -362,9 +364,9 @@ const getActions = (
     const actions = [
         {
             key: 'update',
-            text: '编辑',
+            text: $t('Template.index.216836-12'),
             tooltip: {
-                title: '编辑',
+                title: $t('Template.index.216836-12'),
             },
             icon: 'EditOutlined',
             onClick: () => {
@@ -377,9 +379,9 @@ const getActions = (
         },
         {
             key: 'debug',
-            text: '调试',
+            text: $t('Template.index.216836-13'),
             tooltip: {
-                title: '调试',
+                title: $t('Template.index.216836-13'),
             },
             icon: 'BugOutlined',
             onClick: () => {
@@ -389,16 +391,16 @@ const getActions = (
         },
         {
             key: 'delete',
-            text: '删除',
+            text: $t('Template.index.216836-14'),
             popConfirm: {
-                title: '确认删除?',
+                title: $t('Template.index.216836-15'),
                 onConfirm: async () => {
                     const resp = await TemplateApi.del(data.id);
                     if (resp.status === 200) {
-                        onlyMessage('操作成功！');
+                        onlyMessage($t('Template.index.216836-16'));
                         configRef.value?.reload();
                     } else {
-                        onlyMessage('操作失败！', 'error');
+                        onlyMessage($t('Template.index.216836-17'), 'error');
                     }
                     return
                 },
@@ -409,14 +411,14 @@ const getActions = (
 
     const others: any = {
         key: 'others',
-        text: '其他',
+        text: $t('Template.index.216836-18'),
         icon: 'EllipsisOutlined',
         children: [
             {
                 key: 'export',
-                text: '导出',
+                text: $t('Template.index.216836-3'),
                 tooltip: {
-                    title: '导出',
+                    title: $t('Template.index.216836-3'),
                 },
                 icon: 'ArrowDownOutlined',
                 onClick: () => {
@@ -425,9 +427,9 @@ const getActions = (
             },
             {
                 key: 'log',
-                text: '通知记录',
+                text: $t('Template.index.216836-19'),
                 tooltip: {
-                    title: '通知记录',
+                    title: $t('Template.index.216836-19'),
                 },
                 icon: 'BarsOutlined',
                 onClick: () => {
