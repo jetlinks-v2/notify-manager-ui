@@ -10,12 +10,13 @@
       <JProTable
         ref="configRef"
         :columns="columns"
+        modeValue="CARD"
         :request="ConfigApi.list"
         :defaultParams="{
           sorts: [{ name: 'createTime', order: 'desc' }],
         }"
         :params="params"
-        :gridColumns="[3]"
+        :gridColumns="[2]"
       >
         <template #headerLeftRender>
           <a-space>
@@ -262,7 +263,7 @@ const columns = [
     title: $t('Config.index.133246-8'),
     key: "action",
     fixed: "right",
-    width: 250,
+    width: 300,
     scopedSlots: true,
   },
 ];
