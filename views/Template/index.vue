@@ -14,8 +14,9 @@
                 :defaultParams="{
                     sorts: [{ name: 'createTime', order: 'desc' }],
                 }"
+                modeValue="CARD"
                 :params="params"
-                :gridColumns="[3]"
+                :gridColumns="[2]"
             >
                 <template #headerLeftRender>
                     <a-space>
@@ -165,7 +166,7 @@
                     </j-ellipsis>
                 </template>
                 <template #action="slotProps">
-                    <a-space :size="16">
+                    <a-space>
                         <template
                             v-for="i in getActions(slotProps, 'table')"
                             :key="i.key"
@@ -268,7 +269,7 @@ const columns = [
         title: $t('Template.index.216836-8'),
         key: 'action',
         fixed: 'right',
-        width: 180,
+        width: 220,
         scopedSlots: true,
     },
 ];
