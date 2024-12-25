@@ -20,7 +20,7 @@
             @click="handleRadio(item)"
         >
             <img v-if="item.logo" class="img" :src="item.logo" alt="" />
-            <span>{{ item.label }}</span>
+            <span style="white-space: nowrap">{{ item.label }}</span>
             <div
                 :class="[
                     'checked-icon',
