@@ -16,7 +16,7 @@
           sorts: [{ name: 'createTime', order: 'desc' }],
         }"
         :params="params"
-        :gridColumns="[2]"
+        :gridColumns="[2, 2, 3]"
       >
         <template #headerLeftRender>
           <a-space>
