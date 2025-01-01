@@ -2,6 +2,12 @@ export default [
     {
         code: 'iot',
         name: '物联网',
+        i18nMessages: {
+            name: {
+                zh_CN: '物联网',
+                en_US: 'IoT',
+            }
+        },
         owner: 'iot',
         id: '9c21f88182e7cc75cbdfa8e4b7844272',
         url: '/iot',
@@ -12,6 +18,12 @@ export default [
             {
                 code: 'notice',
                 name: '通知管理',
+                i18nMessages: {
+                    name: {
+                        zh_CN: '通知管理',
+                        en_US: 'Notice Management',
+                    }
+                },
                 owner: 'iot',
                 //parentId: '1',
                 id: 'b27e972543cdc5da5730b6d4b9b537b1',
@@ -24,6 +36,12 @@ export default [
                     {
                         code: 'notice/Config',
                         name: '通知配置',
+                        i18nMessages: {
+                            name: {
+                                zh_CN: '通知配置',
+                                en_US: 'Notice Config',
+                            }
+                        },
                         owner: 'iot',
                         //parentId: '1',
                         id: '09bcab0a6a1f0796075254a453139287',
@@ -36,6 +54,10 @@ export default [
                             {
                                 id: 'bind',
                                 name: '同步用户',
+                                i18nMessages: {
+                                    zh_CN: '同步用户',
+                                    en_US: 'Sync User',
+                                },
                                 permissions: [
                                     {
                                         permission: 'add',
@@ -58,6 +80,10 @@ export default [
                             {
                                 id: 'view',
                                 name: '查看',
+                                i18nMessages: {
+                                    zh_CN: '查看',
+                                    en_US: 'View',
+                                },
                                 permissions: [
                                     {
                                         permission: 'notifier',
@@ -68,6 +94,10 @@ export default [
                             {
                                 id: 'log',
                                 name: '通知记录',
+                                i18nMessages: {
+                                    zh_CN: '通知记录',
+                                    en_US: 'Log',
+                                },
                                 permissions: [
                                     {
                                         permission: 'notifier',
@@ -82,6 +112,10 @@ export default [
                             {
                                 id: 'debug',
                                 name: '调试',
+                                i18nMessages: {
+                                    zh_CN: '调试',
+                                    en_US: 'Debug',
+                                },
                                 permissions: [
                                     {
                                         permission: 'add',
@@ -100,6 +134,10 @@ export default [
                             {
                                 id: 'export',
                                 name: '导出',
+                                i18nMessages: {
+                                    zh_CN: '导出',
+                                    en_US: 'Export',
+                                },
                                 permissions: [
                                     {
                                         permission: 'notifier',
@@ -110,6 +148,10 @@ export default [
                             {
                                 id: 'import',
                                 name: '导入',
+                                i18nMessages: {
+                                    zh_CN: '导入',
+                                    en_US: 'Import',
+                                },
                                 permissions: [
                                     {
                                         permission: 'notifier',
@@ -120,6 +162,10 @@ export default [
                             {
                                 id: 'delete',
                                 name: '删除',
+                                i18nMessages: {
+                                    zh_CN: '删除',
+                                    en_US: 'Delete',
+                                },
                                 permissions: [
                                     {
                                         permission: 'notifier',
@@ -130,6 +176,10 @@ export default [
                             {
                                 id: 'update',
                                 name: '编辑',
+                                i18nMessages: {
+                                    zh_CN: '编辑',
+                                    en_US: 'Edit',
+                                },
                                 permissions: [
                                     {
                                         permission: 'notifier',
@@ -140,6 +190,10 @@ export default [
                             {
                                 id: 'add',
                                 name: '新增',
+                                i18nMessages: {
+                                    zh_CN: '新增',
+                                    en_US: 'Add',
+                                },
                                 permissions: [
                                     {
                                         permission: 'notifier',
@@ -155,6 +209,12 @@ export default [
                     {
                         code: 'notice/Template',
                         name: '通知模板',
+                        i18nMessages: {
+                            name: {
+                                zh_CN: '通知模板',
+                                en_US: 'Notice Template',
+                            }
+                        },
                         owner: 'iot',
                         //parentId: '1',
                         id: '705b82c807fa18360bf62a2b35f454e9',
@@ -176,6 +236,10 @@ export default [
                             {
                                 id: 'view',
                                 name: '查看',
+                                i18nMessages: {
+                                    zh_CN: '查看',
+                                    en_US: 'View',
+                                },
                                 permissions: [
                                     {
                                         permission: 'template',
@@ -186,6 +250,10 @@ export default [
                             {
                                 id: 'log',
                                 name: '通知记录',
+                                i18nMessages: {
+                                    zh_CN: '通知记录',
+                                    en_US: 'Log',
+                                },
                                 permissions: [
                                     {
                                         permission: 'template',
@@ -196,6 +264,10 @@ export default [
                             {
                                 id: 'debug',
                                 name: '调试',
+                                i18nMessages: {
+                                    zh_CN: '调试',
+                                    en_US: 'Debug',
+                                },
                                 permissions: [
                                     {
                                         permission: 'notifier',
@@ -214,6 +286,10 @@ export default [
                             {
                                 id: 'export',
                                 name: '导出',
+                                i18nMessages: {
+                                    zh_CN: '导出',
+                                    en_US: 'Export',
+                                },
                                 permissions: [
                                     {
                                         permission: 'template',
@@ -224,6 +300,10 @@ export default [
                             {
                                 id: 'import',
                                 name: '导入',
+                                i18nMessages: {
+                                    zh_CN: '导入',
+                                    en_US: 'Import',
+                                },
                                 permissions: [
                                     {
                                         permission: 'template',
@@ -234,6 +314,10 @@ export default [
                             {
                                 id: 'delete',
                                 name: '删除',
+                                i18nMessages: {
+                                    zh_CN: '删除',
+                                    en_US: 'Delete',
+                                },
                                 permissions: [
                                     {
                                         permission: 'template',
@@ -244,6 +328,10 @@ export default [
                             {
                                 id: 'update',
                                 name: '编辑',
+                                i18nMessages: {
+                                    zh_CN: '编辑',
+                                    en_US: 'Edit',
+                                },
                                 permissions: [
                                     {
                                         permission: 'notifier',
@@ -258,6 +346,10 @@ export default [
                             {
                                 id: 'add',
                                 name: '新增',
+                                i18nMessages: {
+                                    zh_CN: '新增',
+                                    en_US: 'Add',
+                                },
                                 permissions: [
                                     {
                                         permission: 'notifier',
