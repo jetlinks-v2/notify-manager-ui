@@ -1,5 +1,5 @@
 const routerModules = import.meta.glob('./views/**/index.vue')
-
+import i18n from "@/locales";
 
 const getAsyncRoutesMap = () => {
     const modules = {}
@@ -19,7 +19,7 @@ const getExtraRoutesMap = () => {
                 {
                     code: 'Detail',
                     url: '/Detail/:id',
-                    name: '详情信息',
+                    name: i18n.global.t('notify-manager-ui.index.301452-0'),
                     component: () => import('./views/Config/Detail/index.vue')
                 }
             ]
@@ -29,7 +29,7 @@ const getExtraRoutesMap = () => {
                 {
                     code: 'Detail',
                     url: '/Detail/:id',
-                    name: '详情信息',
+                    name: i18n.global.t('notify-manager-ui.index.301452-0'),
                     component: () => import('./views/Template/Detail/index.vue')
                 }
             ]
