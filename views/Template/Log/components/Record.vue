@@ -3,7 +3,7 @@
 </template>
 
 <script lang="ts" setup>
-import JsonViewer from 'vue3-json-viewer';
+import { JsonViewer } from 'vue3-json-viewer';
 import templateApi from '../../../../api/template';
 const props = defineProps({
     data: Object
