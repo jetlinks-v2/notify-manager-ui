@@ -350,7 +350,7 @@ const beforeUpload = (file: any) => {
  * 导出
  */
 const handleExport = () => {
-    downloadObject(configRef.value._dataSource, $t('Template.index.216836-11'));
+    downloadObject(configRef.value.dataSource, $t('Template.index.216836-11'));
 };
 
 const syncVis = ref(false);

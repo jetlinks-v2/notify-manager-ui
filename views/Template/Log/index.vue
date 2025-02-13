@@ -5,7 +5,7 @@
 
         <JProTable
             ref="logRef"
-            model="table"
+            mode="TABLE"
             :columns="columns"
             :request="(e) => templateApi.getHistory(e, data.id)"
             :defaultParams="{
