@@ -338,7 +338,7 @@ const beforeUpload = (file: any) => {
  * 导出
  */
 const handleExport = () => {
-  downloadObject(configRef.value._dataSource, $t('Config.index.133246-11'));
+  downloadObject(configRef.value.dataSource, $t('Config.index.133246-11'));
 };
 
 const syncVis = ref(false);
