@@ -18,10 +18,9 @@
                 <a-select
                     v-model:value="formData.configId"
                     :placeholder="$t('Debug.index.329614-4')"
-                    :getPopupContainer="(node)=>node"
                 >
                     <a-select-option
-                        v-for="(item, index) in configList"
+                        v-for="(item) in configList"
                         :key="item.id"
                         :value="item.id"
                     >
@@ -275,6 +274,10 @@ const handleCancel = () => {
     _vis.value = false;
     formRef.value.resetFields();
     formData.value.templateDetailTable = [];
+};
+
+const handleConfigChange = (value: string) => {
+    console.log('value: ', value);
 };
 
 watch(
