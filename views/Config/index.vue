@@ -7,172 +7,174 @@
       @search="handleSearch"
     />
     <FullPage>
-      <JProTable
-        ref="configRef"
-        :columns="columns"
-        modeValue="CARD"
-        :request="ConfigApi.list"
-        :defaultParams="{
-          sorts: [{ name: 'createTime', order: 'desc' }],
-        }"
-        :params="params"
-        :gridColumns="[2, 2, 3]"
-      >
-        <template #headerLeftRender>
-          <a-space>
-            <j-permission-button
-              type="primary"
-              @click="handleAdd"
-              hasPermission="notice/Config:add"
-            >
-              {{ $t('Config.index.133246-0') }}
-            </j-permission-button>
-            <a-upload
-              name="file"
-              accept=".json"
-              :showUploadList="false"
-              :before-upload="beforeUpload"
-              :disabled="!hasPerm"
-            >
-              <j-permission-button hasPermission="notice/Config:import">
-                {{ $t('Config.index.133246-1') }}
-              </j-permission-button>
-            </a-upload>
-            <j-permission-button
-              :popConfirm="{
-                title: $t('Config.index.133246-2'),
-                onConfirm: handleExport,
-              }"
-              hasPermission="notice/Config:export"
-            >
-              {{ $t('Config.index.133246-3') }}
-            </j-permission-button>
-          </a-space>
-        </template>
-        <template #card="slotProps">
-          <CardBox
-            :showStatus="false"
-            :statusNames="{}"
-            :value="slotProps"
-            :actions="getActions(slotProps, 'card')"
-          >
-            <template #img>
-              <slot name="img">
-                <img
-                  :src="getLogo(slotProps.type, slotProps.provider)"
-                  class="logo"
-                />
-              </slot>
-            </template>
-            <template #content>
-              <h3 class="card-item-content-title">
-                {{ slotProps.name }}
-              </h3>
-              <a-row>
-                <a-col :span="12">
-                  <div class="card-item-content-text">{{ $t('Config.index.133246-4') }}</div>
-                  <div>
-                    {{ getMethodTxt(slotProps.type) }}
-                  </div>
-                </a-col>
-                <a-col :span="12">
-                  <div class="card-item-content-text">{{ $t('Config.index.133246-5') }}</div>
-                  <j-ellipsis>
-                    {{ slotProps.description }}
-                  </j-ellipsis>
-                </a-col>
-              </a-row>
-            </template>
-            <template #actions="item">
-              <a-tooltip
-                v-bind="item.tooltip"
-                :title="item.disabled && item.tooltip.title"
+      <div style="height: 100%;padding-bottom: 10px;">
+        <JProTable
+          ref="configRef"
+          :columns="columns"
+          modeValue="CARD"
+          :request="ConfigApi.list"
+          :defaultParams="{
+            sorts: [{ name: 'createTime', order: 'desc' }],
+          }"
+          :params="params"
+          :gridColumns="[2, 2, 3]"
+        >
+          <template #headerLeftRender>
+            <a-space>
+              <j-permission-button
+                type="primary"
+                @click="handleAdd"
+                hasPermission="notice/Config:add"
               >
-                <a-dropdown
-                  placement="bottomRight"
-                  v-if="item.key === 'others'"
-                >
-                  <a-button>
-                    <AIcon :type="item.icon" />
-                    <span>{{ item.text }}</span>
-                  </a-button>
-                  <template #overlay>
-                    <a-menu>
-                      <a-menu-item v-for="(o, i) in item.children" :key="i">
-                        <j-permission-button
-                          type="link"
-                          @click="o.onClick"
-                          :hasPermission="`notice/Config:${o.key}`"
-                        >
-                          <template #icon>
-                            <AIcon :type="o.icon" />
-                          </template>
-                          <span>{{ o.text }}</span>
-                        </j-permission-button>
-                      </a-menu-item>
-                    </a-menu>
-                  </template>
-                </a-dropdown>
-                <j-permission-button
-                  v-else-if="item.key === 'delete'"
-                  :popConfirm="item.popConfirm"
-                  :disabled="item.disabled"
-                  :hasPermission="`notice/Config:${item.key}`"
-                >
-                  <template #icon>
-                    <AIcon type="DeleteOutlined" />
-                  </template>
+                {{ $t('Config.index.133246-0') }}
+              </j-permission-button>
+              <a-upload
+                name="file"
+                accept=".json"
+                :showUploadList="false"
+                :before-upload="beforeUpload"
+                :disabled="!hasPerm"
+              >
+                <j-permission-button hasPermission="notice/Config:import">
+                  {{ $t('Config.index.133246-1') }}
                 </j-permission-button>
-                <template v-else>
+              </a-upload>
+              <j-permission-button
+                :popConfirm="{
+                  title: $t('Config.index.133246-2'),
+                  onConfirm: handleExport,
+                }"
+                hasPermission="notice/Config:export"
+              >
+                {{ $t('Config.index.133246-3') }}
+              </j-permission-button>
+            </a-space>
+          </template>
+          <template #card="slotProps">
+            <CardBox
+              :showStatus="false"
+              :statusNames="{}"
+              :value="slotProps"
+              :actions="getActions(slotProps, 'card')"
+            >
+              <template #img>
+                <slot name="img">
+                  <img
+                    :src="getLogo(slotProps.type, slotProps.provider)"
+                    class="logo"
+                  />
+                </slot>
+              </template>
+              <template #content>
+                <h3 class="card-item-content-title">
+                  {{ slotProps.name }}
+                </h3>
+                <a-row>
+                  <a-col :span="12">
+                    <div class="card-item-content-text">{{ $t('Config.index.133246-4') }}</div>
+                    <div>
+                      {{ getMethodTxt(slotProps.type) }}
+                    </div>
+                  </a-col>
+                  <a-col :span="12">
+                    <div class="card-item-content-text">{{ $t('Config.index.133246-5') }}</div>
+                    <j-ellipsis>
+                      {{ slotProps.description }}
+                    </j-ellipsis>
+                  </a-col>
+                </a-row>
+              </template>
+              <template #actions="item">
+                <a-tooltip
+                  v-bind="item.tooltip"
+                  :title="item.disabled && item.tooltip.title"
+                >
+                  <a-dropdown
+                    placement="bottomRight"
+                    v-if="item.key === 'others'"
+                  >
+                    <a-button>
+                      <AIcon :type="item.icon" />
+                      <span>{{ item.text }}</span>
+                    </a-button>
+                    <template #overlay>
+                      <a-menu>
+                        <a-menu-item v-for="(o, i) in item.children" :key="i">
+                          <j-permission-button
+                            type="link"
+                            @click="o.onClick"
+                            :hasPermission="`notice/Config:${o.key}`"
+                          >
+                            <template #icon>
+                              <AIcon :type="o.icon" />
+                            </template>
+                            <span>{{ o.text }}</span>
+                          </j-permission-button>
+                        </a-menu-item>
+                      </a-menu>
+                    </template>
+                  </a-dropdown>
                   <j-permission-button
+                    v-else-if="item.key === 'delete'"
+                    :popConfirm="item.popConfirm"
                     :disabled="item.disabled"
-                    @click="item.onClick"
                     :hasPermission="`notice/Config:${item.key}`"
                   >
                     <template #icon>
-                      <AIcon :type="item.icon" />
+                      <AIcon type="DeleteOutlined" />
                     </template>
-                    <span>{{ item.text }}</span>
                   </j-permission-button>
-                </template>
-              </a-tooltip>
-            </template>
-          </CardBox>
-        </template>
-        <template #type="slotProps">
-          <span> {{ getMethodTxt(slotProps.type) }}</span>
-        </template>
-        <template #provider="slotProps">
-          <span>
-            {{ getProviderTxt(slotProps.type, slotProps.provider) }}
-          </span>
-        </template>
-        <template #description="slotProps">
-          <j-ellipsis>
-            {{ slotProps.description }}
-          </j-ellipsis>
-        </template>
-        <template #action="slotProps">
-          <a-space :size="16">
-            <template v-for="i in getActions(slotProps, 'table')" :key="i.key">
-              <j-permission-button
-                :danger="i.key === 'delete'"
-                :disabled="i.disabled"
-                :popConfirm="i.popConfirm"
-                :tooltip="{
-                  ...i.tooltip,
-                }"
-                @click="i.onClick"
-                type="link"
-                style="padding: 0px"
-                :hasPermission="'notice/Config:' + i.key"
-              >
-                <template #icon><AIcon :type="i.icon" /></template>
-              </j-permission-button>
-            </template>
-          </a-space>
-        </template>
-      </JProTable>
+                  <template v-else>
+                    <j-permission-button
+                      :disabled="item.disabled"
+                      @click="item.onClick"
+                      :hasPermission="`notice/Config:${item.key}`"
+                    >
+                      <template #icon>
+                        <AIcon :type="item.icon" />
+                      </template>
+                      <span>{{ item.text }}</span>
+                    </j-permission-button>
+                  </template>
+                </a-tooltip>
+              </template>
+            </CardBox>
+          </template>
+          <template #type="slotProps">
+            <span> {{ getMethodTxt(slotProps.type) }}</span>
+          </template>
+          <template #provider="slotProps">
+            <span>
+              {{ getProviderTxt(slotProps.type, slotProps.provider) }}
+            </span>
+          </template>
+          <template #description="slotProps">
+            <j-ellipsis>
+              {{ slotProps.description }}
+            </j-ellipsis>
+          </template>
+          <template #action="slotProps">
+            <a-space :size="16">
+              <template v-for="i in getActions(slotProps, 'table')" :key="i.key">
+                <j-permission-button
+                  :danger="i.key === 'delete'"
+                  :disabled="i.disabled"
+                  :popConfirm="i.popConfirm"
+                  :tooltip="{
+                    ...i.tooltip,
+                  }"
+                  @click="i.onClick"
+                  type="link"
+                  style="padding: 0px"
+                  :hasPermission="'notice/Config:' + i.key"
+                >
+                  <template #icon><AIcon :type="i.icon" /></template>
+                </j-permission-button>
+              </template>
+            </a-space>
+          </template>
+        </JProTable>
+      </div>
     </FullPage>
 
     <Debug v-model:visible="debugVis" :data="currentConfig" />
