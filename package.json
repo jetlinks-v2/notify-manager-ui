@@ -1,5 +1,6 @@
 {
   "name": "notify-manager-ui",
+  "id": "notify-manager",
   "version": "1.0.0",
   "description": "通知管理",
   "main": "index.js",
