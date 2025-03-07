@@ -331,8 +331,8 @@ import { NOTICE_METHOD , CONFIG_FIELD_MAP , MSG_TYPE } from '../../const';
 import regionList from './regionId';
 import EditTable from './components/EditTable.vue';
 import configApi from '../../../api/config';
-import Doc from './doc/index';  
-import { configImages } from '../../../assets/index';
+import Doc from './doc/index';
+import { configImages } from '../../../assets/notice/index';
 import RadioCard from '../../../components/RadioCard/index.vue'
 import { useI18n } from 'vue-i18n';
 

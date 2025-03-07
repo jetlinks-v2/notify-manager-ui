@@ -1,5 +1,5 @@
 
-import { constImages } from "../assets/index";
+import { constImages } from "../assets/notice/index";
 import i18n from '@/locales/index'
 const $t = i18n.global.t
 interface INoticeMethod {
