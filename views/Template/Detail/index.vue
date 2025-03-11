@@ -553,7 +553,7 @@
                   :rows="5"
                 />
                 <div v-else style="height: 400px">
-                  <j-monacoEditor
+                  <monacoEditor
                     theme="vs"
                     v-model:modelValue="formData.template.body"
                     language="JavaScript"
