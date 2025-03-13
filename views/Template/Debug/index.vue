@@ -86,13 +86,19 @@
                                     <j-value-item
                                         v-else
                                         v-model:modelValue="record.value"
-                                        :itemType="record.type"
+                                        :itemType="record.type === 'array' ? 'object' : record.type"
+                                        :action="FileStaticPath"
+                                        style="width: 100%"
+                                        :headers="{ [TOKEN_KEY]: getToken() }"
                                     />
                                 </template>
                                 <template v-else>
                                     <j-value-item
                                         v-model:modelValue="record.value"
-                                        :itemType="record.type"
+                                        :itemType="record.type === 'array' ? 'object' : record.type"
+                                        :action="FileStaticPath"
+                                        style="width: 100%"
+                                        :headers="{ [TOKEN_KEY]: getToken() }"
                                     />
                                 </template>
                             </a-form-item>
@@ -113,8 +119,10 @@ import ToOrg from '../Detail/components/ToOrg.vue';
 import ToTag from '../Detail/components/ToTag.vue';
 import type { Rule } from 'ant-design-vue/es/form';
 import { phoneRegEx } from '@/utils/validate';
-import { onlyMessage } from '@jetlinks-web/utils';
+import {getToken, onlyMessage} from '@jetlinks-web/utils';
 import { useI18n } from 'vue-i18n';
+import {FileStaticPath} from "@notifyManager/utils/comm";
+import {TOKEN_KEY} from "@jetlinks-web/constants";
 
 const { t: $t } = useI18n();
 type Emits = {
