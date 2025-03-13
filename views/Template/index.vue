@@ -33,6 +33,7 @@
                                 accept=".json"
                                 :showUploadList="false"
                                 :before-upload="beforeUpload"
+                                :disabled="!hasPerm"
                             >
                                 <j-permission-button
                                     hasPermission="notice/Template:import"
@@ -209,6 +210,7 @@ import { downloadObject } from '../../utils/utils';
 import { useMenuStore } from '@/store/menu';
 import { onlyMessage } from '@jetlinks-web/utils';
 import { useI18n } from 'vue-i18n';
+import {usePermission} from "@jetlinks-web/hooks";
 
 const { t: $t } = useI18n();
 const menuStory = useMenuStore();
@@ -220,6 +222,10 @@ Object.keys(MSG_TYPE).forEach((key) => {
 
 const configRef = ref<Record<string, any>>({});
 const params = ref<Record<string, any>>({});
+
+const { hasPerm } = usePermission(
+    `notice/Template:import`,
+)
 
 const columns = [
     {
