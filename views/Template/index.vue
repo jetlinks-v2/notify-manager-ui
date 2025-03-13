@@ -89,7 +89,7 @@
                                             {{ $t('Template.index.216836-5') }}
                                         </div>
                                         <j-ellipsis>
-                                            {{ slotProps.description }}
+                                            {{ slotProps.description || '--' }}
                                         </j-ellipsis>
                                     </a-col>
                                 </a-row>
@@ -163,7 +163,7 @@
                     </template>
                     <template #description="slotProps">
                         <j-ellipsis>
-                            {{ slotProps.description }}
+                            {{ slotProps.description || '--' }}
                         </j-ellipsis>
                     </template>
                     <template #action="slotProps">
@@ -314,7 +314,7 @@ const handleAdd = () => {
     menuStory.jumpPage('notice/Template/Detail', {
        params:{
         id: ':id',
-       } 
+       }
     });
 };
 
@@ -376,7 +376,7 @@ const getActions = (
                 menuStory.jumpPage('notice/Template/Detail', {
                    params:{
                     id: data.id,
-                   } 
+                   }
                 });
             },
         },
