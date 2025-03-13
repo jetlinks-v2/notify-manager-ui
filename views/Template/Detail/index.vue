@@ -754,7 +754,6 @@ const resetPublicFiles = () => {
   }
   formData.value.variableDefinitions = [];
   handleMessageTypeChange();
-  // console.log('formData.value.template: ', formData.value.template);
 };
 
 // 根据通知方式展示对应的字段
@@ -899,6 +898,7 @@ watch(
 
 const onVoiceTemplateTypeChange = () => {
   formData.value.template.ttsmessage = undefined;
+  formData.value.template.message = undefined;
   formData.value.variableDefinitions = [];
 };
 
@@ -984,15 +984,11 @@ const handleMessageTypeChange = () => {
 const getDetail = async () => {
   if (route.params.id !== ":id") {
     const res = await templateApi.detail(route.params.id as string);
-    // formData.value = res.result;
     Object.assign(formData.value, res.result);
     // 阿里云语音模板内容字段采用别名
     if (formData.value.provider === "aliyun") {
       formData.value.template.ttsmessage = res.result.template.message;
     }
-    // console.log('res.result: ', res.result);
-    // formData.value = cloneDeep(res.result);
-    // console.log('formData.value: ', formData.value);
   }
 };
 getDetail();
