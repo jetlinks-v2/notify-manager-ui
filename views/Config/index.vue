@@ -79,7 +79,7 @@
                   <a-col :span="12">
                     <div class="card-item-content-text">{{ $t('Config.index.133246-5') }}</div>
                     <j-ellipsis>
-                      {{ slotProps.description }}
+                      {{ slotProps.description || '--' }}
                     </j-ellipsis>
                   </a-col>
                 </a-row>
@@ -150,7 +150,7 @@
           </template>
           <template #description="slotProps">
             <j-ellipsis>
-              {{ slotProps.description }}
+              {{ slotProps.description || '--' }}
             </j-ellipsis>
           </template>
           <template #action="slotProps">
