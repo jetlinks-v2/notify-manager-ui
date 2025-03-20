@@ -99,6 +99,7 @@
                                         :action="FileStaticPath"
                                         style="width: 100%"
                                         :headers="{ [TOKEN_KEY]: getToken() }"
+                                        :handleFileChange="(info, resp) => handleFileChange(info, resp, index)"
                                     />
                                 </template>
                             </a-form-item>
@@ -185,7 +186,8 @@ const formData = ref<{
  */
 const formRef = ref();
 const btnLoading = ref(false);
-
+// 为了处理#34939
+const fileNames = reactive<any>({})
 const getConfigList = async () => {
     const params = {
         terms: [
@@ -233,8 +235,20 @@ const getTemplateDetail = async () => {
     );
 };
 
+const handleFileChange = (info, _, index) => {
+  if(props.data.type === "email"){
+    const dt = formData.value.templateDetailTable[index]
+    if(dt.type === 'file'){
+      const __key = dt.id.replace('location', 'name')
+      if(__key){
+        fileNames[__key] = info.file.response?.result?.name
+      }
+    }
+  }
+  return info.file.response?.result?.accessUrl
+}
+
 const handleOk = () => {
-    console.log(formData.value.templateDetailTable)
     const filterData = formData.value.templateDetailTable.filter((item: any) =>
         ['user', 'org', 'tag', 'userIdList', 'departmentIdList'].includes(
             item.id,
@@ -260,9 +274,8 @@ const handleOk = () => {
             formData.value.templateDetailTable?.forEach((item) => {
                 params[item.id] = item.value;
             });
-            // console.log('params: ', params);
             btnLoading.value = true;
-            TemplateApi.debug(params, formData.value.configId, props.data.id)
+            TemplateApi.debug({...params, ...fileNames}, formData.value.configId, props.data.id)
                 .then((res) => {
                     if (res.success) {
                         onlyMessage($t('Debug.index.329614-13'));

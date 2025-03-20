@@ -94,6 +94,7 @@
                     :action="FileStaticPath"
                     style="width: 100%"
                     :headers="{ [TOKEN_KEY]: getToken() }"
+                    :handleFileChange="(info, resp) => handleFileChange(info, resp, index)"
                   />
                 </template>
               </a-form-item>
@@ -145,6 +146,9 @@ const _vis = computed({
  * 获取通知模板
  */
 const templateList = ref<TemplateFormData[]>([]);
+
+// 为了处理#34939
+const fileNames = reactive<any>({})
 const getTemplateList = async () => {
   const params = {
     terms: [
@@ -214,12 +218,14 @@ const columns = [
   {
     title: $t('Debug.index.013560-9'),
     dataIndex: "name",
+    ellipsis: true,
+    width: 100,
     scopedSlots: { customRender: "name" },
   },
   {
     title: $t('Debug.index.013560-10'),
     dataIndex: "type",
-    width: 160,
+    // width: 160,
     scopedSlots: { customRender: "type" },
   },
 ];
@@ -240,6 +246,20 @@ const formData = ref<{
  */
 const formRef = ref();
 const btnLoading = ref(false);
+
+const handleFileChange = (info, _, index) => {
+  if(props.data.type === "email"){
+    const dt = formData.value.templateDetailTable[index]
+    if(dt.type === 'file'){
+      const __key = dt.id.replace('location', 'name')
+      if(__key){
+        fileNames[__key] = info.file.response?.result?.name
+      }
+    }
+  }
+  return info.file.response?.result?.accessUrl
+}
+
 const handleOk = () => {
   formRef.value
     .validate()
@@ -248,9 +268,8 @@ const handleOk = () => {
       formData.value.templateDetailTable?.forEach((item) => {
         params[item.id] = item.value;
       });
-      // console.log('params: ', params);
       btnLoading.value = true;
-      ConfigApi.debug(params, props.data.id, formData.value.templateId)
+      ConfigApi.debug({...params, ...fileNames}, props.data.id, formData.value.templateId)
         .then((res) => {
           if (res.success) {
             onlyMessage($t('Debug.index.013560-11'));
