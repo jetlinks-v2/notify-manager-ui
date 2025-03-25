@@ -14,7 +14,7 @@
               <a-select
                 v-model:value="formData.type"
                 :placeholder="$t('Detail.index.640090-1')"
-                :disabled="!!formData.id"
+                :disabled="_disabled"
                 @change="handleTypeChange"
               >
                 <a-select-option
@@ -689,6 +689,10 @@ const formData = ref<TemplateFormData>({
   variableDefinitions: [],
   configId: "",
 });
+
+const _disabled = computed(() => {
+  return !!formData.value?.id || route.query?.notifyType
+})
 
 /**
  * 重置字段值
