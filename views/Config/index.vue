@@ -208,7 +208,7 @@ const configRef = ref<Record<string, any>>({});
 const params = ref<Record<string, any>>({});
 
 const { hasPerm } = usePermission(
-  `notice/Config:import`,
+  ref(`notice/Config:import`),
 )
 
 console.log(hasPerm)
