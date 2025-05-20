@@ -1,44 +1,46 @@
 <!-- 通知记录 -->
 <template>
-    <a-modal visible :title="$t('Log.index.017262-0')" :footer="null" width="70%" @cancel="emit('cancel')">
-        <pro-search type="simple" :columns="columns" @search="handleSearch" />
-
-        <JProTable
-            ref="logRef"
-            mode="TABLE"
-            :columns="columns"
-            :request="(e) => templateApi.getHistory(e, data.id)"
-            :defaultParams="{
+    <a-modal visible :title="$t('Log.index.017262-0')" :footer="null" :width="1100" @cancel="emit('cancel')">
+        <pro-search style="padding: 0" type="simple" :columns="columns" @search="handleSearch" />
+        <div style="height: 550px;">
+          <j-pro-table
+              ref="logRef"
+              mode="TABLE"
+              :columns="columns"
+              :request="(e) => templateApi.getHistory(e, data.id)"
+              :defaultParams="{
                 sorts: [{ name: 'notifyTime', order: 'desc' }],
                 terms: [{ column: 'notifyType$IN', value: data.type }],
             }"
-            :params="params"
-        >
+              :params="params"
+              :bodyStyle="{padding: 0}"
+          >
             <template #notifyTime="slotProps">
-                {{ dayjs(slotProps.notifyTime).format('YYYY-MM-DD HH:mm:ss') }}
+              {{ dayjs(slotProps.notifyTime).format('YYYY-MM-DD HH:mm:ss') }}
             </template>
             <template #state="slotProps">
-                <a-space>
-                    <a-badge
-                        :status="slotProps.state.value"
-                        :text="slotProps.state.text"
-                    ></a-badge>
-                    <AIcon
-                        v-if="slotProps.state.value === 'error'"
-                        type="ExclamationCircleOutlined"
-                        style="color: #1d39c4; cursor: pointer"
-                        @click="handleError(slotProps.errorStack)"
-                    />
-                </a-space>
+              <a-space>
+                <a-badge
+                    :status="slotProps.state.value"
+                    :text="slotProps.state.text"
+                ></a-badge>
+                <AIcon
+                    v-if="slotProps.state.value === 'error'"
+                    type="ExclamationCircleOutlined"
+                    style="color: #1d39c4; cursor: pointer"
+                    @click="handleError(slotProps.errorStack)"
+                />
+              </a-space>
             </template>
             <template #action="slotProps">
-                <AIcon
-                    type="ExclamationCircleOutlined"
-                    :class="Object.keys(slotProps.context).length == 0 ? 'disableIcon' : 'Icon'"
-                    @click="handleDetail(slotProps)"
-                />
+              <AIcon
+                  type="ExclamationCircleOutlined"
+                  :class="Object.keys(slotProps.context).length == 0 ? 'disableIcon' : 'Icon'"
+                  @click="handleDetail(slotProps)"
+              />
             </template>
-        </JProTable>
+          </j-pro-table>
+        </div>
     </a-modal>
 </template>
 
@@ -47,8 +49,8 @@ import templateApi from '../../../api/template';
 import { PropType } from 'vue';
 import dayjs from 'dayjs';
 import { Modal } from 'ant-design-vue';
-import Record from './components/Record.vue'
 import { useI18n } from 'vue-i18n';
+import Record from "./components/Record.vue";
 
 const { t: $t } = useI18n();
 type Emits = {
@@ -78,6 +80,7 @@ const columns = [
         search: {
             type: 'string',
         },
+        ellipsis: true
     },
     {
         title: $t('Log.index.017262-1'),
@@ -135,7 +138,7 @@ const handleError = (e: any) => {
             {
                 style: {
                     maxHeight: '300px',
-                    overflowY: 'auto',
+                    overflowY: 'auto'
                 },
             },
             JSON.stringify(e),
@@ -160,21 +163,18 @@ const handleError = (e: any) => {
             },
             $t('Log.index.017262-8')
         ),
-    });
-    }else{
+        });
+    } else {
         Modal.info({
         title: $t('Log.index.017262-7'),
         content: h(
             Record,
             {
                 data:data,
-                style: {
-                    maxHeight: '300px',
-                    overflowY: 'auto',
-                },
+                class: 'test'
             },
         ),
-    });
+      });
     }
 };
 

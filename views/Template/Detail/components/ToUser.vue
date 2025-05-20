@@ -1,12 +1,20 @@
 <template>
-    <a-select
-        :options="options"
-        @change="change"
-        :placeholder="$t('components.ToUser.6401012-0')"
-        style="width: 100%"
-        :allowClear="true"
-        v-model:value="_value"
-    />
+<!--    <a-select-->
+<!--        :options="options"-->
+<!--        @change="change"-->
+<!--        :placeholder="$t('components.ToUser.6401012-0')"-->
+<!--        style="width: 100%"-->
+<!--        :allowClear="true"-->
+<!--        v-model:value="_value"-->
+<!--    />-->
+  <j-auto-complete
+      :options="options"
+      @change="change"
+      :placeholder="$t('components.ToUser.6401012-0')"
+      style="width: 100%"
+      :allowClear="true"
+      v-model:value="_value"
+  />
 </template>
 
 <script setup lang="ts">
@@ -29,7 +37,7 @@ const emit = defineEmits<Emits>();
 const props = defineProps<Props>();
 
 const _value = computed({
-    get: () => props.toUser,
+    get: () => props.toUser || '',
     set: (val: string | undefined) => emit('update:toUser', val),
 });
 
@@ -57,7 +65,7 @@ const queryData = async () => {
 queryData();
 
 const change = (e: any) => {
-    emit('update:toUser', e);
+    emit('update:toUser', e || undefined);
 };
 
 watch(

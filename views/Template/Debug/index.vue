@@ -7,6 +7,7 @@
         :okText="$t('Debug.index.329614-2')"
         @ok="handleOk"
         @cancel="handleCancel"
+        :width="600"
         :confirmLoading="btnLoading"
     >
         <a-form ref="formRef" layout="vertical" :model="formData">
@@ -161,11 +162,11 @@ const columns = [
         title: $t('Debug.index.329614-7'),
         dataIndex: 'name',
         scopedSlots: { customRender: 'name' },
+        width: 200,
     },
     {
         title: $t('Debug.index.329614-8'),
         dataIndex: 'type',
-        width: 160,
         scopedSlots: { customRender: 'type' },
     },
 ];
