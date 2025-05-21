@@ -41,6 +41,7 @@
           :data-source="formData.templateDetailTable"
           :pagination="false"
           bordered
+          :scroll="{ y: 300 }"
         >
           <template #bodyCell="{ column, record, index }">
             <template v-if="['id', 'name'].includes(column.dataIndex)">
@@ -57,6 +58,7 @@
                   ...record.otherRules,
                 ]"
               >
+
                 <template
                   v-if="data.type === 'dingTalk' || data.type === 'weixin'"
                 >
@@ -84,6 +86,9 @@
                     :itemType="record.type === 'array' ? 'object' : record.type"
                     :action="FileStaticPath"
                     style="width: 100%"
+                    :extraProps="{
+                      showTime: record.format !== 'yyyy-MM-dd' && record.type === 'date'
+                    }"
                     :headers="{ [TOKEN_KEY]: getToken() }"
                   />
                 </template>
@@ -95,6 +100,9 @@
                     style="width: 100%"
                     :headers="{ [TOKEN_KEY]: getToken() }"
                     :handleFileChange="(info, resp) => handleFileChange(info, resp, index)"
+                    :extraProps="{
+                      showTime: record.format !== 'yyyy-MM-dd' && record.type === 'date'
+                    }"
                   />
                 </template>
               </a-form-item>

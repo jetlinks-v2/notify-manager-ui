@@ -1,20 +1,21 @@
 <template>
-<!--    <a-select-->
-<!--        :options="options"-->
-<!--        @change="change"-->
-<!--        :placeholder="$t('components.ToUser.6401012-0')"-->
-<!--        style="width: 100%"-->
-<!--        :allowClear="true"-->
-<!--        v-model:value="_value"-->
-<!--    />-->
-  <j-auto-complete
-      :options="options"
-      @change="change"
-      :placeholder="$t('components.ToUser.6401012-0')"
-      style="width: 100%"
-      :allowClear="true"
-      v-model:value="_value"
-  />
+    <a-select
+        :options="options"
+        @change="change"
+        :placeholder="$t('components.ToUser.6401012-0')"
+        style="width: 100%"
+        :allowClear="true"
+        v-model:value="_value"
+        show-search
+    />
+<!--  <j-auto-complete-->
+<!--      :options="options"-->
+<!--      @change="change"-->
+<!--      :placeholder="$t('components.ToUser.6401012-0')"-->
+<!--      style="width: 100%"-->
+<!--      :allowClear="true"-->
+<!--      v-model:value="_value"-->
+<!--  />-->
 </template>
 
 <script setup lang="ts">

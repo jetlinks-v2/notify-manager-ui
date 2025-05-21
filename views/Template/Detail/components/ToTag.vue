@@ -6,6 +6,7 @@
         style="width: 100%"
         :allowClear="true"
         v-model:value="_value"
+        show-search
     />
 </template>
 
