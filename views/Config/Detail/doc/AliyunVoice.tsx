@@ -1,7 +1,7 @@
 import './index.less';
 import { Image } from 'ant-design-vue';
-import { configImages } from '../../../../assets/notice/index';
-import i18n from '@/locales/index'
+import { configImages } from '../../../../assets/notice';
+import i18n from '@/locales'
 const $t = i18n.global.t
 const AliyunVoice = () => {
     const accessKey = configImages.AccesskeyIDSecret;

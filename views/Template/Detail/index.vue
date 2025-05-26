@@ -637,7 +637,7 @@ import {
   VOICE_TYPE,
 } from "../../const";
 import templateApi from "../../../api/template";
-import Doc from "./doc/index";
+import Doc from "./doc";
 import Attachments from "./components/Attachments.vue";
 import VariableDefinitions from "./components/VariableDefinitions.vue";
 import ToUser from "./components/ToUser.vue";
@@ -648,7 +648,7 @@ import { LocalStore } from "@jetlinks-web/utils";
 import { TOKEN_KEY } from "@jetlinks-web/constants";
 import { phoneRegEx } from "@/utils/validate";
 import type { Rule } from "ant-design-vue/es/form";
-import { templateImages } from "../../../assets/notice/index";
+import { templateImages } from "../../../assets/notice";
 import RadioCard from "../../../components/RadioCard/index.vue";
 import { useI18n } from 'vue-i18n';
 

@@ -1,6 +1,6 @@
 
-import { constImages } from "../assets/notice/index";
-import i18n from '@/locales/index'
+import { constImages } from "../assets/notice";
+import i18n from '@/locales'
 const $t = i18n.global.t
 interface INoticeMethod {
     label: string;

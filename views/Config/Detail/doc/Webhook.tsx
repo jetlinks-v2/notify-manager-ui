@@ -1,5 +1,5 @@
 import './index.less';
-import i18n from '@/locales/index'
+import i18n from '@/locales'
 const $t = i18n.global.t
 const Webhook = () => {
     return (

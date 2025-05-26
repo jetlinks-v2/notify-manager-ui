@@ -1,5 +1,5 @@
 //  数据来源 https://help.aliyun.com/document_detail/188196.html
-import i18n from '@/locales/index'
+import i18n from '@/locales'
 const $t = i18n.global.t
 export default [
   /** 公共云 */
