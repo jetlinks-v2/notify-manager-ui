@@ -211,8 +211,6 @@ const { hasPerm } = usePermission(
   ref(`notice/Config:import`),
 )
 
-console.log(hasPerm)
-
 const columns = [
   {
     title: $t('Config.index.133246-6'),
