@@ -41,12 +41,8 @@
                 :disabled="flag"
               />
             </a-form-item>
-            <a-form-item
-              :name="
-                formData.provider === 'dingTalkRobotWebHook' ? '' : 'configId'
-              "
-              v-if="formData.type !== 'email'"
-            >
+            <a-form-item name="configId">
+<!--              formData.provider === 'dingTalkRobotWebHook' ? '' : 'configId' v-if="formData.type !== 'email'"-->
               <template #label>
                 <span>
                   {{ $t('Detail.index.640090-5') }}
@@ -687,7 +683,7 @@ const formData = ref<TemplateFormData>({
   provider: "embedded",
   description: "",
   variableDefinitions: [],
-  configId: "",
+  configId: undefined,
 });
 
 const _disabled = computed(() => {
@@ -770,7 +766,8 @@ watch(
         ? formData.value.provider
         : msgType.value?.[0]?.value;
 
-    if (val !== "email") getConfigList();
+    // if (val !== "email")
+      getConfigList();
 
     if (val === "sms") {
       getTemplateList();
@@ -1103,7 +1100,7 @@ const handleSubmit = () => {
   if (formData.value.type === "email") {
     formData.value.template.text = formData.value.template.message;
     // 邮件没有配置字段
-    delete formData.value.configId;
+    // delete formData.value.configId;
   }
   if (formData.value.template.messageType === "markdown")
     delete formData.value.template.link;
@@ -1176,4 +1173,6 @@ watchEffect(() => {
     flag.value = true;
   }
 });
+
+getConfigList()
 </script>

@@ -208,10 +208,8 @@ const configRef = ref<Record<string, any>>({});
 const params = ref<Record<string, any>>({});
 
 const { hasPerm } = usePermission(
-  `notice/Config:import`,
+  ref(`notice/Config:import`),
 )
-
-console.log(hasPerm)
 
 const columns = [
   {
@@ -391,7 +389,7 @@ const getActions = (
             onlyMessage($t('Config.index.133246-16'));
             configRef.value?.reload();
           } else {
-            onlyMessage($t('Config.index.133246-17'), "error");
+            onlyMessage(resp.message || $t('Config.index.133246-17'), "error");
           }
           return;
         },
