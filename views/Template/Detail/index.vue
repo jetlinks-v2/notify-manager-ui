@@ -1140,8 +1140,9 @@ const handleSubmit = () => {
         onlyMessage($t('Detail.index.640090-77'));
         if (route.query?.notifyType) {
           // @ts-ignore
-          if ((window as any).onTabSaveSuccess) {
-            (window as any).onTabSaveSuccess(res.result);
+          const sourceId = route.query?.sourceId as string;
+          if ((window as any).onTabSaveSuccess && sourceId) {
+            (window as any).onTabSaveSuccess(sourceId, res.result);
             setTimeout(() => window.close(), 300);
           }
         } else {
