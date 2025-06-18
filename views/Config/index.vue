@@ -389,7 +389,7 @@ const getActions = (
             onlyMessage($t('Config.index.133246-16'));
             configRef.value?.reload();
           } else {
-            onlyMessage($t('Config.index.133246-17'), "error");
+            onlyMessage(resp.message || $t('Config.index.133246-17'), "error");
           }
           return;
         },
