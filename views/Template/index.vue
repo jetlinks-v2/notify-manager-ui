@@ -224,7 +224,7 @@ const configRef = ref<Record<string, any>>({});
 const params = ref<Record<string, any>>({});
 
 const { hasPerm } = usePermission(
-    `notice/Template:import`,
+    ref(`notice/Template:import`),
 )
 
 const columns = [

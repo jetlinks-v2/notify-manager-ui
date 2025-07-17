@@ -463,11 +463,13 @@
               }
             ],
             "accessSupport": {
-              "text": "支持",
-              "value": "support"
+              "text": "间接支持",
+              "value": "indirect"
             },
-            "assetType": "notifyTemplate",
-            "supportDataAccess": true
+            "supportDataAccess": false,
+            "indirectMenus": [
+              "09bcab0a6a1f0796075254a453139287"
+            ]
           }
         ]
       }
