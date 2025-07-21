@@ -214,33 +214,36 @@
               </a-form-item>
               <a-row :gutter="10">
                 <a-col :span="12">
+                  <a-form-item :label="$t('Detail.index.640090-10')">
+                    <ToOrg
+                        v-model:toParty="formData.template.toParty"
+                        :type="formData.type"
+                        :config-id="formData.configId"
+                        @change="formData.template.toUser = undefined"
+                    />
+                  </a-form-item>
+                </a-col>
+                <a-col :span="12">
                   <a-form-item>
                     <template #label>
                       <span>
                         {{ $t('Detail.index.640090-11') }}
                         <a-tooltip
-                          :title="$t('Detail.index.640090-21')"
+                            :title="$t('Detail.index.640090-21')"
                         >
                           <AIcon
-                            type="QuestionCircleOutlined"
-                            style="margin-left: 2px"
+                              type="QuestionCircleOutlined"
+                              style="margin-left: 2px"
                           />
                         </a-tooltip>
                       </span>
                     </template>
                     <ToUser
-                      v-model:toUser="formData.template.toUser"
-                      :type="formData.type"
-                      :config-id="formData.configId"
-                    />
-                  </a-form-item>
-                </a-col>
-                <a-col :span="12">
-                  <a-form-item :label="$t('Detail.index.640090-10')">
-                    <ToOrg
-                      v-model:toParty="formData.template.toParty"
-                      :type="formData.type"
-                      :config-id="formData.configId"
+                        v-model:toUser="formData.template.toUser"
+                        :type="formData.type"
+                        :config-id="formData.configId"
+                        :disabled="!formData.template.toParty"
+                        :toParty="formData.template.toParty"
                     />
                   </a-form-item>
                 </a-col>
