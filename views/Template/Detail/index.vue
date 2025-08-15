@@ -1017,6 +1017,7 @@ const getConfigList = async () => {
  * 通知方式改变
  */
 const handleTypeChange = () => {
+  formData.value.configId = undefined;
   setTimeout(() => {
     formData.value.template =
       TEMPLATE_FIELD_MAP[formData.value.type][formData.value.provider];
