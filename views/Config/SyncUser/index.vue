@@ -2,7 +2,7 @@
 <template>
     <div>
         <a-modal
-            visible
+            open
             :title="$t('SyncUser.index.935207-0')"
             :footer="null"
             @cancel="$emit('cancel')"
@@ -97,7 +97,7 @@
 
         <!-- {{ $t('SyncUser.index.935207-4') }} -->
         <a-modal
-            v-model:visible="bindVis"
+            v-model:open="bindVis"
             :title="$t('SyncUser.index.935207-4')"
             :maskClosable="false"
             :confirm-loading="confirmLoading"
