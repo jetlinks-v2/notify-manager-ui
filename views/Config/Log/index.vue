@@ -1,6 +1,6 @@
 <!-- 通知记录 -->
 <template>
-    <a-modal visible :title="$t('Log.index.689569-0')" :footer="null" width="70%" @cancel="emit('cancel')">
+    <a-modal open :title="$t('Log.index.689569-0')" :footer="null" width="70%" @cancel="emit('cancel')">
         <pro-search type="simple" :columns="columns" @search="handleSearch" />
 
         <JProTable

@@ -1,7 +1,7 @@
 <!-- 调试 -->
 <template>
     <a-modal
-        v-model:visible="_vis"
+        v-model:open="_vis"
         :title="$t('Debug.index.329614-0')"
         :cancelText="$t('Debug.index.329614-1')"
         :okText="$t('Debug.index.329614-2')"
