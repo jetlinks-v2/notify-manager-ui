@@ -335,6 +335,7 @@ import Doc from './doc/index';
 import { configImages } from '../../../assets/notice/index';
 import RadioCard from '../../../components/RadioCard/index.vue'
 import { useI18n } from 'vue-i18n';
+import { useTabSaveSuccessBack } from '@/hooks'
 
 const { t: $t } = useI18n();
 const router = useRouter();
@@ -372,6 +373,8 @@ const formData = ref<ConfigFormData>({
     provider: 'embedded',
     type: 'email',
 });
+
+const { onBack } = useTabSaveSuccessBack()
 
 // 根据通知方式展示对应的字段
 watch(
@@ -560,11 +563,7 @@ const handleSubmit = () => {
                 onlyMessage($t('Detail.index.707691-33'));
                 if (route.query?.notifyType) {
                     // @ts-ignore
-                    const sourceId = route.query?.sourceId as string;
-                    if((window as any).onTabSaveSuccess && sourceId){
-                        (window as any).onTabSaveSuccess(sourceId, res.result);
-                        setTimeout(() => window.close(), 300);
-                    }
+                    onBack(res.result)
                 } else {
                     router.back();
                 }
@@ -590,11 +589,7 @@ const handleSubmit = () => {
                 onlyMessage($t('Detail.index.707691-33'));
                 if (route.query?.notifyType) {
                     // @ts-ignore
-                    const sourceId = route.query?.sourceId as string;
-                    if((window as any).onTabSaveSuccess && sourceId){
-                        (window as any).onTabSaveSuccess(sourceId, res.result);
-                        setTimeout(() => window.close(), 300);
-                    }
+                    onBack(res.result)
                 } else {
                     router.back();
                 }

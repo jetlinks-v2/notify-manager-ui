@@ -650,6 +650,7 @@ import type { Rule } from "ant-design-vue/es/form";
 import { templateImages } from "../../../assets/notice/index";
 import RadioCard from "../../../components/RadioCard/index.vue";
 import { useI18n } from 'vue-i18n';
+import { useTabSaveSuccessBack } from '@/hooks'
 
 const { t: $t } = useI18n();
 
@@ -692,6 +693,8 @@ const formData = ref<TemplateFormData>({
 const _disabled = computed(() => {
   return !!formData.value?.id || route.query?.notifyType
 })
+
+const { onBack } = useTabSaveSuccessBack()
 
 /**
  * 重置字段值
@@ -1143,11 +1146,7 @@ const handleSubmit = () => {
         onlyMessage($t('Detail.index.640090-77'));
         if (route.query?.notifyType) {
           // @ts-ignore
-          const sourceId = route.query?.sourceId as string;
-          if ((window as any).onTabSaveSuccess && sourceId) {
-            (window as any).onTabSaveSuccess(sourceId, res.result);
-            setTimeout(() => window.close(), 300);
-          }
+          onBack(res.result);
         } else {
           router.back();
         }
