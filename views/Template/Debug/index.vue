@@ -113,7 +113,7 @@
 
 <script setup lang="ts" name="TemplateDebugger">
 import { PropType } from 'vue';
-import TemplateApi from '../../../api/template';
+import TemplateApi from '@notify-manager-ui/api/template';
 import { IVariableDefinitions,BindConfig } from '../types';
 import ToUser from '../Detail/components/ToUser.vue';
 import ToOrg from '../Detail/components/ToOrg.vue';
@@ -122,7 +122,7 @@ import type { Rule } from 'ant-design-vue/es/form';
 import { phoneRegEx } from '@/utils/validate';
 import {getToken, onlyMessage} from '@jetlinks-web/utils';
 import { useI18n } from 'vue-i18n';
-import {FileStaticPath} from "@notifyManager/utils/comm";
+import {FileStaticPath} from "@notify-manager-ui/utils/comm";
 import {TOKEN_KEY} from "@jetlinks-web/constants";
 
 const { t: $t } = useI18n();

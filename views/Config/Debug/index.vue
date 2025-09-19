@@ -108,7 +108,7 @@
 
 <script setup lang="ts">
 import { PropType } from "vue";
-import ConfigApi from "../../../api/config";
+import ConfigApi from "@notify-manager-ui/api/config";
 import type {
   TemplateFormData,
   IVariableDefinitions,
@@ -120,7 +120,7 @@ import type { Rule } from "ant-design-vue/es/form";
 import { phoneRegEx } from "@/utils/validate";
 import {getToken, onlyMessage} from "@jetlinks-web/utils";
 import { useI18n } from 'vue-i18n';
-import {FileStaticPath} from "@notifyManager/utils/comm";
+import {FileStaticPath} from "@notify-manager-ui/utils/comm";
 import {TOKEN_KEY} from "@jetlinks-web/constants";
 
 const { t: $t } = useI18n();
