@@ -48,6 +48,7 @@ export type TemplateFormData = {
         // message?: string;
         toParty?: string;
         toUser?: string;
+        toUserName?: string;
         toTag?: string;
         // 邮件
         subject?: string;

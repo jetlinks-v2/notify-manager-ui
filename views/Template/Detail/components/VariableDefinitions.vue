@@ -120,7 +120,7 @@ const columns = [
     {
         title: $t('components.VariableDefinitions.6401011-9'),
         dataIndex: 'format',
-        width: 150,
+        width: 240,
     },
 ];
 

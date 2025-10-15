@@ -1,4 +1,5 @@
 <template>
+  ggggg
   <template v-if="type === 'weixin'">
     <a-select
         :options="options"
