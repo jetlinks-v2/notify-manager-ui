@@ -59,14 +59,10 @@
                 :placeholder="$t('Detail.index.640090-7')"
                 @change="handleConfigChange"
                 :disabled="flag"
+                show-search
+                :options="configList"
+                :filter-option="filterOption"
               >
-                <a-select-option
-                  v-for="(item, index) in configList"
-                  :key="index"
-                  :value="item.id"
-                >
-                  {{ item.name }}
-                </a-select-option>
               </a-select>
             </a-form-item>
             <!-- 钉钉 -->
@@ -697,6 +693,11 @@ const _disabled = computed(() => {
 
 const { onBack } = useTabSaveSuccessBack()
 
+const filterOption = (input, option) => {
+  return option.label.toLowerCase().indexOf(input.toLowerCase()) >= 0;
+};
+
+
 /**
  * 重置字段值
  */
@@ -1014,7 +1015,11 @@ const getConfigList = async () => {
     terms,
     sorts: [{ name: "createTime", order: "desc" }],
   });
-  configList.value = result;
+  configList.value = result.map((item) => ({
+    ...item,
+    value: item.id,
+    label: item.name,
+  }));
 };
 
 /**
