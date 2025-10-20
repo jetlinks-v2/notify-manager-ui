@@ -478,14 +478,17 @@
                       v-model:value="formData.template.code"
                       :placeholder="$t('Detail.index.640090-50')"
                       @change="handleTemplateChange"
+                      :options="templateList"
+                      show-search
+                      :filter-option="filterOption"
                     >
-                      <a-select-option
+                      <!-- <a-select-option
                         v-for="(item, index) in templateList"
                         :key="index"
                         :value="item.templateCode"
                       >
                         {{ item.templateName }}
-                      </a-select-option>
+                      </a-select-option> -->
                     </a-select>
                   </a-form-item>
                 </a-col>
@@ -1058,6 +1061,9 @@ const handleConfigChange = () => {
 /**
  * 获取阿里模板
  */
+const filterOption = (input, option) => {
+  return option.label.toLowerCase().indexOf(input.toLowerCase()) >= 0;
+};
 const templateList = ref();
 const getTemplateList = async () => {
   if (!formData.value.configId) return;
@@ -1067,7 +1073,11 @@ const getTemplateList = async () => {
   });
   if (res.status === 200) {
     canSave.value = true;
-    templateList.value = res.result;
+    templateList.value = res.result.map((m: any) => ({
+      ...m,
+      label: m.templateName,
+      value: m.templateCode,
+    }));
   }
 };
 
