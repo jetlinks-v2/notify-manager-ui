@@ -1064,12 +1064,6 @@ const handleConfigChange = () => {
   getSignsList();
 };
 
-/**
- * 获取阿里模板
- */
-const filterOption = (input, option) => {
-  return option.label.toLowerCase().indexOf(input.toLowerCase()) >= 0;
-};
 const templateList = ref();
 const getTemplateList = async () => {
   if (!formData.value.configId) return;
