@@ -59,14 +59,10 @@
                 :placeholder="$t('Detail.index.640090-7')"
                 @change="handleConfigChange"
                 :disabled="flag"
+                show-search
+                :options="configList"
+                :filter-option="filterOption"
               >
-                <a-select-option
-                  v-for="(item, index) in configList"
-                  :key="index"
-                  :value="item.id"
-                >
-                  {{ item.name }}
-                </a-select-option>
               </a-select>
             </a-form-item>
             <!-- 钉钉 -->
@@ -219,7 +215,6 @@
                         v-model:toParty="formData.template.toParty"
                         :type="formData.type"
                         :config-id="formData.configId"
-                        @change="formData.template.toUser = undefined"
                     />
                   </a-form-item>
                 </a-col>
@@ -238,12 +233,10 @@
                         </a-tooltip>
                       </span>
                     </template>
-                    <ToUser
+                    <ToUserModal
                         v-model:toUser="formData.template.toUser"
-                        :type="formData.type"
+                        v-model:toUserName="formData.template.toUserName"
                         :config-id="formData.configId"
-                        :disabled="!formData.template.toParty"
-                        :toParty="formData.template.toParty"
                     />
                   </a-form-item>
                 </a-col>
@@ -432,6 +425,9 @@
                   v-model:value="formData.template.playTimes"
                   :placeholder="$t('Detail.index.640090-44')"
                   style="width: 100%"
+                  :precision="0"
+                  :min="1"
+                  :max="3"
                 />
               </a-form-item>
               <a-form-item
@@ -651,6 +647,7 @@ import { templateImages } from "../../../assets/notice/index";
 import RadioCard from "../../../components/RadioCard/index.vue";
 import { useI18n } from 'vue-i18n';
 import { useTabSaveSuccessBack } from '@/hooks'
+import ToUserModal from './components/ToUserModal/index.vue'
 
 const { t: $t } = useI18n();
 
@@ -695,6 +692,11 @@ const _disabled = computed(() => {
 })
 
 const { onBack } = useTabSaveSuccessBack()
+
+const filterOption = (input, option) => {
+  return option.label.toLowerCase().indexOf(input.toLowerCase()) >= 0;
+};
+
 
 /**
  * 重置字段值
@@ -1013,7 +1015,11 @@ const getConfigList = async () => {
     terms,
     sorts: [{ name: "createTime", order: "desc" }],
   });
-  configList.value = result;
+  configList.value = result.map((item) => ({
+    ...item,
+    value: item.id,
+    label: item.name,
+  }));
 };
 
 /**
