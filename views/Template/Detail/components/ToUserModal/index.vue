@@ -1,8 +1,8 @@
 <template>
-  <a-input-group compact>
-    <a-input v-model:value="_value" disabled style="width: calc(100% - 65px)"/>
+  <div style="display: flex">
+    <a-input v-model:value="_value" disabled style="flex: 1; min-width: 0"/>
     <a-button type="primary" @click="visible = true">选择</a-button>
-  </a-input-group>
+  </div>
   <Modal v-if="visible" :value="toUser" :name="_value" :configId="configId" @save="handleSave" @close="visible = false" />
 </template>
 
@@ -14,6 +14,7 @@ const {t: $t} = useI18n();
 type Emits = {
   (e: 'update:toUser', data: string | undefined): void;
   (e: 'update:toUserName', data: string | undefined): void;
+  (e: 'change', data: string | undefined, option: any): void;
 };
 type Props = {
   toUser: string | undefined;
@@ -38,6 +39,7 @@ const handleSave = (dt) => {
   _value.value = dt.name
   emit('update:toUser', dt.id)
   emit('update:toUserName', dt.name)
+  emit('change', dt.id, dt)
 }
 </script>
 
