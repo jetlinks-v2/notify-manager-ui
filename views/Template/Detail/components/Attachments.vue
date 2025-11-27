@@ -6,10 +6,8 @@
         <template #addonAfter>
           <a-upload
             name="file"
-            :action="`${BASE_API}/file/static`"
-            :headers="{
-              [TOKEN_KEY]: LocalStore.get(TOKEN_KEY),
-            }"
+            :action="`${getBaseApi()}/file/static`"
+            :headers="getUploadHeaders()"
             :showUploadList="false"
             @change="(e) => handleChange(e, item.id)"
           >
@@ -40,10 +38,9 @@
 <script setup lang="ts" name="Attachments">
 import { PropType } from "vue";
 import type { IAttachments } from "../../types";
-import { LocalStore } from "@jetlinks-web/utils";
-import { TOKEN_KEY , BASE_API} from "@jetlinks-web/constants";
 import { UploadChangeParam } from "ant-design-vue";
 import { useI18n } from 'vue-i18n';
+import {getBaseApi, getUploadHeaders} from "@/utils";
 
 const { t: $t } = useI18n();
 type Emits = {

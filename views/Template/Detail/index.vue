@@ -168,10 +168,8 @@
                       <template #addonAfter>
                         <a-upload
                           name="file"
-                          :action="`${BASE_API}/file/static`"
-                          :headers="{
-                            [TOKEN_KEY]: LocalStore.get(TOKEN_KEY),
-                          }"
+                          :action="`${getBaseApi()}/file/static`"
+                          :headers="getUploadHeaders()"
                           :showUploadList="false"
                           @change="(e) => handleLinkChange(e)"
                         >
@@ -641,9 +639,6 @@ import VariableDefinitions from "./components/VariableDefinitions.vue";
 import ToUser from "./components/ToUser.vue";
 import ToOrg from "./components/ToOrg.vue";
 import ToTag from "./components/ToTag.vue";
-import { BASE_API } from "@jetlinks-web/constants";
-import { LocalStore } from "@jetlinks-web/utils";
-import { TOKEN_KEY } from "@jetlinks-web/constants";
 import { phoneRegEx } from "@/utils/validate";
 import type { Rule } from "ant-design-vue/es/form";
 import { templateImages } from "../../../assets/notice/index";
@@ -651,6 +646,7 @@ import RadioCard from "../../../components/RadioCard/index.vue";
 import { useI18n } from 'vue-i18n';
 import { useTabSaveSuccessBack } from '@/hooks'
 import ToUserModal from './components/ToUserModal/index.vue'
+import {getBaseApi, getUploadHeaders} from "@/utils";
 
 const { t: $t } = useI18n();
 
