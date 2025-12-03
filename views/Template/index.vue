@@ -207,7 +207,7 @@ import { NOTICE_METHOD,MSG_TYPE } from '../const';
 import Debug from './Debug/index.vue';
 import Log from './Log/index.vue';
 import { downloadObject } from '../../utils/utils';
-import { useMenuStore } from '@/store/menu';
+import { useMenuStore } from '@jetlinks-web-core/store/menu';
 import { onlyMessage } from '@jetlinks-web/utils';
 import { useI18n } from 'vue-i18n';
 import {usePermission} from "@jetlinks-web/hooks";

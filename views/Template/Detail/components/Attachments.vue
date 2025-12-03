@@ -40,7 +40,7 @@ import { PropType } from "vue";
 import type { IAttachments } from "../../types";
 import { UploadChangeParam } from "ant-design-vue";
 import { useI18n } from 'vue-i18n';
-import {getBaseApi, getUploadHeaders} from "@/utils";
+import {getBaseApi, getUploadHeaders} from "@jetlinks-web-core/utils";
 
 const { t: $t } = useI18n();
 type Emits = {

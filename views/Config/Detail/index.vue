@@ -335,7 +335,7 @@ import Doc from './doc/index';
 import { configImages } from '../../../assets/notice/index';
 import RadioCard from '../../../components/RadioCard/index.vue'
 import { useI18n } from 'vue-i18n';
-import { useTabSaveSuccessBack } from '@/hooks'
+import { useTabSaveSuccessBack } from '@jetlinks-web-core/hooks'
 
 const { t: $t } = useI18n();
 const router = useRouter();

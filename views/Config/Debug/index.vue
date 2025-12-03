@@ -126,10 +126,10 @@ import ToUserModal from "../../Template/Detail/components/ToUserModal/index.vue"
 import ToOrg from "../../Template/Detail/components/ToOrg.vue";
 import ToTag from "../../Template/Detail/components/ToTag.vue";
 import type {Rule} from "ant-design-vue/es/form";
-import {phoneRegEx} from "@/utils/validate";
+import {phoneRegEx} from "@jetlinks-web-core/utils/validate";
 import {getToken, onlyMessage} from "@jetlinks-web/utils";
 import {useI18n} from 'vue-i18n';
-import {FileStaticPath} from "@/api/comm";
+import {FileStaticPath} from "@jetlinks-web-core/api/comm";
 import {TOKEN_KEY} from "@jetlinks-web/constants";
 
 const {t: $t} = useI18n();

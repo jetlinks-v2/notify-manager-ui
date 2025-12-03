@@ -189,9 +189,9 @@ import { NOTICE_METHOD, MSG_TYPE } from "../const";
 import SyncUser from "./SyncUser/index.vue";
 import Debug from "./Debug/index.vue";
 import Log from "./Log/index.vue";
-import { isNoCommunity } from '@/utils/utils';
+import { isNoCommunity } from '@jetlinks-web-core/utils/utils';
 import { downloadObject } from "../../utils/utils";
-import { useMenuStore } from "@/store/menu";
+import { useMenuStore } from "@jetlinks-web-core/store/menu";
 import { onlyMessage } from "@jetlinks-web/utils";
 import { usePermission } from '@jetlinks-web/hooks'
 import { useI18n } from 'vue-i18n';

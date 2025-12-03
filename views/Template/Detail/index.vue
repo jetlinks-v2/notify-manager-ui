@@ -639,14 +639,14 @@ import VariableDefinitions from "./components/VariableDefinitions.vue";
 import ToUser from "./components/ToUser.vue";
 import ToOrg from "./components/ToOrg.vue";
 import ToTag from "./components/ToTag.vue";
-import { phoneRegEx } from "@/utils/validate";
+import { phoneRegEx } from "@jetlinks-web-core/utils/validate";
 import type { Rule } from "ant-design-vue/es/form";
 import { templateImages } from "../../../assets/notice/index";
 import RadioCard from "../../../components/RadioCard/index.vue";
 import { useI18n } from 'vue-i18n';
-import { useTabSaveSuccessBack } from '@/hooks'
+import { useTabSaveSuccessBack } from '@jetlinks-web-core/hooks'
 import ToUserModal from './components/ToUserModal/index.vue'
-import {getBaseApi, getUploadHeaders} from "@/utils";
+import {getBaseApi, getUploadHeaders} from "@jetlinks-web-core/utils";
 
 const { t: $t } = useI18n();
 
