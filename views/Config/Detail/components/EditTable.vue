@@ -9,7 +9,7 @@
                             {
                             max: 64,
                             message: $t('components.EditTable.7077012-0')
-                            }, 
+                            },
                             { required: true, message: $t('components.EditTable.7077012-1', [column.title]), trigger: 'blur' }]"
                             >
                             <a-input v-model:value="record[column.dataIndex]"/></a-form-item>
@@ -17,7 +17,7 @@
                     <template v-else-if="column.dataIndex === 'operation'">
                         <a-button type="text">
                             <template #icon>
-                                 <AIcon type="DeleteOutlined" @click="handleDelete(record.id)"></AIcon>
+                                 <AIcon type="DeleteOutlined" @click="handleDelete(record._key)"></AIcon>
                             </template>
                         </a-button>
                     </template>
@@ -84,8 +84,8 @@ const dataSource = reactive({
 watch(()=>JSON.stringify(props.headers),()=>{
     dataSource.table = handleHeader(props.headers)
 })
-const handleDelete = (id: number) => {
-    const idx = dataSource.table.findIndex((f) => f.id === id);
+const handleDelete = (_key: string) => {
+    const idx = dataSource.table.findIndex((f) => f._key === _key);
     dataSource.table.splice(idx, 1);
 };
 const valueChange = () =>{
