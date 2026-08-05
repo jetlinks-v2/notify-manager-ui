@@ -1,0 +1,225 @@
+[
+    {
+        "code": "system-setting",
+        "name": "系统管理",
+        "owner": "cloud",
+        "i18nMessages": {
+            "name": {
+                "zh_CN": "系统管理",
+                "en_US": "System Management",
+                "en": "System Management"
+            }
+        },
+        "id": "system-setting",
+        "url": "/system-setting",
+        "icon": "SettingOutlined",
+        "sortIndex": 90,
+        "permissions": [],
+        "buttons": [],
+        "children": [
+      {
+        "code": "notice/template",
+        "name": "消息模板",
+        "owner": "cloud",
+        "i18nMessages": {
+          "name": {
+            "zh_CN": "消息模板",
+            "en_US": "Message Templates",
+            "en": "Message Templates"
+          }
+        },
+        "id": "notice-template",
+        "url": "/notice-center/template",
+        "icon": "FileTextOutlined",
+        "sortIndex": 11,
+        "permissions": [
+          {
+            "permission": "notify-channel",
+            "actions": [
+              "save"
+            ]
+          }
+        ],
+        "buttons": [
+          {
+            "id": "view",
+            "name": "查看",
+            "i18nMessages": {
+              "zh_CN": "查看",
+              "en_US": "View",
+              "en": "View"
+            },
+            "permissions": [
+              {
+                "permission": "notify-channel",
+                "actions": [
+                  "save"
+                ]
+              },
+              {
+                "permission": "notifier",
+                "actions": [
+                  "query"
+                ]
+              },
+              {
+                "permission": "template",
+                "actions": [
+                  "query",
+                  "save"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "update",
+            "name": "编辑",
+            "i18nMessages": {
+              "zh_CN": "编辑",
+              "en_US": "Edit",
+              "en": "Edit"
+            },
+            "permissions": [
+              {
+                "permission": "notify-channel",
+                "actions": [
+                  "save"
+                ]
+              },
+              {
+                "permission": "notifier",
+                "actions": [
+                  "query"
+                ]
+              },
+              {
+                "permission": "template",
+                "actions": [
+                  "save"
+                ]
+              }
+            ]
+          }
+        ],
+        "accessSupport": {
+          "text": "支持",
+          "value": "support"
+        },
+        "assetType": "notifySubscriberProvider",
+          "assetTypes":[
+              "notifyConfig",
+              "notifySubscriberProvider"
+          ],
+        "supportDataAccess": true
+      },
+      {
+        "code": "notice/channel",
+        "name": "通知渠道",
+        "owner": "cloud",
+        "i18nMessages": {
+          "name": {
+            "zh_CN": "通知渠道",
+            "en_US": "Notification Channels",
+            "en": "Notification Channels"
+          }
+        },
+        "id": "notice-channel",
+        "url": "/notice-center/channel",
+        "icon": "ApiOutlined",
+        "sortIndex": 12,
+        "permissions": [
+          {
+            "permission": "notify-channel",
+            "actions": [
+              "save"
+            ]
+          },
+          {
+            "permission": "notifier",
+            "actions": [
+              "query",
+              "save",
+              "send"
+            ]
+          }
+        ],
+        "buttons": [
+          {
+            "id": "view",
+            "name": "查看",
+            "i18nMessages": {
+              "zh_CN": "查看",
+              "en_US": "View",
+              "en": "View"
+            },
+            "permissions": [
+              {
+                "permission": "notify-channel",
+                "actions": [
+                  "save"
+                ]
+              },
+              {
+                "permission": "notifier",
+                "actions": [
+                  "query"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "update",
+            "name": "编辑",
+            "i18nMessages": {
+              "zh_CN": "编辑",
+              "en_US": "Edit",
+              "en": "Edit"
+            },
+            "permissions": [
+              {
+                "permission": "notify-channel",
+                "actions": [
+                  "save"
+                ]
+              },
+              {
+                "permission": "notifier",
+                "actions": [
+                  "query",
+                  "save"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "test",
+            "name": "测试",
+            "i18nMessages": {
+              "zh_CN": "测试",
+              "en_US": "Test",
+              "en": "Test"
+            },
+            "permissions": [
+              {
+                "permission": "notifier",
+                "actions": [
+                  "send"
+                ]
+              }
+            ]
+          }
+        ],
+        "accessSupport": {
+          "text": "支持",
+          "value": "support"
+        },
+        "assetType": "notifySubscriberProvider",
+          "assetTypes":[
+              "notifyConfig",
+              "notifySubscriberProvider"
+          ],
+        "supportDataAccess": true
+      }
+    ]
+  }
+]

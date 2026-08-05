@@ -1,0 +1,13 @@
+{
+  "name": "notice-center-ui",
+  "id": "notice-center",
+  "version": "1.0.0",
+  "description": "JetLinks notice center UI sub module",
+  "main": "index.ts",
+  "scripts": {
+    "dev": "pnpm --filter jetlinks-web-core dev -- --module-name notice-center-ui",
+    "build": "pnpm --filter jetlinks-web-core build -- --module-name notice-center-ui"
+  },
+  "dependencies": {},
+  "peerDependencies": {}
+}

@@ -1,0 +1,52 @@
+.template-notify-record-modal {
+  :deep(.ant-modal-body) {
+    padding: 0;
+  }
+
+  :deep(.ant-pro-table) {
+    border-radius: 0 0 var(--r-2) var(--r-2);
+  }
+
+  :deep(.ant-table-thead > tr > th) {
+    background: #f5f8fc;
+    color: #6f84a3;
+    font-size: var(--fs-12);
+    font-weight: 600;
+  }
+
+  :deep(.ant-table-tbody > tr > td) {
+    height: 3.25rem;
+    color: #0f2547;
+    font-size: var(--fs-13);
+  }
+}
+
+.template-notify-record-modal__filter {
+  padding: var(--space-4);
+  border-bottom: 0.0625rem solid var(--line);
+}
+
+.template-notify-record-modal__error {
+  color: var(--jet-theme-primary);
+  cursor: pointer;
+}
+
+.template-notify-record-modal__action,
+.template-notify-record-modal__action--disabled {
+  cursor: pointer;
+}
+
+.template-notify-record-modal__action {
+  color: var(--jet-theme-primary);
+}
+
+.template-notify-record-modal__action--disabled {
+  color: var(--jet-theme-text-disabled);
+}
+
+:global(.template-notify-record-modal__error-content) {
+  max-height: 18.75rem;
+  margin: 0;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
