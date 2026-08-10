@@ -1,4 +1,4 @@
-import type { NoticeProviderTemplateInfo, NoticeTemplateEntity } from '@notice-center-ui/api/notice-center'
+import type { NoticeProviderTemplateInfo, NoticeTemplateEntity } from '@notify-manager-ui/api/notice-center'
 import {
   getStateValue,
   needsTemplate,

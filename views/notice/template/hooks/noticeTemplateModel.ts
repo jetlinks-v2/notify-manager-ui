@@ -4,7 +4,7 @@ import type {
   NoticeTemplateEntity,
   NoticeTemplateVariable,
   NotifierConfig,
-} from '@notice-center-ui/api/notice-center'
+} from '@notify-manager-ui/api/notice-center'
 import { getPreviewTexts } from './noticeTemplateFormModel'
 import type { NoticeTemplateEditorPayload } from './noticeTemplateFormModel'
 

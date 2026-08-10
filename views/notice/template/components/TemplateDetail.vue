@@ -88,7 +88,7 @@ import {
   syncVariableDefinitions,
   variableToken,
 } from '../hooks/noticeTemplateFormModel'
-import type { NoticeTemplateEntity, NoticeTemplateVariable } from '@notice-center-ui/api/notice-center'
+import type { NoticeTemplateEntity, NoticeTemplateVariable } from '@notify-manager-ui/api/notice-center'
 
 const props = defineProps<{
   alarm?: NoticeTemplateAlarmNode

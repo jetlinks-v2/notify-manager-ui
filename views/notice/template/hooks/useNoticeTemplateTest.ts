@@ -1,8 +1,8 @@
 import { ref, type ComputedRef, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { onlyMessage } from '@jetlinks-web/utils'
-import { sendNotifierTest_api } from '@notice-center-ui/api/notice-center'
-import type { NoticeTemplateEntity } from '@notice-center-ui/api/notice-center'
+import { sendNotifierTest_api } from '@notify-manager-ui/api/notice-center'
+import type { NoticeTemplateEntity } from '@notify-manager-ui/api/notice-center'
 import { isInsideMailChannel, needsTemplate } from './noticeTemplateModel'
 import type { NoticeTemplateChannelNode } from './noticeTemplateModel'
 

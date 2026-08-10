@@ -1,6 +1,6 @@
 [
     {
-        "code": "system-setting",
+        "code": "system",
         "name": "系统管理",
         "owner": "cloud",
         "i18nMessages": {
@@ -10,8 +10,8 @@
                 "en": "System Management"
             }
         },
-        "id": "system-setting",
-        "url": "/system-setting",
+        "id": "system",
+        "url": "/system",
         "icon": "SettingOutlined",
         "sortIndex": 90,
         "permissions": [],

@@ -5,7 +5,7 @@
     "baseUrl": "./",
     "paths": {
       "@jetlinks-web-core/*": ["../../jetlinks-web-core/src/*"],
-      "@notice-center-ui/*": ["./*"],
+      "@notify-manager-ui/*": ["./*"],
       "@saas-manager-ui/*": ["../saas-manager-ui/*"]
     }
   }

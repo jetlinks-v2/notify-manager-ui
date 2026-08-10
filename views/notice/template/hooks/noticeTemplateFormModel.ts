@@ -1,4 +1,4 @@
-import type { NoticeTemplateEntity, NoticeTemplateVariable } from '@notice-center-ui/api/notice-center'
+import type { NoticeTemplateEntity, NoticeTemplateVariable } from '@notify-manager-ui/api/notice-center'
 import type { NoticeTemplateChannelNode } from './noticeTemplateModel'
 
 export type NoticeTemplateType = 'dingTalk' | 'weixin' | 'email' | 'voice' | 'sms' | 'webhook'

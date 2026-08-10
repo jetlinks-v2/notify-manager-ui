@@ -13,7 +13,7 @@ import {
   sendNotifierInlineTest_api,
   saveNotifierConfig_api,
   updateNotifierConfig_api,
-} from '@notice-center-ui/api/notice-center'
+} from '@notify-manager-ui/api/notice-center'
 import type {
   NoticeChannelConfig,
   NoticeChannelProvider,
@@ -21,7 +21,7 @@ import type {
   NotifierConfig,
   NotifierConfigMetadata,
   NotifierProviderInfo,
-} from '@notice-center-ui/api/notice-center'
+} from '@notify-manager-ui/api/notice-center'
 import {
   buildInlineTestPayload,
   buildConfigPayload,

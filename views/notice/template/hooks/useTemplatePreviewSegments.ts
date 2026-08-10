@@ -1,5 +1,5 @@
 import { computed, type Ref } from 'vue'
-import type { NoticeTemplateVariable } from '@notice-center-ui/api/notice-center'
+import type { NoticeTemplateVariable } from '@notify-manager-ui/api/notice-center'
 
 export type PreviewMode = 'token' | 'resolved'
 

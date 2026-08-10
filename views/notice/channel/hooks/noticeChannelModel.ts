@@ -7,7 +7,7 @@ import type {
   NotifierConfig,
   NotifierProviderInfo,
   SendNotifierInlineTestPayload,
-} from '@notice-center-ui/api/notice-center'
+} from '@notify-manager-ui/api/notice-center'
 
 export type ChannelStatus = 'builtin' | 'configured' | 'unconfigured'
 

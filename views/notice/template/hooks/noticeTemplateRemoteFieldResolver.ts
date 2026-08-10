@@ -1,7 +1,7 @@
 import type {
   NoticeCorpUser,
   NoticeSmsTemplateOption,
-} from '@notice-center-ui/api/notice-center'
+} from '@notify-manager-ui/api/notice-center'
 import type {
   NoticeTemplateData,
   NoticeTemplateEditorPayload,

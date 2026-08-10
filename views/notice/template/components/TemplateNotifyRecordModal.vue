@@ -68,7 +68,7 @@ import ConditionFilter, {
   type ConditionFilterExpose,
   type ConditionFilterField,
 } from '@jetlinks-web-core/components/ConditionFilter'
-import { queryNotifyHistoryByTemplate_api } from '@notice-center-ui/api/notice-center'
+import { queryNotifyHistoryByTemplate_api } from '@notify-manager-ui/api/notice-center'
 
 type EnumValue = string | {
   value?: string

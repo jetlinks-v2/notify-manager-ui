@@ -5,14 +5,14 @@ import {
   queryWechatCorpDepartments_api,
   queryWechatCorpTags_api,
   queryWechatCorpUsers_api,
-} from '@notice-center-ui/api/notice-center'
+} from '@notify-manager-ui/api/notice-center'
 import type {
   NoticeCorpDepartment,
   NoticeCorpTag,
   NoticeCorpUser,
   NoticeSmsSignOption,
   NoticeSmsTemplateOption,
-} from '@notice-center-ui/api/notice-center'
+} from '@notify-manager-ui/api/notice-center'
 import type { NoticeTemplateChannelNode } from './noticeTemplateModel'
 import type {
   NoticeTemplateEditorPayload,

@@ -89,7 +89,7 @@ import type { NoticeTemplateEditorPayload } from '../hooks/useNoticeTemplateCent
 import type {
   NoticeTemplateEntity,
   NoticeTemplateVariable,
-} from '@notice-center-ui/api/notice-center'
+} from '@notify-manager-ui/api/notice-center'
 import type { NoticeTemplateAlarmNode, NoticeTemplateChannelNode } from '../hooks/useNoticeTemplateCenter'
 
 const props = defineProps<{

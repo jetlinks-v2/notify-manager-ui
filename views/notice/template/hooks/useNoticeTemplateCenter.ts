@@ -10,7 +10,7 @@ import {
   queryNoticeChannelWithTemplates_api,
   queryNotifierConfig_api,
   saveNoticeChannelWithTemplates_api,
-} from '@notice-center-ui/api/notice-center'
+} from '@notify-manager-ui/api/notice-center'
 import type {
   NoticeChannelConfig,
   NoticeChannelProvider,
@@ -18,7 +18,7 @@ import type {
   NoticeTemplateEntity,
   NoticeTemplateVariable,
   NotifierConfig,
-} from '@notice-center-ui/api/notice-center'
+} from '@notify-manager-ui/api/notice-center'
 import {
   buildTreeData,
   configQuery,

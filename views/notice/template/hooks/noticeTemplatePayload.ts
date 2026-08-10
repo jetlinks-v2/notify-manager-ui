@@ -3,7 +3,7 @@ import type {
   NoticeProviderTemplateInfo,
   NoticeTemplateEntity,
   NoticeTemplateVariable,
-} from '@notice-center-ui/api/notice-center'
+} from '@notify-manager-ui/api/notice-center'
 import { needsTemplate } from './noticeTemplateModel'
 import type {
   NoticeTemplateChannelNode,

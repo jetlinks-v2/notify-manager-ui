@@ -54,8 +54,8 @@ import { useI18n } from 'vue-i18n'
 import type { FormInstance } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
 import { phoneRegEx } from '@jetlinks-web-core/utils/validate'
-import { queryNotifierTemplateDetail_api } from '@notice-center-ui/api/notice-center'
-import type { NoticeTemplateVariable } from '@notice-center-ui/api/notice-center'
+import { queryNotifierTemplateDetail_api } from '@notify-manager-ui/api/notice-center'
+import type { NoticeTemplateVariable } from '@notify-manager-ui/api/notice-center'
 import { variableToken } from '../hooks/noticeTemplateFormModel'
 
 type TemplateTestVariable = NoticeTemplateVariable & {
