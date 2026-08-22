@@ -1,10 +1,10 @@
 <template>
   <JPageContainer :pageHeaderRender="false">
     <div class="notice-template-page">
-      <PageHeader
-        :title="$t('NoticeCenter.template.pageTitle')"
-        :description="$t('NoticeCenter.template.pageDescription')"
-      />
+<!--      <PageHeader-->
+<!--        :title="$t('NoticeCenter.template.pageTitle')"-->
+<!--        :description="$t('NoticeCenter.template.pageDescription')"-->
+<!--      />-->
       <full-page style="background: transparent">
       <EqualHeightColumns
         left-width="20rem"

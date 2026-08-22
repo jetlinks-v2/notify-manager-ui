@@ -1,8 +1,8 @@
 <template>
   <JPageContainer :pageHeaderRender="false">
-      <PageHeader
-          :title="$t('NoticeCenter.channel.pageTitle')"
-      />
+<!--      <PageHeader-->
+<!--          :title="$t('NoticeCenter.channel.pageTitle')"-->
+<!--      />-->
       <full-page style="background: transparent">
 
 
