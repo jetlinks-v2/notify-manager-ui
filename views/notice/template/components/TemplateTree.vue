@@ -1,37 +1,38 @@
 ﻿<template>
-  <aside class="template-tree">
-    <header class="template-tree__head">
-      <div>
-        <h2>{{ $t('NoticeCenter.template.tree.title') }}</h2>
-        <p>{{ $t('NoticeCenter.template.tree.subtitle') }}</p>
-      </div>
-      <span>{{ treeData.length }}</span>
-    </header>
+  <ContentPanel style="padding: 0">
+	  <aside class="template-tree">
+		  <header class="template-tree__head">
+			  <div>
+				  <h2>{{ $t('NoticeCenter.template.tree.title') }}</h2>
+				  <p>{{ $t('NoticeCenter.template.tree.subtitle') }}</p>
+			  </div>
+			  <span>{{ treeData.length }}</span>
+		  </header>
 
-    <a-input
-      v-model:value="keyword"
-      class="template-tree__search"
-      allow-clear
-      size="small"
-      :placeholder="$t('NoticeCenter.template.tree.searchPlaceholder')"
-    >
-      <template #prefix>
-        <AIcon type="SearchOutlined" />
-      </template>
-    </a-input>
+		  <a-input
+			  v-model:value="keyword"
+			  class="template-tree__search"
+			  allow-clear
+			  size="small"
+			  :placeholder="$t('NoticeCenter.template.tree.searchPlaceholder')"
+		  >
+			  <template #prefix>
+				  <AIcon type="SearchOutlined" />
+			  </template>
+		  </a-input>
 
-      <div class="template-tree__body">
-          <a-tree
-              v-if="filteredTreeData.length"
-              class="template-tree__tree"
-              block-node
-              :tree-data="filteredTreeData"
-              :expanded-keys="currentExpandedKeys"
-              :selected-keys="selectedKeys"
-              @expand="handleExpand"
-              @select="handleSelect"
-          >
-              <template #title="node">
+		  <div class="template-tree__body">
+			  <a-tree
+				  v-if="filteredTreeData.length"
+				  class="template-tree__tree"
+				  block-node
+				  :tree-data="filteredTreeData"
+				  :expanded-keys="currentExpandedKeys"
+				  :selected-keys="selectedKeys"
+				  @expand="handleExpand"
+				  @select="handleSelect"
+			  >
+				  <template #title="node">
               <span class="template-tree__node" :class="`is-${node.nodeType}`">
                 <span v-if="node.nodeType === 'alarm'" class="template-tree__node-avatar">
                   {{ getNodeInitial(node) }}
@@ -41,34 +42,35 @@
                 </span>
                 <span class="template-tree__node-title">{{ $t(node.title) }}</span>
                 <j-badge-status
-                  v-if="node.nodeType === 'alarm'"
-                  :status="node.enabled ? 'success' : 'warning'"
-                  :text="node.enabled ? $t('NoticeCenter.template.state.enabled') : $t('NoticeCenter.template.state.disabled')"
+	                v-if="node.nodeType === 'alarm'"
+	                :status="node.enabled ? 'success' : 'warning'"
+	                :text="node.enabled ? $t('NoticeCenter.template.state.enabled') : $t('NoticeCenter.template.state.disabled')"
                 />
                 <span
-                  v-if="node.nodeType === 'alarm'"
-                  class="template-tree__node-switch"
-                  @click.stop
+	                v-if="node.nodeType === 'alarm'"
+	                class="template-tree__node-switch"
+	                @click.stop
                 >
                   <a-switch
-                    size="small"
-                    :checked="node.enabled"
-                    :loading="switchingKeys.includes(node.key)"
-                    @change="() => $emit('toggle-state', node)"
+	                  size="small"
+	                  :checked="node.enabled"
+	                  :loading="switchingKeys.includes(node.key)"
+	                  @change="() => $emit('toggle-state', node)"
                   />
                 </span>
               </span>
-              </template>
-          </a-tree>
+				  </template>
+			  </a-tree>
 
-          <a-spin v-else :spinning="loading">
-              <CloudEmpty
-                  class="template-tree__empty"
-                  :description="$t('NoticeCenter.template.empty.noTree')"
-              />
-          </a-spin>
-      </div>
-  </aside>
+			  <a-spin v-else :spinning="loading">
+				  <CloudEmpty
+					  class="template-tree__empty"
+					  :description="$t('NoticeCenter.template.empty.noTree')"
+				  />
+			  </a-spin>
+		  </div>
+	  </aside>
+  </ContentPanel>
 </template>
 
 <script setup lang="ts">
