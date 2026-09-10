@@ -13,7 +13,7 @@
     "id": "3c7dca6ea8b5828bbcc023ce905244f7",
     "sortIndex": 5,
     "url": "/alarms",
-    "icon": "icon-shebeigaojing",
+    "icon": "icon-gaojingzhongxin",
     "permissions": [],
     "buttons": [],
     "showPage": [],
@@ -31,7 +31,7 @@
         },
         "id": "alarms-notify",
         "url": "/alarms/notify",
-        "icon": "SettingOutlined",
+        "icon": "icon-xiaoxitongzhi",
         "sortIndex": 40,
         "permissions": [],
         "buttons": [],
@@ -49,7 +49,7 @@
             },
             "id": "notice-template",
             "url": "/alarms/notify/template",
-            "icon": "FileTextOutlined",
+            "icon": "icon-yuandian",
             "sortIndex": 11,
             "permissions": [
               {
@@ -148,7 +148,7 @@
             },
             "id": "notice-channel",
             "url": "/alarms/notify/delivery",
-            "icon": "ApiOutlined",
+            "icon": "icon-yuandian",
             "sortIndex": 12,
             "permissions": [
               {
