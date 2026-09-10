@@ -5,7 +5,7 @@
 <!--        :title="$t('NoticeCenter.template.pageTitle')"-->
 <!--        :description="$t('NoticeCenter.template.pageDescription')"-->
 <!--      />-->
-      <full-page style="background: transparent">
+      <full-page transparentBackground>
       <EqualHeightColumns
         left-width="20rem"
         right-width="1fr"
