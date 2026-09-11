@@ -63,7 +63,6 @@ const statusNames = {
   align-items: center;
   gap: var(--space-3);
   border-bottom: 0.0625rem solid var(--jet-theme-border);
-  background: var(--jet-theme-bg-container);
 }
 
 .channel-detail-head__icon {

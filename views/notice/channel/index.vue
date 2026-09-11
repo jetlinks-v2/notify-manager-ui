@@ -5,57 +5,58 @@
 <!--      />-->
       <full-page hasPadding>
 
-
-          <EqualHeightColumns
-              left-width="20rem"
-              right-width="1fr"
-          >
-              <template #left>
-                  <ChannelList
-                      :items="channelList"
-                      :selected-id="selectedProviderId"
-                      :loading="loading"
-                      @select="selectProvider"
-                  />
-              </template>
-
-              <template #right>
-                  <div class="notice-channel-page">
-                      <a-spin :spinning="detailLoading">
-                          <CloudEmpty
-                              v-if="!selectedChannel"
-                              type="page"
-                              :description="$t('NoticeCenter.channel.empty.noSelection')"
-                          />
-                          <template v-else>
-                              <ChannelDetailHeader
-                                  :channel="selectedChannel"
-                                  :saving="saving"
-                                  :testing="testing"
-                                  @save="handleSave"
-                                  @test="sendTest"
-                              />
-                              <main class="notice-channel-page__body">
-                                  <ChannelCredentialForm
-                                      ref="credentialFormRef"
-                                      :channel="selectedChannel"
-                                      :draft="draft"
-                                      :metadata="selectedChannel.metadata"
-                                      :inside-mail="selectedChannel.status === 'builtin'"
-                                  />
-<!--                                  <ChannelTestPanel-->
-<!--                                      v-if="selectedChannel.status !== 'builtin'"-->
-<!--                                      :channel="selectedChannel"-->
-<!--                                      :testing="testing"-->
-<!--                                      :tested="tested"-->
-<!--                                      @test="sendTest"-->
-<!--                                  />-->
-                              </main>
-                          </template>
-                      </a-spin>
-                  </div>
-              </template>
-          </EqualHeightColumns>
+					<ContentPanel>
+						<EqualHeightColumns
+							left-width="20rem"
+							right-width="1fr"
+						>
+							<template #left>
+								<ChannelList
+									:items="channelList"
+									:selected-id="selectedProviderId"
+									:loading="loading"
+									@select="selectProvider"
+								/>
+							</template>
+							
+							<template #right>
+								<div class="notice-channel-page">
+									<a-spin :spinning="detailLoading">
+										<CloudEmpty
+											v-if="!selectedChannel"
+											type="page"
+											:description="$t('NoticeCenter.channel.empty.noSelection')"
+										/>
+										<template v-else>
+											<ChannelDetailHeader
+												:channel="selectedChannel"
+												:saving="saving"
+												:testing="testing"
+												@save="handleSave"
+												@test="sendTest"
+											/>
+											<main class="notice-channel-page__body">
+												<ChannelCredentialForm
+													ref="credentialFormRef"
+													:channel="selectedChannel"
+													:draft="draft"
+													:metadata="selectedChannel.metadata"
+													:inside-mail="selectedChannel.status === 'builtin'"
+												/>
+												<!--                                  <ChannelTestPanel-->
+												<!--                                      v-if="selectedChannel.status !== 'builtin'"-->
+												<!--                                      :channel="selectedChannel"-->
+												<!--                                      :testing="testing"-->
+												<!--                                      :tested="tested"-->
+												<!--                                      @test="sendTest"-->
+												<!--                                  />-->
+											</main>
+										</template>
+									</a-spin>
+								</div>
+							</template>
+						</EqualHeightColumns>
+					</ContentPanel>
       </full-page>
   </JPageContainer>
 </template>
@@ -101,10 +102,8 @@ onMounted(reload)
   min-height: 0;
   display: flex;
   flex-direction: column;
-    background-color: #fff;
     border-radius: var(--r-3);
     box-shadow: var(--shadow-1);
-    border: 0.0625rem solid var(--line);
     overflow: hidden;
 }
 

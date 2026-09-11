@@ -1,5 +1,5 @@
 ﻿<template>
-  <ContentPanel style="padding: 0">
+  <div style="padding: 0">
 	  <aside class="template-tree">
 		  <header class="template-tree__head">
 			  <div>
@@ -13,7 +13,6 @@
 			  v-model:value="keyword"
 			  class="template-tree__search"
 			  allow-clear
-			  size="small"
 			  :placeholder="$t('NoticeCenter.template.tree.searchPlaceholder')"
 		  >
 			  <template #prefix>
@@ -70,7 +69,7 @@
 			  </a-spin>
 		  </div>
 	  </aside>
-  </ContentPanel>
+  </div>
 </template>
 
 <script setup lang="ts">
