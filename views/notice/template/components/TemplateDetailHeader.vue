@@ -103,7 +103,6 @@ const channelToneClass = computed(() => {
 .template-detail-head {
   padding: var(--space-5) var(--space-6);
   border-bottom: 0.0625rem solid var(--line);
-  background: var(--bg);
 }
 
 .template-detail-head__breadcrumb {

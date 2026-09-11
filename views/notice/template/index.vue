@@ -6,43 +6,45 @@
 <!--        :description="$t('NoticeCenter.template.pageDescription')"-->
 <!--      />-->
       <full-page transparentBackground>
-      <EqualHeightColumns
-        left-width="20rem"
-        right-width="1fr"
-      >
-        <template #left>
-          <TemplateTree
-            :tree-data="treeData"
-            :expanded-keys="expandedKeys"
-            :selected-keys="selectedKeys"
-            :switching-keys="switchingKeys"
-            :loading="loading"
-            @select="selectTreeNode"
-            @toggle-state="toggleAlarmState"
-            @update:expanded-keys="expandedKeys = $event"
-          />
-        </template>
-        <template #right>
-          <TemplateDetail
-            :alarm="selectedAlarm"
-            :channel="selectedChannel"
-            :template="templateDetail"
-            :breadcrumb="breadcrumb"
-            :template-code="templateCode"
-            :covered-alarm-names="coveredAlarmNames"
-            :used-variables="usedVariables"
-            :available-stats="availableStats"
-            :referenced-policies="referencedPolicies"
-            :loading="detailLoading"
-            :saving="saving"
-            :testing="testing"
-            :variables="channelVariables"
-            :saved-version="savedVersion"
-            @save="handleSave"
-            @test="sendTest"
-          />
-        </template>
-      </EqualHeightColumns>
+        <ContentPanel>
+	        <EqualHeightColumns
+		        left-width="20rem"
+		        right-width="1fr"
+	        >
+		        <template #left>
+			        <TemplateTree
+				        :tree-data="treeData"
+				        :expanded-keys="expandedKeys"
+				        :selected-keys="selectedKeys"
+				        :switching-keys="switchingKeys"
+				        :loading="loading"
+				        @select="selectTreeNode"
+				        @toggle-state="toggleAlarmState"
+				        @update:expanded-keys="expandedKeys = $event"
+			        />
+		        </template>
+		        <template #right>
+			        <TemplateDetail
+				        :alarm="selectedAlarm"
+				        :channel="selectedChannel"
+				        :template="templateDetail"
+				        :breadcrumb="breadcrumb"
+				        :template-code="templateCode"
+				        :covered-alarm-names="coveredAlarmNames"
+				        :used-variables="usedVariables"
+				        :available-stats="availableStats"
+				        :referenced-policies="referencedPolicies"
+				        :loading="detailLoading"
+				        :saving="saving"
+				        :testing="testing"
+				        :variables="channelVariables"
+				        :saved-version="savedVersion"
+				        @save="handleSave"
+				        @test="sendTest"
+			        />
+		        </template>
+	        </EqualHeightColumns>
+        </ContentPanel>
       </full-page>
     </div>
   </JPageContainer>

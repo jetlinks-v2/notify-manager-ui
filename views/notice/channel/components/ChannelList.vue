@@ -49,15 +49,13 @@ const { t: $t } = useI18n()
 <style scoped lang="less">
 .channel-list {
   min-height: 0;
-    background-color: #fff;
     height: 100%;
     border-radius: var(--r-3);
     box-shadow: var(--shadow-1);
-    border: 0.0625rem solid var(--line);
 }
 
 .channel-list__head {
-  padding: var(--space-4);
+  padding-bottom: var(--space-4);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -80,10 +78,6 @@ const { t: $t } = useI18n()
     font-size: var(--fs-12);
     font-weight: 600;
   }
-}
-
-.channel-list__body {
-  padding: var(--space-2);
 }
 
 .channel-list__item {
