@@ -3,7 +3,7 @@
 <!--      <PageHeader-->
 <!--          :title="$t('NoticeCenter.channel.pageTitle')"-->
 <!--      />-->
-      <full-page style="background: transparent">
+      <full-page hasPadding>
 
 
           <EqualHeightColumns
