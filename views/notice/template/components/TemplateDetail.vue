@@ -41,6 +41,7 @@
             :editing="editing"
             :context="formContext"
             :channel="channel"
+            :recommended-variables="variables"
             :variables="availableVariables"
             :form="form"
             :template-id="template?.id"
@@ -158,7 +159,7 @@ const resetForm = () => {
   form.provider = resolved.payload.provider
   form.configId = resolved.payload.configId
   form.template = resolved.payload.template
-  form.variableDefinitions = syncVariableDefinitions(resolved.payload)
+  form.variableDefinitions = syncVariableDefinitions(resolved.payload, props.variables)
 }
 
 const writeClipboard = async (text: string) => {
@@ -249,7 +250,7 @@ const validateRequiredFields = () => {
 }
 
 const submitEdit = () => {
-  form.variableDefinitions = syncVariableDefinitions(form)
+  form.variableDefinitions = syncVariableDefinitions(form, props.variables)
   if (!validateRequiredFields()) {
     return
   }

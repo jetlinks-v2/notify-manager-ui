@@ -28,7 +28,7 @@
         </template>
       </a-form>
 
-      <div v-if="variables.length" class="template-content-section__recommend">
+      <div v-if="recommendedVariables.length" class="template-content-section__recommend">
         <div class="template-content-section__header">
           <span>{{ $t('NoticeCenter.template.editor.recommendVariables') }}</span>
           <div class="template-content-section__tip">
@@ -37,11 +37,11 @@
         </div>
         <div class="template-content-section__variables">
           <button
-            v-for="item in variables"
+            v-for="item in recommendedVariables"
             :key="item.id"
             type="button"
             class="button"
-            @click="insertVariable(item.id)"
+            @click="insertRecommendedVariable(item.id)"
           >
             <i v-if="item.expands?.recommended">★</i>{{ variableToken(item.id) }}
           </button>
@@ -161,6 +161,7 @@ const props = defineProps<{
   editing: boolean
   context: NoticeTemplateFormContext
   channel?: NoticeTemplateChannelNode
+  recommendedVariables: NoticeTemplateVariable[]
   variables: NoticeTemplateVariable[]
   form: NoticeTemplateEditorPayload
   templateId?: string
@@ -247,18 +248,17 @@ const setFieldValue = (field: NoticeTemplateFieldSchema, value: unknown) => {
   if (field.copyable || ['message', 'subject', 'body', 'ttsmessage'].includes(lastPath)) {
     activePath.value = field.path
   }
-  props.form.variableDefinitions = syncVariableDefinitions(props.form)
+  props.form.variableDefinitions = syncVariableDefinitions(props.form, props.recommendedVariables)
 }
 
-const insertVariable = (id: string) => {
+const insertVariable = (id: string, path = activePath.value) => {
   const token = variableToken(id)
-  const path = activePath.value
   const current = String(getByPath(props.form.template, path) || '')
   const textarea = textareaRefs.get(pathKey(path))?.resizableTextArea?.textArea
 
   if (!textarea) {
     applyTemplateFieldChange(props.form, { key: pathKey(path), path } as NoticeTemplateFieldSchema, `${current}${token}`)
-    props.form.variableDefinitions = syncVariableDefinitions(props.form)
+    props.form.variableDefinitions = syncVariableDefinitions(props.form, props.recommendedVariables)
     return
   }
 
@@ -269,12 +269,22 @@ const insertVariable = (id: string) => {
     { key: pathKey(path), path } as NoticeTemplateFieldSchema,
     `${current.slice(0, start)}${token}${current.slice(end)}`,
   )
-  props.form.variableDefinitions = syncVariableDefinitions(props.form)
+  props.form.variableDefinitions = syncVariableDefinitions(props.form, props.recommendedVariables)
   requestAnimationFrame(() => {
     textarea.focus()
     textarea.selectionStart = start + token.length
     textarea.selectionEnd = start + token.length
   })
+}
+
+/**
+ * 推荐变量属于模板正文，不能随邮件主题等当前焦点字段改变插入位置。
+ */
+const insertRecommendedVariable = (id: string) => {
+  const contentField = fields.value.find(field =>
+    ['message', 'ttsmessage', 'body'].includes(field.key),
+  )
+  insertVariable(id, contentField?.path || ['message'])
 }
 
 watch(
