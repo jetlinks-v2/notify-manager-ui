@@ -89,12 +89,90 @@ const preferredNotifierProviderMap: Record<string, string> = {
   webhook: 'http',
 }
 
+const alarmVariables: NoticeTemplateVariable[] = [
+  { id: 'targetType', name: '告警类型' },
+  { id: 'alarmConfigName', name: '告警名称' },
+  { id: 'targetName', name: '告警目标名称' },
+  { id: 'level', name: '告警级别' },
+  { id: 'alarmTime', name: '告警时间' },
+  { id: 'sourceType', name: '告警源类型' },
+  { id: 'sourceName', name: '告警源名称' },
+]
+
+const recommendedVariablesByProvider: Record<string, NoticeTemplateVariable[]> = {
+  'alarm-device': [
+    ...alarmVariables.filter(item => item.id !== 'targetName'),
+    { id: 'targetId', name: '设备ID' },
+    { id: 'targetName', name: '设备名称' },
+  ],
+  'alarm-product': [
+    ...alarmVariables.filter(item => item.id !== 'targetName'),
+    { id: 'targetId', name: '产品ID' },
+    { id: 'targetName', name: '产品名称' },
+  ],
+  'alarm-org': [
+    ...alarmVariables.filter(item => item.id !== 'targetName'),
+    { id: 'targetId', name: '组织ID' },
+    { id: 'targetName', name: '组织名称' },
+  ],
+  'alarm-collector': [
+    ...alarmVariables.filter(item => item.id !== 'targetName'),
+    { id: 'targetId', name: '采集器ID' },
+    { id: 'targetName', name: '采集器名称' },
+  ],
+  'alarm-other': alarmVariables,
+  scene: [
+    { id: 'sceneId', name: '场景ID' },
+    { id: 'sceneName', name: '场景名称' },
+    { id: 'triggerType', name: '触发类型' },
+  ],
+  'system-event': [
+    { id: 'level', name: '级别' },
+    { id: 'code', name: '错误码' },
+    { id: 'timestamp', name: '时间戳' },
+  ],
+  'device-transparent-codec': [
+    { id: 'level', name: '级别' },
+    { id: 'code', name: '错误码' },
+    { id: 'timestamp', name: '时间戳' },
+  ],
+}
+
 export const toListResult = <T>(response: any): T[] => {
   const result = response?.result
   if (Array.isArray(result)) return result as T[]
   if (Array.isArray(result?.data)) return result.data as T[]
   return []
 }
+
+/**
+ * 将订阅 provider 声明的 detail 字段转换为模板可直接插入的变量。
+ *
+ * 通知发送上下文将 provider 返回的字段统一放入 detail 对象，保留已有前缀以避免重复转换。
+ */
+export const normalizeDetailVariables = (variables: NoticeTemplateVariable[]): NoticeTemplateVariable[] => {
+  const mapped = new Map<string, NoticeTemplateVariable>()
+
+  variables.forEach(variable => {
+    if (!variable?.id) {
+      return
+    }
+    const id = variable.id.startsWith('detail.') ? variable.id : `detail.${variable.id}`
+    mapped.set(id, { ...variable, id })
+  })
+
+  return Array.from(mapped.values())
+}
+
+/**
+ * 返回通知类型约定的固定推荐变量，避免微服务集群的 provider 元数据未透传时推荐区域为空。
+ */
+export const getRecommendedVariables = (providerCode?: string): NoticeTemplateVariable[] =>
+  normalizeDetailVariables(recommendedVariablesByProvider[providerCode || ''] || [])
+    .map(variable => ({
+      ...variable,
+      expands: { ...variable.expands, recommended: true },
+    }))
 
 export const getDisplayName = (item?: { i18nName?: string; name?: string; id?: string }) =>
   item?.i18nName || item?.name || item?.id || ''
@@ -284,7 +362,7 @@ export const getUsedVariables = (
 ) => {
   const merged = new Map<string, NoticeTemplateVariable>()
   const ids = new Set<string>()
-  const pattern = /\$\{(\w+)\}/g
+  const pattern = /\$\{([^}]+)\}/g
   let match: RegExpExecArray | null
 
   while ((match = pattern.exec(`${getTemplateSubject(template)}\n${getTemplateMessage(template)}`))) {

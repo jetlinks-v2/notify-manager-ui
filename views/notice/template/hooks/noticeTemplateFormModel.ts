@@ -434,16 +434,28 @@ export const getVariableSourceText = (payload?: NoticeTemplateEditorPayload) => 
   ].map(asText).filter(Boolean).join('\n')
 }
 
+/**
+ * 同步模板中的变量定义；已填写的名称优先保留，推荐变量只为缺失名称提供默认值。
+ */
 export const syncVariableDefinitions = (
   payload: NoticeTemplateEditorPayload,
+  recommendedVariables: NoticeTemplateVariable[] = [],
 ): NoticeVariableDefinition[] => {
   const ids = extractVariableIds(getVariableSourceText(payload))
   const existingMap = new Map(payload.variableDefinitions.map(item => [item.id, item]))
-  return ids.map(id => existingMap.get(id) || {
-    id,
-    name: '',
-    type: 'string',
-    format: '%s',
+  const recommendedMap = new Map(recommendedVariables.map(item => [item.id, item]))
+
+  return ids.map(id => {
+    const existing = existingMap.get(id)
+    const recommended = recommendedMap.get(id)
+    return {
+      ...recommended,
+      ...existing,
+      id,
+      name: existing?.name || recommended?.name || '',
+      type: existing?.type || recommended?.type || 'string',
+      format: String(existing?.format || recommended?.expands?.format || '%s'),
+    }
   })
 }
 
