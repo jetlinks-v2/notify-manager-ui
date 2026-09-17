@@ -6,7 +6,6 @@ import {
   enableNoticeChannel_api,
   queryNoticeChannelConfig_api,
   queryNoticeChannelProviders_api,
-  queryNoticeChannelVariables_api,
   queryNoticeChannelWithTemplates_api,
   queryNotifierConfig_api,
   saveNoticeChannelWithTemplates_api,
@@ -29,6 +28,7 @@ import {
   getCoveredAlarmNames,
   getNotifierType,
   getReferencedPolicies,
+  getRecommendedVariables,
   getResponseResult,
   getStateValue,
   getTemplateCode,
@@ -243,6 +243,8 @@ export const useNoticeTemplateCenter = () => {
     if (!alarm || !channel || !alarm.detailProviderId) {
       return
     }
+    // 推荐变量只由通知类型决定；禁用状态仅禁止加载和编辑模板，不应隐藏变量契约。
+    channelVariables.value = getRecommendedVariables(alarm.providerCode)
     if (selectedAlarmDisabled.value) {
       return
     }
@@ -251,12 +253,11 @@ export const useNoticeTemplateCenter = () => {
     try {
       const providerId = alarm.detailProviderId
       const cachedDetail = !force ? providerTemplateDetails.value[providerId] : undefined
-      const [detailResponse, variableResponse] = await Promise.all([
+      const detailResponse = await (
         cachedDetail
           ? Promise.resolve({ result: cachedDetail })
-          : queryNoticeChannelWithTemplates_api(providerId),
-        queryNoticeChannelVariables_api(providerId),
-      ])
+          : queryNoticeChannelWithTemplates_api(providerId)
+      )
 
       // 选择节点时存在并发请求，落后响应不能覆盖用户后来选中的模板。
       if (requestKey !== selectedKey.value) {
@@ -267,7 +268,6 @@ export const useNoticeTemplateCenter = () => {
         providerId,
         getResponseResult<NoticeProviderTemplateInfo | undefined>(detailResponse, cachedDetail),
       )
-      channelVariables.value = getResponseResult<NoticeTemplateVariable[]>(variableResponse, [])
     } finally {
       if (requestKey === selectedKey.value) {
         detailLoading.value = false
