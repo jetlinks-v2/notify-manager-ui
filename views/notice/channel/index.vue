@@ -5,7 +5,7 @@
 <!--      />-->
       <full-page hasPadding>
 
-					<ContentPanel>
+					
 						<EqualHeightColumns
 							left-width="20rem"
 							right-width="1fr"
@@ -56,7 +56,7 @@
 								</div>
 							</template>
 						</EqualHeightColumns>
-					</ContentPanel>
+					
       </full-page>
   </JPageContainer>
 </template>
