@@ -6,7 +6,7 @@
 <!--        :description="$t('NoticeCenter.template.pageDescription')"-->
 <!--      />-->
       <full-page transparentBackground>
-        <ContentPanel>
+        
 	        <EqualHeightColumns
 		        left-width="20rem"
 		        right-width="1fr"
@@ -44,7 +44,7 @@
 			        />
 		        </template>
 	        </EqualHeightColumns>
-        </ContentPanel>
+        
       </full-page>
     </div>
   </JPageContainer>
