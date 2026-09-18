@@ -90,52 +90,59 @@ const preferredNotifierProviderMap: Record<string, string> = {
 }
 
 const alarmVariables: NoticeTemplateVariable[] = [
-  { id: 'targetType', name: '告警类型' },
-  { id: 'alarmConfigName', name: '告警名称' },
-  { id: 'targetName', name: '告警目标名称' },
-  { id: 'level', name: '告警级别' },
-  { id: 'alarmTime', name: '告警时间' },
-  { id: 'sourceType', name: '告警源类型' },
-  { id: 'sourceName', name: '告警源名称' },
+  { id: 'targetType', i18nName: 'NoticeCenter.template.variable.recommend.targetType' },
+  { id: 'alarmConfigName', i18nName: 'NoticeCenter.template.variable.recommend.alarmConfigName' },
+  { id: 'targetName', i18nName: 'NoticeCenter.template.variable.recommend.targetName' },
+  { id: 'level', i18nName: 'NoticeCenter.template.variable.recommend.level' },
+  { id: 'alarmTime', i18nName: 'NoticeCenter.template.variable.recommend.alarmTime' },
+  { id: 'sourceType', i18nName: 'NoticeCenter.template.variable.recommend.sourceType' },
+  { id: 'sourceName', i18nName: 'NoticeCenter.template.variable.recommend.sourceName' },
 ]
 
 const recommendedVariablesByProvider: Record<string, NoticeTemplateVariable[]> = {
   'alarm-device': [
     ...alarmVariables.filter(item => item.id !== 'targetName'),
-    { id: 'targetId', name: '设备ID' },
-    { id: 'targetName', name: '设备名称' },
+    { id: 'targetId', i18nName: 'NoticeCenter.template.variable.recommend.deviceId' },
+    { id: 'targetName', i18nName: 'NoticeCenter.template.variable.recommend.deviceName' },
   ],
   'alarm-product': [
     ...alarmVariables.filter(item => item.id !== 'targetName'),
-    { id: 'targetId', name: '产品ID' },
-    { id: 'targetName', name: '产品名称' },
+    { id: 'targetId', i18nName: 'NoticeCenter.template.variable.recommend.productId' },
+    { id: 'targetName', i18nName: 'NoticeCenter.template.variable.recommend.productName' },
   ],
   'alarm-org': [
     ...alarmVariables.filter(item => item.id !== 'targetName'),
-    { id: 'targetId', name: '组织ID' },
-    { id: 'targetName', name: '组织名称' },
+    { id: 'targetId', i18nName: 'NoticeCenter.template.variable.recommend.orgId' },
+    { id: 'targetName', i18nName: 'NoticeCenter.template.variable.recommend.orgName' },
   ],
   'alarm-collector': [
     ...alarmVariables.filter(item => item.id !== 'targetName'),
-    { id: 'targetId', name: '采集器ID' },
-    { id: 'targetName', name: '采集器名称' },
+    { id: 'targetId', i18nName: 'NoticeCenter.template.variable.recommend.collectorId' },
+    { id: 'targetName', i18nName: 'NoticeCenter.template.variable.recommend.collectorName' },
   ],
   'alarm-other': alarmVariables,
   scene: [
-    { id: 'sceneId', name: '场景ID' },
-    { id: 'sceneName', name: '场景名称' },
-    { id: 'triggerType', name: '触发类型' },
+    { id: 'sceneId', i18nName: 'NoticeCenter.template.variable.recommend.sceneId' },
+    { id: 'sceneName', i18nName: 'NoticeCenter.template.variable.recommend.sceneName' },
+    { id: 'triggerType', i18nName: 'NoticeCenter.template.variable.recommend.triggerType' },
   ],
   'system-event': [
-    { id: 'level', name: '级别' },
-    { id: 'code', name: '错误码' },
-    { id: 'timestamp', name: '时间戳' },
+    { id: 'level', i18nName: 'NoticeCenter.template.variable.recommend.level' },
+    { id: 'code', i18nName: 'NoticeCenter.template.variable.recommend.code' },
+    { id: 'timestamp', i18nName: 'NoticeCenter.template.variable.recommend.timestamp' },
   ],
   'device-transparent-codec': [
-    { id: 'level', name: '级别' },
-    { id: 'code', name: '错误码' },
-    { id: 'timestamp', name: '时间戳' },
+    { id: 'level', i18nName: 'NoticeCenter.template.variable.recommend.level' },
+    { id: 'code', i18nName: 'NoticeCenter.template.variable.recommend.code' },
+    { id: 'timestamp', i18nName: 'NoticeCenter.template.variable.recommend.timestamp' },
   ],
+  'alarm-flow-pool': [
+    ...alarmVariables.filter(item => !['sourceType', 'sourceName'].includes(item.id)),
+    { id: 'targetId', i18nName: 'NoticeCenter.template.variable.recommend.flowPoolId' },
+    { id: 'targetName', i18nName: 'NoticeCenter.template.variable.recommend.flowPoolName' },
+  ],
+  aiComplianceAlarm: alarmVariables.filter(item => !['sourceType', 'sourceName'].includes(item.id)),
+  aiSecurityAlarm: alarmVariables.filter(item => !['sourceType', 'sourceName'].includes(item.id)),
 }
 
 export const toListResult = <T>(response: any): T[] => {
@@ -167,12 +174,30 @@ export const normalizeDetailVariables = (variables: NoticeTemplateVariable[]): N
 /**
  * 返回通知类型约定的固定推荐变量，避免微服务集群的 provider 元数据未透传时推荐区域为空。
  */
-export const getRecommendedVariables = (providerCode?: string): NoticeTemplateVariable[] =>
+export const getRecommendedVariables = (
+  providerCode?: string,
+  resolveName: (key: string) => string = key => key,
+): NoticeTemplateVariable[] =>
   normalizeDetailVariables(recommendedVariablesByProvider[providerCode || ''] || [])
     .map(variable => ({
       ...variable,
+      name: variable.i18nName ? resolveName(variable.i18nName) : variable.name,
       expands: { ...variable.expands, recommended: true },
     }))
+
+export const mergeRecommendedVariables = (
+  fallbackVariables: NoticeTemplateVariable[],
+  providerVariables: NoticeTemplateVariable[],
+): NoticeTemplateVariable[] => {
+  const variables = new Map(fallbackVariables.map(variable => [variable.id, variable]))
+  normalizeDetailVariables(providerVariables).forEach(variable => {
+    variables.set(variable.id, {
+      ...variable,
+      expands: { ...variable.expands, recommended: true },
+    })
+  })
+  return Array.from(variables.values())
+}
 
 export const getDisplayName = (item?: { i18nName?: string; name?: string; id?: string }) =>
   item?.i18nName || item?.name || item?.id || ''

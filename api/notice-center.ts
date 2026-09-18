@@ -12,6 +12,7 @@ export interface NoticeChannelProvider {
 export interface NoticeTemplateVariable {
   id: string
   name?: string
+  i18nName?: string
   type?: string
   description?: string
   expands?: Record<string, unknown>
