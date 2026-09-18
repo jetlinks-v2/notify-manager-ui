@@ -43,7 +43,9 @@
             class="button"
             @click="insertRecommendedVariable(item.id)"
           >
-            <i v-if="item.expands?.recommended">★</i>{{ variableToken(item.id) }}
+            <i v-if="item.expands?.recommended">★</i>
+            <span>{{ item.name || variableToken(item.id) }}</span>
+            <code>{{ variableToken(item.id) }}</code>
           </button>
         </div>
       </div>

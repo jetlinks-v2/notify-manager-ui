@@ -81,6 +81,9 @@
 }
 
 .template-content-section__variables .button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   min-height: 1.9375rem;
   border: 0.0625rem solid var(--jet-theme-primary-2);
   border-radius: var(--r-1);
@@ -88,7 +91,6 @@
   color: var(--jet-theme-primary);
   padding: 0.25rem var(--space-3);
   cursor: pointer;
-  font-family: var(--font-mono);
   font-size: var(--fs-14);
   font-weight: 700;
   line-height: 1.375rem;
@@ -99,9 +101,15 @@
   }
 
   i {
-    margin-right: var(--space-1);
     color: #f59e0b;
     font-style: normal;
+  }
+
+  code {
+    color: var(--jet-theme-text-disabled);
+    font-family: var(--font-mono);
+    font-size: var(--fs-12);
+    font-weight: 400;
   }
 }
 
