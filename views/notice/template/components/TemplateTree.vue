@@ -24,6 +24,7 @@
 				v-if="filteredTreeData.length"
 				class="template-tree__tree"
 				block-node
+        showLine
 				:tree-data="filteredTreeData"
 				:expanded-keys="currentExpandedKeys"
 				:selected-keys="selectedKeys"
@@ -32,30 +33,31 @@
 			>
 				<template #title="node">
               <span class="template-tree__node" :class="`is-${node.nodeType}`">
-                <span v-if="node.nodeType === 'alarm'" class="template-tree__node-avatar">
-                  {{ getNodeInitial(node) }}
-                </span>
-                <span v-else class="template-tree__node-icon">
-                  <AIcon :type="getNodeIcon(node)" />
-                </span>
-                <span class="template-tree__node-title">{{ $t(node.title) }}</span>
-                <j-badge-status
-	                v-if="node.nodeType === 'alarm'"
-	                :status="node.enabled ? 'success' : 'warning'"
-	                :text="node.enabled ? $t('NoticeCenter.template.state.enabled') : $t('NoticeCenter.template.state.disabled')"
-                />
-                <span
-	                v-if="node.nodeType === 'alarm'"
-	                class="template-tree__node-switch"
-	                @click.stop
-                >
-                  <a-switch
-	                  size="small"
-	                  :checked="node.enabled"
-	                  :loading="switchingKeys.includes(node.key)"
-	                  @change="() => $emit('toggle-state', node)"
+                <a-space>
+                  <span v-if="node.nodeType !== 'alarm'" class="template-tree__node-icon">
+                    <AIcon :type="getNodeIcon(node)" />
+                  </span>
+                  <span class="template-tree__node-title">{{ $t(node.title) }}</span>
+                </a-space>
+                <a-space>
+                  <j-badge-status
+                    v-if="node.nodeType === 'alarm'"
+                    :status="node.enabled ? 'success' : 'warning'"
+                    :text="node.enabled ? $t('NoticeCenter.template.state.enabled') : $t('NoticeCenter.template.state.disabled')"
                   />
-                </span>
+                  <span
+                    v-if="node.nodeType === 'alarm'"
+                    class="template-tree__node-switch"
+                    @click.stop
+                  >
+                    <a-switch
+                      size="small"
+                      :checked="node.enabled"
+                      :loading="switchingKeys.includes(node.key)"
+                      @change="() => $emit('toggle-state', node)"
+                    />
+                  </span>
+                </a-space>
               </span>
 				</template>
 			</a-tree>
