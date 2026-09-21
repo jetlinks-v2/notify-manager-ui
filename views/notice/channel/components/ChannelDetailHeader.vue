@@ -57,7 +57,7 @@ const statusNames = {
 
 <style scoped lang="less">
 .channel-detail-head {
-  padding: var(--space-5);
+  padding-bottom: var(--space-4);
   display: grid;
   grid-template-columns: 3rem minmax(0, 1fr) auto;
   align-items: center;

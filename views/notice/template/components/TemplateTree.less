@@ -17,8 +17,8 @@
 
     h2 {
     margin: 0;
-    color: var(--ink-4);
-    font-size: var(--fs-12);
+    font-weight: bold;
+    font-size: var(--fs-18);
     font-weight: 700;
     letter-spacing: 0.12em;
   }
@@ -145,6 +145,20 @@
 .template-tree__node.is-alarm .template-tree__node-title {
   color: var(--ink-1);
   font-weight: 600;
+}
+
+.template-tree__node.is-disabled .template-tree__node-title,
+.template-tree__node.is-disabled .template-tree__node-icon,
+.template-tree__node.is-disabled :deep(.ant-badge-status-text) {
+  color: var(--jet-theme-text-disabled) !important;
+}
+
+.template-tree__node.is-disabled .template-tree__node-icon {
+  background: var(--bg-sunken);
+}
+
+.template-tree__node.is-disabled :deep(.ant-badge-status-dot) {
+  background: var(--jet-theme-text-disabled) !important;
 }
 
 .template-tree__count {

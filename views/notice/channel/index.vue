@@ -126,7 +126,7 @@ onMounted(reload)
 }
 
 .notice-channel-page__body {
-  padding: var(--space-4);
+  padding-top: var(--space-4);
 }
 
 @media (max-width: 64rem) {
