@@ -338,6 +338,7 @@ export const buildTreeData = (groups: NoticeTemplateGroup[]): NoticeTemplateTree
         key: channel.key,
         title: channel.channelName,
         nodeType: 'channel',
+        enabled: getStateValue(alarm.raw.state) !== 'disabled',
         count: channel.configured ? undefined : 0,
         missing: needsTemplate(channel.channelProvider) && !channel.configured,
         alarmKey: alarm.key,

@@ -24,7 +24,7 @@
 				v-if="filteredTreeData.length"
 				class="template-tree__tree"
 				block-node
-        showLine
+				:show-line="{ showLeafIcon: false }"
 				:tree-data="filteredTreeData"
 				:expanded-keys="currentExpandedKeys"
 				:selected-keys="selectedKeys"
@@ -32,7 +32,10 @@
 				@select="handleSelect"
 			>
 				<template #title="node">
-              <span class="template-tree__node" :class="`is-${node.nodeType}`">
+              <span
+                class="template-tree__node"
+                :class="[`is-${node.nodeType}`, { 'is-disabled': node.enabled === false }]"
+              >
                 <a-space>
                   <span v-if="node.nodeType !== 'alarm'" class="template-tree__node-icon">
                     <AIcon :type="getNodeIcon(node)" />

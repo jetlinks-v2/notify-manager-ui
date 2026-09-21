@@ -60,13 +60,11 @@ const { t: $t } = useI18n()
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  border-bottom: 0.0625rem solid var(--line);
 
   h2 {
     margin: 0;
-    color: var(--jet-theme-text-disabled);
-    font-size: var(--fs-12);
-    font-weight: 700;
+    font-size: var(--fs-18);
+    font-weight: 600;
     letter-spacing: 0.12em;
   }
 
@@ -82,7 +80,6 @@ const { t: $t } = useI18n()
 
 .channel-list__item {
   width: 100%;
-  min-height: 3.5rem;
   margin-bottom: var(--space-1);
   padding: var(--space-2) var(--space-3);
   display: grid;
@@ -97,7 +94,8 @@ const { t: $t } = useI18n()
 
   &:hover,
   &.is-active {
-    background: var(--jet-theme-primary-1);
+	  background: var(--accent-soft);
+	  border-radius: var(--r-2);
   }
 
     &.is-active {
@@ -110,34 +108,9 @@ const { t: $t } = useI18n()
 //}
 
 .channel-list__icon {
-  width: 2rem;
-  height: 2rem;
   display: grid;
   place-items: center;
-  border-radius: var(--jet-theme-radius);
-  background: var(--jet-theme-primary-soft);
   color: var(--jet-theme-primary);
-
-  &.is-sms {
-    background: #fef3c7;
-    color: #b45309;
-  }
-
-  &.is-email,
-  &.is-dingTalk {
-    background: #dbeafe;
-    color: #1d4ed8;
-  }
-
-  &.is-weixin {
-    background: #dcfce7;
-    color: #15803d;
-  }
-
-  &.is-inside-mail {
-    background: #f3e8ff;
-    color: #7e22ce;
-  }
 }
 
 .channel-list__copy {
