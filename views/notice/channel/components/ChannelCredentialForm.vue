@@ -4,7 +4,6 @@
       <div class="channel-credential__title">
         <span>1</span>
         {{ $t('NoticeCenter.channel.info.title') }}
-        <em>{{ $t('NoticeCenter.channel.info.hint') }}</em>
       </div>
       <div class="channel-credential__fixed">
         <span>{{ $t('NoticeCenter.channel.field.channelName') }}</span>
@@ -27,7 +26,6 @@
         <span>2</span>
         {{ $t('NoticeCenter.channel.credential.title') }}
         <i>*</i>
-        <em v-if="normalizedMetadata.length">{{ $t('NoticeCenter.channel.credential.hint') }}</em>
       </div>
       <a-form ref="formRef" :model="draft.configuration" layout="vertical">
         <a-form-item
