@@ -5,21 +5,19 @@
   height: 100%;
   display: flex;
   flex-direction: column;
+  gap: var(--space-4)
 }
 
 .template-tree__head {
-  padding-bottom: var(--space-4);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-    border-bottom: 0.0625rem solid var(--line);
 
     h2 {
     margin: 0;
-    font-weight: bold;
     font-size: var(--fs-18);
-    font-weight: 700;
+    font-weight: 600;
     letter-spacing: 0.12em;
   }
 
@@ -40,7 +38,6 @@
 }
 
 .template-tree__search {
-  margin: var(--space-4) 0;
   width: 100%;
 
   :deep(.ant-input-affix-wrapper) {
@@ -49,8 +46,8 @@
 }
 
 .template-tree__body {
-    height: calc(100% - 8rem);
     overflow: auto;
+    flex: 1;
 }
 
 .template-tree__tree {

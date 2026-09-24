@@ -2,7 +2,7 @@
   "NoticeCenter.template.pageTitle": "消息模板",
   "NoticeCenter.template.pageDescription": "按告警类型维护不同通知渠道的模板内容，确保策略命中后能发送正确消息。",
   "NoticeCenter.template.group.default": "默认分组",
-  "NoticeCenter.template.tree.title": "模板树",
+  "NoticeCenter.template.tree.title": "消息模板",
   "NoticeCenter.template.tree.subtitle": "按告警类型和渠道定位模板",
   "NoticeCenter.template.tree.searchPlaceholder": "搜索告警类型或渠道",
   "NoticeCenter.template.state.enabled": "已启用",

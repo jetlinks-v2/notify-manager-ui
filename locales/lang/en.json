@@ -2,7 +2,7 @@
   "NoticeCenter.template.pageTitle": "Message Templates",
   "NoticeCenter.template.pageDescription": "Maintain templates for each alert type and notification channel so matched policies send the right message.",
   "NoticeCenter.template.group.default": "Default Group",
-  "NoticeCenter.template.tree.title": "Template Tree",
+  "NoticeCenter.template.tree.title": "Notice Template",
   "NoticeCenter.template.tree.subtitle": "Locate templates by alert type and channel",
   "NoticeCenter.template.tree.searchPlaceholder": "Search alert type or channel",
   "NoticeCenter.template.state.enabled": "Enabled",
