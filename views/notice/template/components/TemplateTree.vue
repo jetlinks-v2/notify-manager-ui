@@ -3,9 +3,9 @@
 		<header class="template-tree__head">
 			<div>
 				<h2>{{ $t('NoticeCenter.template.tree.title') }}</h2>
-				<p>{{ $t('NoticeCenter.template.tree.subtitle') }}</p>
+<!--				<p>{{ $t('NoticeCenter.template.tree.subtitle') }}</p>-->
 			</div>
-			<span>{{ treeData.length }}</span>
+<!--			<span>{{ treeData.length }}</span>-->
 		</header>
 
 		<a-input
