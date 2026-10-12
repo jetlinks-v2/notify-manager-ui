@@ -1,12 +1,29 @@
 import { computed, type Ref } from 'vue'
 import type { NoticeTemplateVariable } from '@notify-manager-ui/api/notice-center'
 
-export type PreviewMode = 'token' | 'resolved'
+export type PreviewMode = 'name' | 'resolved'
 
 export type TemplateSegment = {
   text: string
   variable: boolean
 }
+
+const getVariableName = (
+  id: string,
+  variables: NoticeTemplateVariable[],
+  fallback: string,
+) => {
+  const variable = variables.find(item => item.id === id)
+  return variable?.name || variable?.description || fallback
+}
+
+export const replaceTemplateVariablesWithNames = (
+  text: string,
+  variables: NoticeTemplateVariable[],
+) => text.replace(
+  /\$\{([^}]+)\}/g,
+  (placeholder, id: string) => getVariableName(id, variables, placeholder),
+)
 
 const mockVariableValues: Record<string, string> = {
   location: '陆家嘴 IFC 店',
@@ -25,8 +42,10 @@ export const useTemplatePreviewSegments = (
   previewMessage: Ref<string>,
   previewMode: Ref<PreviewMode>,
 ) => {
+  const getVariable = (id: string) => variables().find(item => item.id === id)
+
   const getVariablePreview = (id: string) => {
-    const variable = variables().find(item => item.id === id)
+    const variable = getVariable(id)
     if (typeof variable?.expands?.mockValue === 'string') {
       return variable.expands.mockValue
     }
@@ -45,7 +64,9 @@ export const useTemplatePreviewSegments = (
         segments.push({ text: source.slice(lastIndex, match.index), variable: false })
       }
       segments.push({
-        text: mode === 'resolved' ? getVariablePreview(match[1]) : match[0],
+        text: mode === 'resolved'
+          ? getVariablePreview(match[1])
+          : getVariableName(match[1], variables(), match[0]),
         variable: true,
       })
       lastIndex = pattern.lastIndex

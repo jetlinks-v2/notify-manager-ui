@@ -6,7 +6,13 @@
       class="template-echo-grid__item"
     >
       <span>{{ $t(field.labelKey) }}</span>
-      <b>{{ formatFieldValue(field) }}</b>
+      <j-ellipsis
+        :line-clamp="3"
+        :tooltip="{ placement: 'topLeft' }"
+        class="template-echo-grid__value"
+      >
+        {{ formatFieldValue(field) }}
+      </j-ellipsis>
     </div>
   </div>
 </template>
@@ -19,11 +25,14 @@ import type {
   NoticeTemplateEditorPayload,
   NoticeTemplateFieldSchema,
 } from '../hooks/noticeTemplateFormModel'
+import type { NoticeTemplateVariable } from '@notify-manager-ui/api/notice-center'
 import { getByPath } from '../hooks/noticeTemplateFormModel'
+import { replaceTemplateVariablesWithNames } from '../hooks/useTemplatePreviewSegments'
 
 const props = defineProps<{
   fields: NoticeTemplateFieldSchema[]
   form: NoticeTemplateEditorPayload
+  variables: NoticeTemplateVariable[]
 }>()
 
 const { t: $t } = useI18n()
@@ -64,7 +73,8 @@ const formatFieldValue = (field: NoticeTemplateFieldSchema) => {
   if (value === undefined || value === null || value === '') {
     return $t('NoticeCenter.template.empty.noContent')
   }
-  return String(value)
+  // 只读字段展示变量名称，不改动表单内保存的占位符。
+  return replaceTemplateVariablesWithNames(String(value), props.variables)
 }
 </script>
 
@@ -91,14 +101,13 @@ const formatFieldValue = (field: NoticeTemplateFieldSchema) => {
     font-size: var(--fs-12);
     line-height: 1.25rem;
   }
+}
 
-  b {
-    min-width: 0;
-    color: var(--ink-1);
-    font-size: var(--fs-14);
-    font-weight: 600;
-    line-height: 1.5rem;
-    overflow-wrap: anywhere;
-  }
+.template-echo-grid__value {
+  min-width: 0;
+  color: var(--ink-1);
+  font-size: var(--fs-14);
+  font-weight: 600;
+  line-height: 1.5rem;
 }
 </style>
