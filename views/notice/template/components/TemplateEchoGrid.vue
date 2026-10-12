@@ -20,6 +20,7 @@ import type {
   NoticeTemplateFieldSchema,
 } from '../hooks/noticeTemplateFormModel'
 import { getByPath } from '../hooks/noticeTemplateFormModel'
+import { findOptionByValue } from '../hooks/noticeTemplateRemoteOptions'
 
 const props = defineProps<{
   fields: NoticeTemplateFieldSchema[]
@@ -41,7 +42,7 @@ const visibleFields = computed(() =>
 )
 
 const formatOptionValue = (field: NoticeTemplateFieldSchema, value: unknown) => {
-  const option = field.options?.find(item => String(item.value) === String(value))
+  const option = findOptionByValue(field.options, value)
   return option?.labelKey ? $t(option.labelKey) : option?.label || String(value ?? '')
 }
 
