@@ -88,7 +88,7 @@
         </div>
       </div>
 
-      <TemplateEchoGrid :fields="readFields" :form="form" />
+      <TemplateEchoGrid :fields="readFields" :form="form" :variables="variables" />
 
       <div class="template-content-section__render">
         <strong v-if="previewTitle">
@@ -179,7 +179,7 @@ const emit = defineEmits<{
 
 const { t: $t } = useI18n()
 const { getFieldRules } = useTemplateFieldRules($t)
-const previewMode = ref<PreviewMode>('token')
+const previewMode = ref<PreviewMode>('name')
 const activePath = ref<string[]>(['message'])
 const testParamsOpen = ref(false)
 const recordOpen = ref(false)
