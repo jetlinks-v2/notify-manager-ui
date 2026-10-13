@@ -27,6 +27,7 @@ import type {
 } from '../hooks/noticeTemplateFormModel'
 import type { NoticeTemplateVariable } from '@notify-manager-ui/api/notice-center'
 import { getByPath } from '../hooks/noticeTemplateFormModel'
+import { findOptionByValue } from '../hooks/noticeTemplateRemoteOptions'
 import { replaceTemplateVariablesWithNames } from '../hooks/useTemplatePreviewSegments'
 
 const props = defineProps<{
@@ -50,7 +51,7 @@ const visibleFields = computed(() =>
 )
 
 const formatOptionValue = (field: NoticeTemplateFieldSchema, value: unknown) => {
-  const option = field.options?.find(item => String(item.value) === String(value))
+  const option = findOptionByValue(field.options, value)
   return option?.labelKey ? $t(option.labelKey) : option?.label || String(value ?? '')
 }
 

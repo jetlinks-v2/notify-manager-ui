@@ -31,6 +31,27 @@ export const compactOptions = (options: NoticeTemplateFieldOption[]) => {
   return Array.from(map.values())
 }
 
+// Tree-select values may be nested under any department depth; resolve the real option before adding a fallback.
+export const findOptionByValue = (
+  options: NoticeTemplateFieldOption[] | undefined,
+  value: unknown,
+): NoticeTemplateFieldOption | undefined => {
+  if (!options || value === undefined || value === null || value === '') {
+    return undefined
+  }
+
+  for (const option of options) {
+    if (String(option.value) === String(value)) {
+      return option
+    }
+    const nested = findOptionByValue(option.children, value)
+    if (nested) {
+      return nested
+    }
+  }
+  return undefined
+}
+
 export const ensureOption = (
   options: NoticeTemplateFieldOption[],
   value: unknown,
@@ -39,7 +60,7 @@ export const ensureOption = (
   if (value === undefined || value === null || value === '') {
     return options
   }
-  if (options.some(option => option.value === value)) {
+  if (findOptionByValue(options, value)) {
     return options
   }
   return [{ value, label: label || String(value) }, ...options]
