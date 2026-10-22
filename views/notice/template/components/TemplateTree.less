@@ -50,6 +50,21 @@
     flex: 1;
 }
 
+.template-tree__body:has(.template-tree__empty) {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+
+  :deep(.ant-spin-nested-loading),
+  :deep(.ant-spin-container) {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    justify-content: safe center;
+  }
+}
+
 .template-tree__tree {
   flex: 1;
   min-height: 0;
