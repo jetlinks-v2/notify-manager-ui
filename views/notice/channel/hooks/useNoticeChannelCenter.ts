@@ -1,4 +1,4 @@
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onScopeDispose, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { onlyMessage } from '@jetlinks-web/utils'
@@ -7,7 +7,7 @@ import {
   queryNoticeChannelConfig_api,
   queryNoticeChannelProviders_api,
   queryNoticeChannelWithTemplates_api,
-  queryNotifierConfig_api,
+  queryNotifierConfigNoPaging_api,
   queryNotifierConfigMetadata_api,
   queryNotifierTypeProviders_api,
   sendNotifierInlineTest_api,
@@ -43,10 +43,8 @@ import {
 } from './noticeChannelModel'
 import type { NotifierDraft, NoticeChannelItem } from './noticeChannelModel'
 
-const configQuery = (type: string) => ({
-  pageIndex: 0,
-  pageSize: 50,
-  terms: [{ column: 'type', termType: 'eq', value: type }],
+const configQuery = (types: string[]) => ({
+  terms: [{ column: 'type', termType: 'in', value: types }],
   sorts: [{ name: 'createTime', order: 'desc' }],
 })
 
@@ -55,6 +53,7 @@ const excludedServiceProviders = new Set(['officialMessage'])
 const filterSupportedServiceProviders = <T extends { provider?: string; id?: string }>(list: T[]) =>
   list.filter(item => !excludedServiceProviders.has(item.provider || item.id || ''))
 
+/** 渠道页持有当前权限的配置快照；详情请求按当前选择应用，缓存不跨页面共享。 */
 export const useNoticeChannelCenter = () => {
   const route = useRoute()
   const router = useRouter()
@@ -74,6 +73,9 @@ export const useNoticeChannelCenter = () => {
   const selectedProvider = ref('')
   const metadata = ref<NotifierConfigMetadata>()
   const draft = reactive<NotifierDraft>({ name: '', provider: '', configuration: {} })
+  let reloadVersion = 0
+  let detailVersion = 0
+  const metadataRequests = new Map<string, Promise<NotifierConfigMetadata | undefined>>()
 
   const selectedProviderInfo = computed(() =>
     providers.value.find(item => item.id === selectedProviderId.value),
@@ -180,20 +182,25 @@ export const useNoticeChannelCenter = () => {
     if (selectedProviderId.value) syncRoute(selectedProviderId.value)
   }
 
-  const loadConfigs = async (type: string, options: { force?: boolean } = {}) => {
-    if (!type || type === 'inside-mail') return []
-    if (!options.force && Object.prototype.hasOwnProperty.call(configMap.value, type)) {
-      return configMap.value[type]
-    }
-    const response = await queryNotifierConfig_api(configQuery(type))
+  // 首屏一次查询所有类型，保存后只替换受影响类型；空结果同样覆盖旧快照。
+  const loadConfigs = async (types: string[], replace = false) => {
+    const version = reloadVersion
+    const grouped: Record<string, NotifierConfig[]> = Object.fromEntries(types.map(type => [type, []]))
+    const response = types.length ? await queryNotifierConfigNoPaging_api(configQuery(types)) : undefined
+    if (version !== reloadVersion) return
     const list = filterSupportedServiceProviders(toListResult<NotifierConfig>(response))
-    configMap.value = { ...configMap.value, [type]: list }
-    return list
+    list.forEach(item => {
+      if (item.type && grouped[item.type]) grouped[item.type].push(item)
+    })
+    configMap.value = replace ? grouped : { ...configMap.value, ...grouped }
   }
 
   const loadServiceProviders = async (type: string) => {
     if (!type || type === 'inside-mail') return
+    if (Object.prototype.hasOwnProperty.call(serviceProviders.value, type)) return
+    const version = reloadVersion
     const response = await queryNotifierTypeProviders_api(type)
+    if (version !== reloadVersion) return
     const list = filterSupportedServiceProviders(getResponseResult<NotifierProviderInfo[]>(response, []))
     serviceProviders.value = { ...serviceProviders.value, [type]: list }
   }
@@ -201,65 +208,104 @@ export const useNoticeChannelCenter = () => {
   const loadTemplateDetail = async () => {
     const topicId = selectedBound.value?.topic.id
     if (!topicId || templateDetails.value[topicId]) return
+    const version = reloadVersion
     const response = await queryNoticeChannelWithTemplates_api(topicId)
+    if (version !== reloadVersion) return
     templateDetails.value = {
       ...templateDetails.value,
       [topicId]: getResponseResult<NoticeProviderTemplateInfo>(response, { channels: [] }),
     }
   }
 
+  // 显式刷新重新读取当前权限，不能沿用上一身份或范围的配置及详情快照。
   const reload = async () => {
+    const version = ++reloadVersion
+    ++detailVersion
     loading.value = true
+    detailLoading.value = true
+    configMap.value = {}
+    topics.value = []
+    serviceProviders.value = {}
+    templateDetails.value = {}
+    metadataRequests.clear()
+    metadata.value = undefined
+    selectedProvider.value = ''
+    Object.assign(draft, { id: undefined, name: '', description: '', provider: '', configuration: {} })
     try {
       const [providerResponse, topicResponse] = await Promise.all([
         queryNoticeChannelProviders_api(),
         queryNoticeChannelConfig_api(),
       ])
+      if (version !== reloadVersion) return
       providers.value = normalizeProviders(getResponseResult<NoticeChannelProvider[]>(providerResponse, [])).filter(item => item.id !== 'inside-mail')
       topics.value = getResponseResult<NoticeChannelConfig[]>(topicResponse, [])
-      await Promise.all(
-        Array.from(new Set(providers.value.map(item => getNotifierType(item.id))))
-          .map(type => loadConfigs(type)),
-      )
+      const types = Array.from(new Set(providers.value.map(item => getNotifierType(item.id))))
+      await loadConfigs(types, true)
+      if (version !== reloadVersion) return
+      const previousProvider = selectedProviderId.value
       selectInitialProvider()
+      if (previousProvider === selectedProviderId.value) await reloadDetail()
+    } catch (error) {
+      if (version === reloadVersion) detailLoading.value = false
+      throw error
     } finally {
-      loading.value = false
+      if (version === reloadVersion) {
+        loading.value = false
+        if (!selectedProviderId.value) detailLoading.value = false
+      }
     }
   }
 
-  const reloadDetail = async () => {
+  // 渠道选择与服务商选择共用此入口；版本号覆盖 A→B→A 和元数据返回阶段的竞态。
+  const reloadDetail = async (provider?: string) => {
+    const version = ++detailVersion
     const requestKey = selectedProviderId.value
     if (!requestKey) return
+    const type = selectedType.value
     detailLoading.value = true
+    selectedProvider.value = provider || ''
+    metadata.value = undefined
+    Object.assign(draft, { id: undefined, name: '', description: '', provider: provider || '', configuration: {} })
     try {
       await Promise.all([
-        loadServiceProviders(selectedType.value),
+        loadServiceProviders(type),
         loadTemplateDetail(),
       ])
-      if (requestKey !== selectedProviderId.value) return
-      const providerList = serviceProviders.value[selectedType.value] || []
-      selectedProvider.value = selectedConfig.value?.provider
+      if (version !== detailVersion) return
+      const providerList = serviceProviders.value[type] || []
+      selectedProvider.value = provider || selectedConfig.value?.provider
         || providerList[0]?.id
-        || getFallbackProvider(selectedType.value)
-      await loadMetadata()
+        || getFallbackProvider(type)
+      const result = isExternalChannel(requestKey) && selectedProvider.value
+        ? await loadMetadata(type, selectedProvider.value) : undefined
+      if (version !== detailVersion) return
+      metadata.value = result
       Object.assign(draft, createDraft(selectedChannel.value, selectedProvider.value))
+      tested.value = false
     } finally {
-      if (requestKey === selectedProviderId.value) detailLoading.value = false
+      if (version === detailVersion) detailLoading.value = false
     }
   }
 
-  const loadMetadata = async () => {
-    if (!isExternalChannel(selectedProviderId.value) || !selectedProvider.value) {
-      metadata.value = undefined
-      return
-    }
-    const response = await queryNotifierConfigMetadata_api(selectedType.value, selectedProvider.value)
-    metadata.value = getResponseResult<NotifierConfigMetadata | undefined>(response, undefined)
+  // 只合并同一 type/provider 进行中的请求；失败后可重试，不持有跨页面的凭证数据。
+  const loadMetadata = (type: string, provider: string) => {
+    const key = JSON.stringify([type, provider])
+    const pending = metadataRequests.get(key)
+    if (pending) return pending
+    const request = queryNotifierConfigMetadata_api(type, provider)
+      .then(response => getResponseResult<NotifierConfigMetadata | undefined>(response, undefined))
+      .finally(() => {
+        if (metadataRequests.get(key) === request) metadataRequests.delete(key)
+      })
+    metadataRequests.set(key, request)
+    return request
   }
 
   const saveCredential = async () => {
     const channel = selectedChannel.value
     if (!channel || isInsideMail(channel.id)) return
+    const version = reloadVersion
+    const detail = detailVersion
     saving.value = true
     try {
       const payload = buildConfigPayload(channel, draft)
@@ -267,10 +313,13 @@ export const useNoticeChannelCenter = () => {
         ? await updateNotifierConfig_api(payload)
         : await saveNotifierConfig_api(payload)
       const saved = getResponseResult<NotifierConfig>(response, payload)
+      if (version !== reloadVersion) return
       onlyMessage($t('NoticeCenter.channel.message.saveSuccess', [saved.name || channel.name]), 'success')
-      await loadConfigs(channel.type, { force: true })
-      Object.assign(draft, createDraft(selectedChannel.value, selectedProvider.value))
-      tested.value = false
+      await loadConfigs([channel.type])
+      if (version === reloadVersion && detail === detailVersion) {
+        Object.assign(draft, createDraft(selectedChannel.value, selectedProvider.value))
+        tested.value = false
+      }
     } finally {
       saving.value = false
     }
@@ -312,21 +361,21 @@ export const useNoticeChannelCenter = () => {
     }
   }
 
-  watch(selectedProviderId, reloadDetail)
-  watch(selectedProvider, async value => {
-    await loadMetadata()
-    if (!value || draft.provider !== value) return
-    Object.assign(draft, createDraft(selectedChannel.value, value))
-    tested.value = false
-  })
+  watch(selectedProviderId, () => reloadDetail())
   watch(() => draft.provider, value => {
     if (value && value !== selectedProvider.value) {
-      selectedProvider.value = value
+      return reloadDetail(value)
     }
   })
   watch(() => route.query.channelProvider, value => {
     const providerId = String(value || '')
     if (providerId && providerId !== selectedProviderId.value) selectProvider(providerId)
+  })
+
+  onScopeDispose(() => {
+    ++reloadVersion
+    ++detailVersion
+    metadataRequests.clear()
   })
 
   return {

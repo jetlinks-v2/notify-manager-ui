@@ -1,4 +1,5 @@
 import { request } from '@jetlinks-web/core'
+import type { AxiosResponseRewrite } from '@jetlinks-web/types'
 
 export type NoticeCenterState = string | { value?: string; text?: string }
 
@@ -186,6 +187,10 @@ export const saveNoticeChannelWithTemplates_api = (
 
 export const queryNotifierConfig_api = (data: Record<string, unknown>): Promise<any> =>
   request.post('/notifier/config/_query', data)
+
+/** 批量读取当前权限范围的配置，避免逐类型查询及固定分页截断。 */
+export const queryNotifierConfigNoPaging_api = (data: Record<string, unknown>): Promise<AxiosResponseRewrite<NotifierConfig[]>> =>
+  request.post('/notifier/config/_query/no-paging', data)
 
 export const queryNotifierConfigDetail_api = (id: string): Promise<any> =>
   request.get(`/notifier/config/${encodeURIComponent(id)}`)
