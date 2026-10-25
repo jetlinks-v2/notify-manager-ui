@@ -23,7 +23,7 @@
 <!--        <AIcon type="SendOutlined" />-->
 <!--        {{ $t('NoticeCenter.channel.action.testShort') }}-->
 <!--      </a-button>-->
-      <a-button type="primary" :loading="saving" @click="$emit('save')">
+      <a-button type="primary" :loading="saving" :disabled="!canSave" @click="$emit('save')">
         <AIcon type="SaveOutlined" />
         {{ $t('NoticeCenter.channel.action.save') }}
       </a-button>
@@ -39,6 +39,7 @@ defineProps<{
   channel: NoticeChannelItem
   saving: boolean
   testing: boolean
+  canSave: boolean
 }>()
 
 defineEmits<{

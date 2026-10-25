@@ -4,9 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { onlyMessage } from '@jetlinks-web/utils'
 import { useUserStore } from '@jetlinks-web-core/store/user'
 import {
-  queryNoticeChannelConfig_api,
   queryNoticeChannelProviders_api,
-  queryNoticeChannelWithTemplates_api,
   queryNotifierConfigNoPaging_api,
   queryNotifierConfigMetadata_api,
   queryNotifierTypeProviders_api,
@@ -15,9 +13,7 @@ import {
   updateNotifierConfig_api,
 } from '@notify-manager-ui/api/notice-center'
 import type {
-  NoticeChannelConfig,
   NoticeChannelProvider,
-  NoticeProviderTemplateInfo,
   NotifierConfig,
   NotifierConfigMetadata,
   NotifierProviderInfo,
@@ -26,8 +22,6 @@ import {
   buildInlineTestPayload,
   buildConfigPayload,
   createDraft,
-  findBoundChannel,
-  findTemplateInfo,
   getChannelIcon,
   getDisplayName,
   getFallbackProvider,
@@ -65,12 +59,13 @@ export const useNoticeChannelCenter = () => {
   const testing = ref(false)
   const tested = ref(false)
   const providers = ref<NoticeChannelProvider[]>([])
-  const topics = ref<NoticeChannelConfig[]>([])
   const configMap = ref<Record<string, NotifierConfig[]>>({})
   const serviceProviders = ref<Record<string, NotifierProviderInfo[]>>({})
-  const templateDetails = ref<Record<string, NoticeProviderTemplateInfo>>({})
   const selectedProviderId = ref('')
   const selectedProvider = ref('')
+  // undefined 要求显式选择，空串表示用户选择新建，其他值始终指向同一配置。
+  const selectedConfigId = ref<string>()
+  let selectionType = ''
   const metadata = ref<NotifierConfigMetadata>()
   const draft = reactive<NotifierDraft>({ name: '', provider: '', configuration: {} })
   let reloadVersion = 0
@@ -82,33 +77,16 @@ export const useNoticeChannelCenter = () => {
   )
 
   const selectedType = computed(() => getNotifierType(selectedProviderId.value))
-  const selectedBound = computed(() => findBoundChannel(topics.value, selectedProviderId.value))
-  const selectedTemplateInfo = computed(() =>
-    findTemplateInfo(
-      templateDetails.value[selectedBound.value?.topic.id || ''],
-      selectedProviderId.value,
-    ),
-  )
-
   const currentConfigs = computed(() => configMap.value[selectedType.value] || [])
-  const selectedConfig = computed(() => {
-    const id = selectedTemplateInfo.value?.template?.configId
-      || selectedBound.value?.channel.channelConfiguration?.notifierId
-    const configs = filterSupportedServiceProviders(currentConfigs.value)
-    const boundConfig = configs.find(item => item.id === id)
-    if (selectedProvider.value) {
-      return configs.find(item => item.provider === selectedProvider.value)
-        || (boundConfig?.provider === selectedProvider.value ? boundConfig : undefined)
-    }
-    return boundConfig || configs[0]
-  })
+  const selectedConfig = computed(() => currentConfigs.value.find(item => item.id === selectedConfigId.value))
+  const selectionReady = computed(() => selectedConfigId.value === '' || !!selectedConfig.value)
+  const canSave = computed(() => selectionReady.value && !loading.value && !detailLoading.value)
 
   const selectedChannel = computed<NoticeChannelItem | undefined>(() => {
     const provider = selectedProviderInfo.value
     if (!provider) return undefined
     const type = getNotifierType(provider.id)
     const config = isInsideMail(provider.id) ? undefined : selectedConfig.value
-    const template = selectedTemplateInfo.value?.template || null
     const providerOptions = serviceProviders.value[type] || []
     const status = isInsideMail(provider.id)
       ? 'builtin'
@@ -125,9 +103,6 @@ export const useNoticeChannelCenter = () => {
         type,
       )),
       config,
-      template,
-      topic: selectedBound.value?.topic,
-      channel: selectedBound.value?.channel,
       metadata: resolveCredentialProperties(
         type,
         selectedProvider.value,
@@ -205,18 +180,6 @@ export const useNoticeChannelCenter = () => {
     serviceProviders.value = { ...serviceProviders.value, [type]: list }
   }
 
-  const loadTemplateDetail = async () => {
-    const topicId = selectedBound.value?.topic.id
-    if (!topicId || templateDetails.value[topicId]) return
-    const version = reloadVersion
-    const response = await queryNoticeChannelWithTemplates_api(topicId)
-    if (version !== reloadVersion) return
-    templateDetails.value = {
-      ...templateDetails.value,
-      [topicId]: getResponseResult<NoticeProviderTemplateInfo>(response, { channels: [] }),
-    }
-  }
-
   // 显式刷新重新读取当前权限，不能沿用上一身份或范围的配置及详情快照。
   const reload = async () => {
     const version = ++reloadVersion
@@ -224,21 +187,15 @@ export const useNoticeChannelCenter = () => {
     loading.value = true
     detailLoading.value = true
     configMap.value = {}
-    topics.value = []
     serviceProviders.value = {}
-    templateDetails.value = {}
     metadataRequests.clear()
     metadata.value = undefined
     selectedProvider.value = ''
     Object.assign(draft, { id: undefined, name: '', description: '', provider: '', configuration: {} })
     try {
-      const [providerResponse, topicResponse] = await Promise.all([
-        queryNoticeChannelProviders_api(),
-        queryNoticeChannelConfig_api(),
-      ])
+      const providerResponse = await queryNoticeChannelProviders_api()
       if (version !== reloadVersion) return
       providers.value = normalizeProviders(getResponseResult<NoticeChannelProvider[]>(providerResponse, [])).filter(item => item.id !== 'inside-mail')
-      topics.value = getResponseResult<NoticeChannelConfig[]>(topicResponse, [])
       const types = Array.from(new Set(providers.value.map(item => getNotifierType(item.id))))
       await loadConfigs(types, true)
       if (version !== reloadVersion) return
@@ -262,15 +219,22 @@ export const useNoticeChannelCenter = () => {
     const requestKey = selectedProviderId.value
     if (!requestKey) return
     const type = selectedType.value
+    if (selectionType !== type) {
+      selectionType = type
+      selectedConfigId.value = undefined
+    }
+    if (provider) selectedConfigId.value = undefined
+    if (selectedConfigId.value === undefined) {
+      const candidates = currentConfigs.value.filter(item => !provider || item.provider === provider)
+      selectedConfigId.value = candidates.length === 1 ? candidates[0].id
+        : candidates.length === 0 ? '' : undefined
+    }
     detailLoading.value = true
     selectedProvider.value = provider || ''
     metadata.value = undefined
     Object.assign(draft, { id: undefined, name: '', description: '', provider: provider || '', configuration: {} })
     try {
-      await Promise.all([
-        loadServiceProviders(type),
-        loadTemplateDetail(),
-      ])
+      await loadServiceProviders(type)
       if (version !== detailVersion) return
       const providerList = serviceProviders.value[type] || []
       selectedProvider.value = provider || selectedConfig.value?.provider
@@ -285,6 +249,12 @@ export const useNoticeChannelCenter = () => {
     } finally {
       if (version === detailVersion) detailLoading.value = false
     }
+  }
+
+  const selectConfig = async (id: string) => {
+    if (id && !currentConfigs.value.some(item => item.id === id)) return
+    selectedConfigId.value = id
+    await reloadDetail()
   }
 
   // 只合并同一 type/provider 进行中的请求；失败后可重试，不持有跨页面的凭证数据。
@@ -303,7 +273,7 @@ export const useNoticeChannelCenter = () => {
 
   const saveCredential = async () => {
     const channel = selectedChannel.value
-    if (!channel || isInsideMail(channel.id)) return
+    if (!channel || isInsideMail(channel.id) || !canSave.value || saving.value) return
     const version = reloadVersion
     const detail = detailVersion
     saving.value = true
@@ -317,6 +287,7 @@ export const useNoticeChannelCenter = () => {
       onlyMessage($t('NoticeCenter.channel.message.saveSuccess', [saved.name || channel.name]), 'success')
       await loadConfigs([channel.type])
       if (version === reloadVersion && detail === detailVersion) {
+        selectedConfigId.value = saved.id
         Object.assign(draft, createDraft(selectedChannel.value, selectedProvider.value))
         tested.value = false
       }
@@ -328,7 +299,8 @@ export const useNoticeChannelCenter = () => {
   const sendTest = async (params?: Record<string, unknown>) => {
     const channel = selectedChannel.value
     const configId = channel?.config?.id
-    if (!channel || !configId) return
+    if (!channel || !configId || !canSave.value || testing.value) return
+    const version = detailVersion
     const currentUser = userStore.userInfo as { email?: string; telephone?: string }
     const receiver = {
       email: currentUser.email,
@@ -355,7 +327,7 @@ export const useNoticeChannelCenter = () => {
         ),
       )
       onlyMessage($t('NoticeCenter.channel.message.testSuccess'), 'success')
-      tested.value = true
+      if (version === detailVersion) tested.value = true
     } finally {
       testing.value = false
     }
@@ -387,6 +359,10 @@ export const useNoticeChannelCenter = () => {
     channelList,
     selectedProviderId,
     selectedChannel,
+    currentConfigs,
+    selectedConfigId,
+    selectConfig,
+    canSave,
     draft,
     reload,
     selectProvider,

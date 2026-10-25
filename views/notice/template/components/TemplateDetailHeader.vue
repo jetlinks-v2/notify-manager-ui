@@ -35,7 +35,7 @@
         <a-button :disabled="saving" @click="$emit('cancel')">
           {{ $t('NoticeCenter.template.action.cancel') }}
         </a-button>
-        <a-button type="primary" :loading="saving" @click="$emit('save')">
+        <a-button type="primary" :loading="saving" :disabled="disabled" @click="$emit('save')">
           <AIcon type="CheckOutlined" />
           {{ $t('NoticeCenter.template.action.save') }}
         </a-button>
@@ -45,7 +45,7 @@
 <!--          <AIcon type="CopyOutlined" />-->
 <!--          {{ $t('NoticeCenter.template.action.copyRaw') }}-->
 <!--        </a-button>-->
-        <a-button type="primary" @click="$emit('primary')">
+        <a-button type="primary" :disabled="disabled" @click="$emit('primary')">
           <AIcon :type="channel.hasNotifierConfig ? 'EditOutlined' : 'SettingOutlined'" />
           {{ primaryActionText }}
         </a-button>
@@ -69,6 +69,7 @@ const props = defineProps<{
   templateCode: string
   editing: boolean
   saving: boolean
+  disabled: boolean
   primaryActionText: string
 }>()
 

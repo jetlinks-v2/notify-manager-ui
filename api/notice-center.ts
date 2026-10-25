@@ -179,6 +179,13 @@ export const queryNoticeChannelVariables_api = (providerId: string): Promise<any
 export const queryNoticeChannelWithTemplates_api = (providerId: string): Promise<any> =>
   request.get(`/notify/channel/${providerId}/_query-with-templates`)
 
+/** 单通道边界，不读取或重写同主题下其他通道及 Provider 全局设置。 */
+export const queryNoticeChannelTemplate_api = (providerId: string, channelProvider: string): Promise<AxiosResponseRewrite<NoticeChannelTemplateItem | undefined>> =>
+  request.get(`/notify/channel/${encodeURIComponent(providerId)}/${encodeURIComponent(channelProvider)}/_query-with-template`)
+
+export const saveNoticeChannelTemplate_api = (providerId: string, channelProvider: string, data: NoticeChannelTemplateItem): Promise<AxiosResponseRewrite<NoticeChannelTemplateItem>> =>
+  request.put(`/notify/channel/${encodeURIComponent(providerId)}/${encodeURIComponent(channelProvider)}/_save-with-template`, data)
+
 export const saveNoticeChannelWithTemplates_api = (
   providerId: string,
   data: NoticeProviderTemplateInfo,

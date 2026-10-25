@@ -1,4 +1,6 @@
 {
+  "NoticeCenter.channel.config.select": "请选择通知配置",
+  "NoticeCenter.channel.config.create": "新建通知配置",
   "NoticeCenter.template.pageTitle": "消息模板",
   "NoticeCenter.template.pageDescription": "按告警类型维护不同通知渠道的模板内容，确保策略命中后能发送正确消息。",
   "NoticeCenter.template.group.default": "默认分组",

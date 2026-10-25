@@ -32,10 +32,23 @@
 												:channel="selectedChannel"
 												:saving="saving"
 												:testing="testing"
+												:can-save="canSave"
 												@save="handleSave"
 												@test="sendTest"
 											/>
 											<main class="notice-channel-page__body">
+                        <a-select
+                          :value="selectedConfigId"
+                          :placeholder="$t('NoticeCenter.channel.config.select')"
+                          style="width: 100%; margin-bottom: var(--space-4)"
+                          :disabled="loading"
+                          @change="handleConfigChange"
+                        >
+                          <a-select-option v-for="config in currentConfigs" :key="config.id" :value="config.id">
+                            {{ config.name || config.id }}
+                          </a-select-option>
+                          <a-select-option value="">{{ $t('NoticeCenter.channel.config.create') }}</a-select-option>
+                        </a-select>
 												<ChannelCredentialForm
 													ref="credentialFormRef"
 													:channel="selectedChannel"
@@ -79,6 +92,10 @@ const {
   channelList,
   selectedProviderId,
   selectedChannel,
+  currentConfigs,
+  selectedConfigId,
+  selectConfig,
+  canSave,
   draft,
   reload,
   selectProvider,
@@ -87,6 +104,10 @@ const {
 } = useNoticeChannelCenter()
 
 const credentialFormRef = ref()
+
+const handleConfigChange = async (value: unknown) => {
+  if (typeof value === 'string') await selectConfig(value)
+}
 
 const handleSave = async () => {
   await credentialFormRef.value?.validate?.()

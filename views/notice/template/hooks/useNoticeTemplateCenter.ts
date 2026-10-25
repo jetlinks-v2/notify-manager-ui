@@ -1,4 +1,4 @@
-import { computed, ref, watch } from 'vue'
+import { computed, onScopeDispose, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { onlyMessage } from '@jetlinks-web/utils'
 import {
@@ -7,13 +7,14 @@ import {
   queryNoticeChannelConfig_api,
   queryNoticeChannelProviders_api,
   queryNoticeChannelVariables_api,
-  queryNoticeChannelWithTemplates_api,
-  queryNotifierConfig_api,
-  saveNoticeChannelWithTemplates_api,
+  queryNoticeChannelTemplate_api,
+  queryNotifierConfigNoPaging_api,
+  saveNoticeChannelTemplate_api,
 } from '@notify-manager-ui/api/notice-center'
 import type {
   NoticeChannelConfig,
   NoticeChannelProvider,
+  NoticeChannelTemplateItem,
   NoticeProviderTemplateInfo,
   NoticeTemplateEntity,
   NoticeTemplateVariable,
@@ -21,7 +22,6 @@ import type {
 } from '@notify-manager-ui/api/notice-center'
 import {
   buildTreeData,
-  configQuery,
   findFirstChannel,
   findTreeNode,
   getAvailableStats,
@@ -71,6 +71,10 @@ export const useNoticeTemplateCenter = () => {
   const templateDetail = ref<NoticeTemplateEntity>()
   const channelVariables = ref<NoticeTemplateVariable[]>([])
   const expandedKeys = ref<string[]>([])
+  let detailVersion = 0
+  let reloadVersion = 0
+  const detailReady = ref(false)
+  const detailKey = (providerId: string, channelProvider: string) => JSON.stringify([providerId, channelProvider])
 
   const selectedAlarm = computed(() =>
     groups.value.flatMap(group => group.alarms).find(item => item.key === selectedAlarmKey.value),
@@ -89,14 +93,12 @@ export const useNoticeTemplateCenter = () => {
   const selectedKeys = computed(() => selectedKey.value ? [selectedKey.value] : [])
 
   const treeData = computed(() => buildTreeData(groups.value))
-  const selectedDetailProviderId = computed(() => selectedAlarm.value?.detailProviderId || '')
   const templateCode = computed(() => getTemplateCode(selectedAlarm.value, selectedChannel.value))
   const breadcrumb = computed(() => getBreadcrumb(selectedAlarm.value, selectedChannel.value))
   const coveredAlarmNames = computed(() => getCoveredAlarmNames(selectedAlarm.value))
   const usedVariables = computed(() => getUsedVariables(templateDetail.value, channelVariables.value))
   const availableStats = computed(() => getAvailableStats(templateDetail.value, selectedChannel.value))
   const referencedPolicies = computed(() => getReferencedPolicies(templateDetail.value, selectedChannel.value))
-  const selectedAlarmDisabled = computed(() => getStateValue(selectedAlarm.value?.raw.state) === 'disabled')
   const {
     testing,
     sendTest,
@@ -120,26 +122,31 @@ export const useNoticeTemplateCenter = () => {
     expandedKeys.value = result.expandedKeys
   }
 
-  const loadNotifierConfigs = async () => {
+  const loadNotifierConfigs = async (version: number) => {
     const types = Array.from(new Set(
       providers.value
         .filter(item => item.id?.startsWith('notifier-'))
         .map(item => getNotifierType(item.id)),
     ))
-    const entries = await Promise.all(types.map(async type => {
-      const response = await queryNotifierConfig_api(configQuery(type))
-      return [type, toListResult<NotifierConfig>(response)] as const
-    }))
-    notifierConfigs.value = Object.fromEntries(entries)
+    const response = types.length ? await queryNotifierConfigNoPaging_api({
+      terms: [{ column: 'type', termType: 'in', value: types }],
+      sorts: [{ name: 'createTime', order: 'desc' }],
+    }) : undefined
+    if (version !== reloadVersion) return
+    const grouped: Record<string, NotifierConfig[]> = Object.fromEntries(types.map(type => [type, []]))
+    toListResult<NotifierConfig>(response).forEach(config => {
+      if (config.type && grouped[config.type]) grouped[config.type].push(config)
+    })
+    notifierConfigs.value = grouped
   }
 
-  const applyTemplateDetail = (providerId: string, detail?: NoticeProviderTemplateInfo) => {
-    if (!detail) {
-      return
+  const applyTemplateDetail = (providerId: string, channelProvider: string, item?: NoticeChannelTemplateItem) => {
+    const detail: NoticeProviderTemplateInfo = {
+      channels: [item || { channel: { providerId, channelProvider }, template: null }],
     }
     providerTemplateDetails.value = {
       ...providerTemplateDetails.value,
-      [providerId]: detail,
+      [detailKey(providerId, channelProvider)]: detail,
     }
     groups.value = applyProviderTemplateInfo(groups.value, providerId, detail)
     templateDetail.value = selectedChannel.value?.template
@@ -166,26 +173,35 @@ export const useNoticeTemplateCenter = () => {
       )
 
   const reload = async () => {
+    const version = ++reloadVersion
+    ++detailVersion
+    detailReady.value = false
+    templateDetail.value = undefined
+    providerTemplateDetails.value = {}
+    notifierConfigs.value = {}
+    groups.value = []
     loading.value = true
     try {
       const [providerResponse, configResponse] = await Promise.all([
         queryNoticeChannelProviders_api(),
         queryNoticeChannelConfig_api(),
       ])
+      if (version !== reloadVersion) return
       normalizeProviders(getResponseResult<NoticeChannelProvider[]>(providerResponse, []))
-      await loadNotifierConfigs()
-      providerTemplateDetails.value = {}
+      await loadNotifierConfigs(version)
+      if (version !== reloadVersion) return
       normalizeGroups(getResponseResult<NoticeChannelConfig[]>(configResponse, []))
       selectFirstAvailable()
     } finally {
-      loading.value = false
+      if (version === reloadVersion) loading.value = false
     }
   }
 
   const selectChannel = (alarmKey: string, channelProvider: string) => {
     selectedAlarmKey.value = alarmKey
     selectedChannelProvider.value = channelProvider
-    templateDetail.value = selectedChannel.value?.template
+    templateDetail.value = undefined
+    detailReady.value = false
     channelVariables.value = []
   }
 
@@ -236,11 +252,13 @@ export const useNoticeTemplateCenter = () => {
   }
 
   const loadDetail = async (force = false) => {
+    const version = ++detailVersion
     const alarm = selectedAlarm.value
     const channel = selectedChannel.value
     const requestKey = selectedKey.value
 
     templateDetail.value = undefined
+    detailReady.value = false
     channelVariables.value = []
     if (!alarm || !channel) {
       return
@@ -248,23 +266,25 @@ export const useNoticeTemplateCenter = () => {
     // 推荐变量只由通知类型决定；待配置的 provider 尚无持久化 ID 时也必须可用。
     const fallbackVariables = getRecommendedVariables(alarm.providerCode, $t)
     channelVariables.value = fallbackVariables
-    if (!alarm.detailProviderId || selectedAlarmDisabled.value) {
+    if (!alarm.detailProviderId) {
+      detailReady.value = true
       return
     }
 
     detailLoading.value = true
     try {
       const providerId = alarm.detailProviderId
-      const cachedDetail = !force ? providerTemplateDetails.value[providerId] : undefined
+      const channelProvider = channel.channelProvider
+      const cachedDetail = !force ? providerTemplateDetails.value[detailKey(providerId, channelProvider)] : undefined
       const [detailResponse, variableResponse] = await Promise.all([
         cachedDetail
-          ? Promise.resolve({ result: cachedDetail })
-          : queryNoticeChannelWithTemplates_api(providerId),
+          ? Promise.resolve({ result: cachedDetail.channels[0] })
+          : queryNoticeChannelTemplate_api(providerId, channelProvider),
         queryNoticeChannelVariables_api(providerId).catch(() => ({ result: [] })),
       ])
 
       // 选择节点时存在并发请求，落后响应不能覆盖用户后来选中的模板。
-      if (requestKey !== selectedKey.value) {
+      if (version !== detailVersion || requestKey !== selectedKey.value) {
         return
       }
 
@@ -275,22 +295,23 @@ export const useNoticeTemplateCenter = () => {
 
       applyTemplateDetail(
         providerId,
-        getResponseResult<NoticeProviderTemplateInfo | undefined>(detailResponse, cachedDetail),
+        channelProvider,
+        getResponseResult<NoticeChannelTemplateItem | undefined>(detailResponse, undefined),
       )
+      detailReady.value = true
     } finally {
-      if (requestKey === selectedKey.value) {
+      if (version === detailVersion) {
         detailLoading.value = false
       }
     }
   }
 
-  const buildSavePayload = (input: NoticeTemplateEditorPayload): NoticeProviderTemplateInfo | undefined => {
+  const buildSavePayload = (input: NoticeTemplateEditorPayload): NoticeChannelTemplateItem | undefined => {
     const payload = buildTemplateSavePayload(
       input,
       selectedAlarm.value,
       selectedChannel.value,
       templateDetail.value,
-      providerTemplateDetails.value[selectedDetailProviderId.value],
     )
     if (!payload && selectedChannel.value?.hasNotifierConfig === false) {
       onlyMessage($t('NoticeCenter.template.message.missingConfig'), 'error')
@@ -301,54 +322,60 @@ export const useNoticeTemplateCenter = () => {
   const saveTemplate = async (input: NoticeTemplateEditorPayload) => {
     const alarm = selectedAlarm.value
     const channelProvider = selectedChannel.value?.channelProvider
-    if (!alarm || !channelProvider) {
+    if (!alarm || !channelProvider || !detailReady.value || saving.value) {
       return
     }
 
-    let currentAlarmKey = alarm.key
+    let scopeVersion = reloadVersion
+    let selectionVersion = detailVersion
     saving.value = true
     try {
       let providerId = alarm.detailProviderId
       const providerCode = alarm.providerCode
-      if (getStateValue(alarm.raw.state) === 'disabled') {
-        // Disabled topic providers may not have a persisted id yet; enable first, then reload before building the save payload.
+      if (!providerId) {
+        // 尚未创建的主题需先显式创建；已有主题的单通道编辑不修改全局启用状态。
         await enableNoticeChannel_api(providerId || providerCode)
+        if (scopeVersion !== reloadVersion || selectionVersion !== detailVersion) return
         await reload()
         const enabledAlarm = findAlarmByProvider(providerId, providerCode)
         if (enabledAlarm) {
           selectedAlarmKey.value = enabledAlarm.key
           selectedChannelProvider.value = channelProvider
-          currentAlarmKey = enabledAlarm.key
           providerId = enabledAlarm.detailProviderId
         }
         await loadDetail(true)
+        if (selectedAlarm.value?.providerCode !== providerCode || selectedChannelProvider.value !== channelProvider) return
+        scopeVersion = reloadVersion
+        selectionVersion = detailVersion
       }
       const payload = buildSavePayload(input)
       providerId = selectedAlarm.value?.detailProviderId || providerId
       if (!providerId) {
         return
       }
-      const response = await saveNoticeChannelWithTemplates_api(providerId, payload)
+      if (!payload) return
+      const response = await saveNoticeChannelTemplate_api(providerId, channelProvider, payload)
+      // 保存响应只应用到发起时的选择；单通道返回值足够回显，不再重载整个主题树。
+      if (scopeVersion !== reloadVersion || selectionVersion !== detailVersion) return
       applyTemplateDetail(
         providerId,
-        getResponseResult<NoticeProviderTemplateInfo | undefined>(response, undefined),
+        channelProvider,
+        getResponseResult<NoticeChannelTemplateItem | undefined>(response, undefined),
       )
       onlyMessage($t('NoticeCenter.template.message.saveSuccess'), 'success')
-      await reload()
-      restoreSelection(currentAlarmKey, channelProvider)
-      await loadDetail(true)
     } finally {
       saving.value = false
     }
   }
 
-  watch(selectedKey, () => {
-    loadDetail()
-  })
+  watch(selectedKey, () => loadDetail())
+
+  onScopeDispose(() => { ++detailVersion; ++reloadVersion })
 
   return {
     loading,
     detailLoading,
+    detailReady,
     saving,
     testing,
     switchingKeys,

@@ -34,8 +34,20 @@ async function request(method, url, body) {
   if (url === '/notify/channel/providers') {
     return success(current.types.map(type => ({ id: `notifier-${type}`, name: type })))
   }
-  if (url === '/notify/channel/all-for-save') return success(current.topics)
-  if (url.endsWith('/_query-with-templates')) return success({ channels: [] })
+  if (url === '/notify/channel/all-for-save' || url.endsWith('/_query-with-templates')) {
+    if (current.mode === 'template' && url === '/notify/channel/all-for-save') return success(current.topics)
+    throw new Error('403: no template or channel management permission')
+  }
+  if (current.mode === 'template') {
+    if (url === '/notifier/config/_query') return success(current.configs)
+    if (url.endsWith('/variables')) return success([])
+    const target = url.match(/^\/notify\/channel\/topic\/([^/]+)\/_(query-with-template|save-with-template)$/)
+    if (target) {
+      if (current.denied?.includes(target[1])) throw new Error('403: inaccessible configuration')
+      if (method === 'put') current.templates[target[1]] = structuredClone(body)
+      return success(current.templates[target[1]])
+    }
+  }
   if (url === bulkPath) {
     return success(current.configs.filter(item => body.terms[0].value.includes(item.type)))
   }
@@ -64,7 +76,7 @@ function loadModule(filename) {
     }
     if (specifier === 'vue-i18n') return { useI18n: () => ({ t: key => key }) }
     if (specifier === '@jetlinks-web/utils') return { onlyMessage: (...args) => scenario.messages.push(args) }
-    if (specifier === '@jetlinks-web-core/store/user') return { useUserStore: () => ({ userInfo: {} }) }
+    if (specifier === '@jetlinks-web-core/store/user') return { useUserStore: () => ({ userInfo: scenario.userInfo || {} }) }
     if (specifier === '@jetlinks-web/core') return {
       request: Object.fromEntries(['get', 'post', 'put', 'patch'].map(method => [method,
         (url, body) => request(method, url, body)])),
@@ -81,6 +93,7 @@ function loadModule(filename) {
 }
 
 const { useNoticeChannelCenter } = loadModule(resolve(directory, 'useNoticeChannelCenter.ts'))
+const { useNoticeTemplateCenter } = loadModule(resolve(directory, '../../template/hooks/useNoticeTemplateCenter.ts'))
 const renderer = vue.createRenderer({
   createElement: type => ({ type, children: [] }), createText: text => ({ text }),
   createComment: text => ({ text }), setText() {}, setElementText() {}, patchProp() {},
@@ -91,7 +104,7 @@ const flush = async () => { await new Promise(done => setImmediate(done)); await
 const queries = () => scenario.calls.filter(call => call.url === bulkPath)
 const metadataCalls = () => scenario.calls.filter(call => call.url.endsWith('/metadata'))
 
-function mount(options = {}) {
+function mount(options = {}, createHook = useNoticeChannelCenter) {
   scenario = {
     types: ['sms', 'email', 'webhook'],
     configs: [config('sms-current'), config('email-current', 'email')], topics: [],
@@ -99,13 +112,13 @@ function mount(options = {}) {
     route: vue.reactive({ query: { channelProvider: 'notifier-sms' } }),
   }
   let state
-  const app = renderer.createApp({ setup() { state = useNoticeChannelCenter(); return () => null } })
+  const app = renderer.createApp({ setup() { state = createHook(); return () => null } })
   app.config.errorHandler = error => scenario.errors.push(error)
   app.mount({ children: [] })
   return { state, close: () => app.unmount() }
 }
 
-test('初始化一次批量查询，超过50条仍保留绑定配置，元数据只请求一次', async () => {
+test('只有凭证权限时一次批量查询，超过50条配置仍可显式选择，不依赖主题模板', async () => {
   const many = Array.from({ length: 60 }, (_, index) => config(`sms-${index}`))
   const bound = config('sms-legacy', 'sms', 'legacy-service')
   const mounted = mount({
@@ -119,9 +132,105 @@ test('初始化一次批量查询，超过50条仍保留绑定配置，元数据
     assert.deepEqual(queries()[0].body.terms, [{ column: 'type', termType: 'in', value: ['sms', 'email', 'webhook'] }])
     assert.equal(queries()[0].body.pageSize, undefined)
     assert.equal(scenario.calls.some(call => call.url === '/notifier/config/_query'), false)
+    assert.equal(mounted.state.selectedChannel.value.config, undefined)
+    assert.equal(mounted.state.canSave.value, false)
+    assert.equal(mounted.state.currentConfigs.value.length, 61)
+    await mounted.state.selectConfig(bound.id)
     assert.equal(mounted.state.selectedChannel.value.config.id, bound.id)
-    assert.equal(metadataCalls().length, 1)
+    assert.equal(mounted.state.draft.id, bound.id)
+    assert.equal(mounted.state.draft.provider, bound.provider)
+    assert.equal(metadataCalls().length, 2)
+    assert.equal(scenario.calls.some(call => call.url.includes('/notify/channel/all-for-save') || call.url.endsWith('/_query-with-templates')), false)
     assert.equal(mounted.state.channelList.value.find(item => item.type === 'webhook').status, 'unconfigured')
+  } finally { mounted.close() }
+})
+
+function mountTemplate(options = {}) {
+  const channel = channelProvider => ({ id: channelProvider, providerId: 'topic', channelProvider, state: 'enabled' })
+  return mount({
+    mode: 'template', types: ['email', 'sms'],
+    configs: [config('email-current', 'email'), config('sms-current')],
+    topics: [{ id: 'topic', provider: 'alarm', state: 'enabled', channels: [channel('notifier-email'), channel('notifier-sms')] }],
+    templates: {
+      'notifier-email': { channel: channel('notifier-email'), template: { id: 'email-template', configId: 'email-current', type: 'email', provider: 'email-service', name: 'email', template: { subject: 'original', text: 'body' } } },
+      'notifier-sms': { channel: channel('notifier-sms'), template: { id: 'sms-template', configId: 'sms-current', type: 'sms', provider: 'sms-service', name: 'sms' } },
+    }, ...options,
+  }, useNoticeTemplateCenter)
+}
+
+test('模板页独立读取和保存有权通道，不提交Provider或无权兄弟通道', async () => {
+  const mounted = mountTemplate({ denied: ['notifier-sms'] })
+  try {
+    await mounted.state.reload()
+    await flush()
+    assert.equal(mounted.state.templateDetail.value.id, 'email-template')
+    await mounted.state.saveTemplate({ name: 'edited', type: 'email', provider: 'email-service', configId: 'email-current', template: { subject: 'changed', text: 'body' }, variableDefinitions: [] })
+    await flush()
+    const save = scenario.calls.find(call => call.method === 'put')
+    assert.equal(save.url, '/notify/channel/topic/notifier-email/_save-with-template')
+    assert.equal(save.body.provider, undefined)
+    assert.equal(save.body.channels, undefined)
+    assert.equal(save.body.template.configId, 'email-current')
+    assert.equal(scenario.templates['notifier-sms'].template.name, 'sms')
+    assert.equal(scenario.calls.some(call => call.url.endsWith('/_query-with-templates') || call.url.endsWith('/_save-with-templates')), false)
+    mounted.state.selectChannel('topic', 'notifier-sms')
+    await flush()
+    assert.equal(mounted.state.detailReady.value, false)
+    assert.equal(mounted.state.templateDetail.value, undefined)
+    assert.equal(scenario.errors.length, 1)
+    const count = scenario.calls.length
+    await mounted.state.saveTemplate({ name: 'forbidden' })
+    assert.equal(scenario.calls.length, count)
+  } finally { mounted.close() }
+})
+
+test('已禁用主题的单通道编辑不启用或重写主题全局状态', async () => {
+  const mounted = mountTemplate({ topics: [{ id: 'topic', provider: 'alarm', state: 'disabled' }] })
+  try {
+    await mounted.state.reload()
+    await flush()
+    assert.equal(mounted.state.templateDetail.value.id, 'email-template')
+    await mounted.state.saveTemplate({ name: 'edited', type: 'email', provider: 'email-service', configId: 'email-current', template: { subject: 'title', text: 'body' }, variableDefinitions: [] })
+    assert.equal(scenario.calls.some(call => call.url.endsWith('/enable')), false)
+    assert.equal(scenario.topics[0].state, 'disabled')
+  } finally { mounted.close() }
+})
+
+test('模板详情A→B→A的迟到响应不能覆盖当前通道', async () => {
+  const old = deferred()
+  let emailQueries = 0
+  const mounted = mountTemplate({ respond: ({ url }) => url.endsWith('/notifier-email/_query-with-template') && ++emailQueries === 1 ? old.promise : undefined })
+  try {
+    await mounted.state.reload()
+    await flush()
+    mounted.state.selectChannel('topic', 'notifier-sms')
+    await flush()
+    assert.equal(mounted.state.templateDetail.value.id, 'sms-template')
+    mounted.state.selectChannel('topic', 'notifier-email')
+    await flush()
+    assert.equal(mounted.state.templateDetail.value.id, 'email-template')
+    old.resolve(success({ channel: { channelProvider: 'notifier-email' }, template: { id: 'stale-template' } }))
+    await flush()
+    assert.equal(mounted.state.templateDetail.value.id, 'email-template')
+    assert.equal(mounted.state.detailReady.value, true)
+  } finally { mounted.close() }
+})
+
+test('模板保存期间切换通道，旧响应不覆盖新选择或重载主题树', async () => {
+  const pending = deferred()
+  const mounted = mountTemplate({ respond: ({ method }) => method === 'put' ? pending.promise : undefined })
+  try {
+    await mounted.state.reload()
+    await flush()
+    const before = scenario.calls.filter(call => call.url === '/notify/channel/all-for-save').length
+    const saving = mounted.state.saveTemplate({ name: 'edited', type: 'email', provider: 'email-service', configId: 'email-current', template: {}, variableDefinitions: [] })
+    mounted.state.selectChannel('topic', 'notifier-sms')
+    await flush()
+    pending.resolve(success(scenario.templates['notifier-email']))
+    await saving
+    assert.equal(mounted.state.selectedChannel.value.channelProvider, 'notifier-sms')
+    assert.equal(mounted.state.templateDetail.value.id, 'sms-template')
+    assert.equal(scenario.calls.filter(call => call.url === '/notify/channel/all-for-save').length, before)
   } finally { mounted.close() }
 })
 
@@ -183,6 +292,7 @@ test('保存期间切换服务商，旧保存完成后不覆盖当前编辑草�
   try {
     await mounted.state.reload()
     await flush()
+    await mounted.state.selectConfig('sms-current')
     const saving = mounted.state.saveCredential()
     mounted.state.draft.provider = 'other-service'
     await flush()
@@ -193,6 +303,38 @@ test('保存期间切换服务商，旧保存完成后不覆盖当前编辑草�
     assert.equal(mounted.state.draft.configuration.host, 'unsaved-other-host')
     assert.deepEqual(queries()[1].body.terms[0].value, ['sms'])
     assert.equal(mounted.state.saving.value, false)
+  } finally { mounted.close() }
+})
+
+test('同服务商多配置保存和测试只使用显式选中ID，撤权刷新不自动改选', async () => {
+  const mounted = mount({
+    configs: [config('sms-a'), config('sms-b')],
+    userInfo: { telephone: '13800000000' },
+    respond: ({ url }) => url === '/notifier/sms-b/_send' ? success(true) : undefined,
+  })
+  try {
+    await mounted.state.reload()
+    await flush()
+    await mounted.state.saveCredential()
+    assert.equal(scenario.calls.some(call => call.method === 'patch'), false)
+    await mounted.state.selectConfig('sms-b')
+    mounted.state.draft.name = 'updated-b'
+    await mounted.state.saveCredential()
+    assert.equal(scenario.calls.find(call => call.method === 'patch').body.id, 'sms-b')
+    await mounted.state.sendTest()
+    assert.equal(scenario.calls.some(call => call.url === '/notifier/sms-b/_send'), true)
+    scenario.configs = [config('sms-a')]
+    await mounted.state.reload()
+    await flush()
+    assert.equal(mounted.state.draft.id, undefined)
+    assert.equal(mounted.state.selectedChannel.value.config, undefined)
+    assert.equal(mounted.state.canSave.value, false)
+    const before = scenario.calls.length
+    await mounted.state.saveCredential()
+    await mounted.state.sendTest()
+    assert.equal(scenario.calls.length, before)
+    await mounted.state.selectConfig('sms-a')
+    assert.equal(mounted.state.draft.id, 'sms-a')
   } finally { mounted.close() }
 })
 

@@ -15,6 +15,7 @@
           :template-code="templateCode"
           :editing="editing"
           :saving="saving"
+          :disabled="!editable"
           :primary-action-text="primaryActionText"
           @copy="copyTemplate"
           @primary="handlePrimaryAction"
@@ -102,6 +103,7 @@ const props = defineProps<{
   availableStats: Array<{ key: string; value: string }>
   referencedPolicies: Array<{ id: string; name: string; count?: unknown }>
   loading: boolean
+  editable: boolean
   saving: boolean
   testing: boolean
   variables: NoticeTemplateVariable[]
@@ -189,6 +191,7 @@ const copyVariable = async (id: string) => {
 }
 
 const startEdit = () => {
+  if (!props.editable) return
   resetForm()
   editing.value = true
 }
