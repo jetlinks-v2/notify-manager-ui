@@ -24,6 +24,7 @@ import {
   buildTreeData,
   findFirstChannel,
   findTreeNode,
+  filterUnsupportedRecommendedVariables,
   getAvailableStats,
   getBreadcrumb,
   getCoveredAlarmNames,
@@ -288,9 +289,12 @@ export const useNoticeTemplateCenter = () => {
         return
       }
 
-      channelVariables.value = mergeRecommendedVariables(
-        fallbackVariables,
-        getResponseResult<NoticeTemplateVariable[]>(variableResponse, []),
+      channelVariables.value = filterUnsupportedRecommendedVariables(
+        alarm.providerCode,
+        mergeRecommendedVariables(
+          fallbackVariables,
+          getResponseResult<NoticeTemplateVariable[]>(variableResponse, []),
+        ),
       )
 
       applyTemplateDetail(

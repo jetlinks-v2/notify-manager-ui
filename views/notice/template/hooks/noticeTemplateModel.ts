@@ -145,6 +145,15 @@ const recommendedVariablesByProvider: Record<string, NoticeTemplateVariable[]> =
   aiSecurityAlarm: alarmVariables.filter(item => !['sourceType', 'sourceName'].includes(item.id)),
 }
 
+const unsupportedRecommendedVariableIdsByProvider: Record<string, string[]> = {
+  aiSecurityAlarm: [
+    'detail.spaceId',
+    'detail.spaceName',
+    'detail.mediaDeviceName',
+    'detail.mediaChannelName',
+  ],
+}
+
 export const toListResult = <T>(response: any): T[] => {
   const result = response?.result
   if (Array.isArray(result)) return result as T[]
@@ -197,6 +206,18 @@ export const mergeRecommendedVariables = (
     })
   })
   return Array.from(variables.values())
+}
+
+export const filterUnsupportedRecommendedVariables = (
+  providerCode: string | undefined,
+  variables: NoticeTemplateVariable[],
+) => {
+  const unsupportedIds = unsupportedRecommendedVariableIdsByProvider[providerCode || '']
+  if (!unsupportedIds) {
+    return variables
+  }
+  // 安全告警的复判结果不能稳定提供这些上下文字段，避免在模板编辑器中推荐。
+  return variables.filter(variable => !unsupportedIds.includes(variable.id))
 }
 
 export const getDisplayName = (item?: { i18nName?: string; name?: string; id?: string }) =>
