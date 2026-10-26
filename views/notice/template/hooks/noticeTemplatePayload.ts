@@ -1,6 +1,5 @@
 import type {
   NoticeChannelConfig,
-  NoticeProviderTemplateInfo,
   NoticeTemplateEntity,
   NoticeTemplateVariable,
 } from '@notify-manager-ui/api/notice-center'
@@ -12,20 +11,6 @@ import type {
 } from './noticeTemplateModel'
 import { normalizeTemplateBeforeSubmit } from './noticeTemplateFormModel'
 import { buildNoticeTemplateChannelVariables } from './noticeTemplateChannelVariables'
-
-export const buildProviderPayload = (
-  alarm: NoticeTemplateGroup['alarms'][number],
-  detail?: NoticeProviderTemplateInfo,
-): NoticeChannelConfig => {
-  const original = detail?.provider || alarm.raw
-  return {
-    ...original,
-    id: original.id || alarm.detailProviderId,
-    providerId: original.providerId || alarm.detailProviderId,
-    name: original.name || alarm.raw.type?.name || alarm.name,
-    provider: original.provider || alarm.provider || alarm.detailProviderId,
-  }
-}
 
 export const buildChannelPayload = (
   alarm: NoticeTemplateGroup['alarms'][number],
@@ -65,7 +50,7 @@ export const buildTemplatePayload = (
     return undefined
   }
   const normalized = normalizeTemplateBeforeSubmit(input)
-  // 聚合接口按 configId 校验外部通知配置权限；前端只保留回显值，不在模板页选择通知配置。
+  // 单通道入口同时校验新旧 configId，保留精确关联，不能按服务商替换已有配置。
   return {
     ...template,
     id: template?.id,
@@ -84,7 +69,6 @@ export const buildTemplateSavePayload = (
   alarm: NoticeTemplateGroup['alarms'][number] | undefined,
   channel: NoticeTemplateChannelNode | undefined,
   template: NoticeTemplateEntity | undefined,
-  detail?: NoticeProviderTemplateInfo,
 ) => {
   if (!alarm || !channel) {
     return undefined
@@ -103,15 +87,12 @@ export const buildTemplateSavePayload = (
     return undefined
   }
   return {
-    provider: buildProviderPayload(alarm, detail),
-    channels: [{
-      channel: buildChannelPayload(
-        alarm,
-        channel,
-        configId,
-        nextTemplate?.variableDefinitions || template?.variableDefinitions || [],
-      ),
-      template: nextTemplate || null,
-    }],
+    channel: buildChannelPayload(
+      alarm,
+      channel,
+      configId,
+      nextTemplate?.variableDefinitions || template?.variableDefinitions || [],
+    ),
+    template: nextTemplate || null,
   }
 }

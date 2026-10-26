@@ -1,4 +1,6 @@
 {
+  "NoticeCenter.channel.config.select": "Select a notification configuration",
+  "NoticeCenter.channel.config.create": "Create a notification configuration",
   "NoticeCenter.template.pageTitle": "Message Templates",
   "NoticeCenter.template.pageDescription": "Maintain templates for each alert type and notification channel so matched policies send the right message.",
   "NoticeCenter.template.group.default": "Default Group",

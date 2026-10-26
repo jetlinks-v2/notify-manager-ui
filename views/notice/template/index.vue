@@ -35,6 +35,7 @@
 				        :available-stats="availableStats"
 				        :referenced-policies="referencedPolicies"
 				        :loading="detailLoading"
+				        :editable="detailReady"
 				        :saving="saving"
 				        :testing="testing"
 				        :variables="channelVariables"
@@ -62,6 +63,7 @@ const savedVersion = ref(0)
 const {
   loading,
   detailLoading,
+  detailReady,
   saving,
   testing,
   switchingKeys,
