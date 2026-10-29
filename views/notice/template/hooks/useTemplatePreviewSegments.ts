@@ -1,5 +1,6 @@
 import { computed, type Ref } from 'vue'
 import type { NoticeTemplateVariable } from '@notify-manager-ui/api/notice-center'
+import { formatPreviewValue } from './noticeAlarmPreview'
 
 export type PreviewMode = 'name' | 'resolved'
 
@@ -41,6 +42,7 @@ export const useTemplatePreviewSegments = (
   previewTitle: Ref<string>,
   previewMessage: Ref<string>,
   previewMode: Ref<PreviewMode>,
+  sampleValues: () => Record<string, unknown> = () => ({}),
 ) => {
   const getVariable = (id: string) => variables().find(item => item.id === id)
 
@@ -49,6 +51,9 @@ export const useTemplatePreviewSegments = (
     if (typeof variable?.expands?.mockValue === 'string') {
       return variable.expands.mockValue
     }
+    const samples = sampleValues()
+    if (Object.prototype.hasOwnProperty.call(samples, id)) return formatPreviewValue(samples[id], variable)
+    if (Object.keys(samples).length) return ''
     return mockVariableValues[id] || variable?.name || variable?.description || id
   }
 

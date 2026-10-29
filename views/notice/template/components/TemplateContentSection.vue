@@ -41,10 +41,11 @@
             :key="item.id"
             type="button"
             class="button"
+            :title="item.expands?.descriptionKey ? $t(String(item.expands.descriptionKey)) : item.description"
             @click="insertRecommendedVariable(item.id)"
           >
             <i v-if="item.expands?.recommended">★</i>
-            <span>{{ item.name || variableToken(item.id) }}</span>
+            <span>{{ item.i18nName ? $t(item.i18nName) : item.name || variableToken(item.id) }}</span>
             <code>{{ variableToken(item.id) }}</code>
           </button>
         </div>
@@ -57,7 +58,17 @@
       />
 
       <div class="template-content-section__resolved-preview">
-        <span>{{ $t('NoticeCenter.template.editor.resolvedPreview') }}</span>
+        <div class="template-content-section__preview-head">
+          <span>{{ $t('NoticeCenter.template.editor.resolvedPreview') }}</span>
+          <a-radio-group
+            v-if="alarmPreviewAvailable"
+            v-model:value="previewEvent"
+            size="small"
+            :aria-label="$t('NoticeCenter.template.preview.event')"
+            :options="previewEvents"
+            option-type="button"
+          />
+        </div>
         <strong v-if="previewTitle">
           <template v-for="(segment, index) in resolvedTitleSegments" :key="index">
             <span v-if="segment.variable" class="template-content-section__resolved-token">{{ segment.text }}</span>
@@ -141,6 +152,7 @@ import type { NoticeTemplateVariable } from '@notify-manager-ui/api/notice-cente
 import type { NoticeTemplateChannelNode } from '../hooks/noticeTemplateModel'
 import { useTemplatePreviewSegments } from '../hooks/useTemplatePreviewSegments'
 import type { PreviewMode } from '../hooks/useTemplatePreviewSegments'
+import { alarmPreviewValues, type AlarmPreviewEvent } from '../hooks/noticeAlarmPreview'
 import type {
   NoticeTemplateEditorPayload,
   NoticeTemplateFieldSchema,
@@ -161,6 +173,7 @@ import {
 
 const props = defineProps<{
   editing: boolean
+  providerCode?: string
   context: NoticeTemplateFormContext
   channel?: NoticeTemplateChannelNode
   recommendedVariables: NoticeTemplateVariable[]
@@ -180,6 +193,13 @@ const emit = defineEmits<{
 const { t: $t } = useI18n()
 const { getFieldRules } = useTemplateFieldRules($t)
 const previewMode = ref<PreviewMode>('name')
+const previewEvent = ref<AlarmPreviewEvent>('trigger')
+// Each provider starts with its own event sample when switching template entries.
+watch(() => props.providerCode, code => {
+  previewEvent.value = code === 'alarm-device-relieve' ? 'relieve' : 'trigger'
+}, { immediate: true })
+const alarmPreviewAvailable = computed(() => props.recommendedVariables.some(item => item.id === 'detail.event'))
+const previewEvents = computed(() => ['trigger', 'relieve'].map(value => ({ value, label: $t(`NoticeCenter.template.preview.${value}`) })))
 const activePath = ref<string[]>(['message'])
 const testParamsOpen = ref(false)
 const recordOpen = ref(false)
@@ -214,6 +234,7 @@ const {
   previewTitle,
   previewMessage,
   previewMode,
+  () => alarmPreviewAvailable.value ? alarmPreviewValues($t, previewEvent.value) : {},
 )
 
 const pathKey = (path: string[]) => path.join('.')
