@@ -158,6 +158,48 @@ function mountTemplate(options = {}) {
   }, useNoticeTemplateCenter)
 }
 
+test('消息模板初次只展开首个分类，刷新保留手动展开与全部收起', async () => {
+  const topics = [
+    { id: 'topic', provider: 'first', state: 'enabled' },
+    { id: 'second-topic', provider: 'second', state: 'disabled' },
+    { id: 'third-topic', provider: 'third', state: 'disabled' },
+  ]
+  const mounted = mountTemplate({ topics })
+  try {
+    await mounted.state.reload()
+    await flush()
+    assert.deepEqual(mounted.state.expandedKeys.value, ['topic'])
+    mounted.state.expandedKeys.value = ['second-topic', 'third-topic']
+    await mounted.state.reload()
+    await flush()
+    assert.deepEqual(mounted.state.expandedKeys.value, ['second-topic', 'third-topic'])
+    scenario.topics = topics.filter(item => item.id !== 'second-topic')
+    await mounted.state.reload()
+    await flush()
+    assert.deepEqual(mounted.state.expandedKeys.value, ['third-topic'])
+    mounted.state.expandedKeys.value = []
+    await mounted.state.reload()
+    await flush()
+    assert.deepEqual(mounted.state.expandedKeys.value, [])
+  } finally { mounted.close() }
+})
+
+test('消息模板首次为空时不锁定展开状态，后续有数据才展开首项', async () => {
+  const mounted = mountTemplate({ topics: [] })
+  try {
+    await mounted.state.reload()
+    await flush()
+    assert.deepEqual(mounted.state.expandedKeys.value, [])
+    scenario.topics = [
+      { id: 'topic', provider: 'first', state: 'enabled' },
+      { id: 'second-topic', provider: 'second', state: 'disabled' },
+    ]
+    await mounted.state.reload()
+    await flush()
+    assert.deepEqual(mounted.state.expandedKeys.value, ['topic'])
+  } finally { mounted.close() }
+})
+
 test('模板页独立读取和保存有权通道，不提交Provider或无权兄弟通道', async () => {
   const mounted = mountTemplate({ denied: ['notifier-sms'] })
   try {

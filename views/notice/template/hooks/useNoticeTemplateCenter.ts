@@ -74,6 +74,7 @@ export const useNoticeTemplateCenter = () => {
   const expandedKeys = ref<string[]>([])
   let detailVersion = 0
   let reloadVersion = 0
+  let expansionInitialized = false
   const detailReady = ref(false)
   const detailKey = (providerId: string, channelProvider: string) => JSON.stringify([providerId, channelProvider])
 
@@ -120,7 +121,14 @@ export const useNoticeTemplateCenter = () => {
       notifierConfigs.value,
     )
     groups.value = result.groups
-    expandedKeys.value = result.expandedKeys
+    const validKeys = new Set(result.expandedKeys)
+    // 只为首次有数据的加载展开首个分类；刷新不覆盖用户手动展开或全部收起的选择。
+    if (!expansionInitialized && result.expandedKeys.length) {
+      expandedKeys.value = result.expandedKeys.slice(0, 1)
+      expansionInitialized = true
+    } else {
+      expandedKeys.value = expandedKeys.value.filter(key => validKeys.has(key))
+    }
   }
 
   const loadNotifierConfigs = async (version: number) => {
