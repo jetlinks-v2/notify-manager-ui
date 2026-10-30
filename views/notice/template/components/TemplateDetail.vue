@@ -40,6 +40,7 @@
         <div v-else class="template-detail__body">
           <TemplateContentSection
             :editing="editing"
+            :provider-code="alarm?.providerCode"
             :context="formContext"
             :channel="channel"
             :recommended-variables="variables"

@@ -94,7 +94,7 @@ const alarmVariables: NoticeTemplateVariable[] = [
   { id: 'alarmConfigName', i18nName: 'NoticeCenter.template.variable.recommend.alarmConfigName' },
   { id: 'targetName', i18nName: 'NoticeCenter.template.variable.recommend.targetName' },
   { id: 'level', i18nName: 'NoticeCenter.template.variable.recommend.level' },
-  { id: 'alarmTime', i18nName: 'NoticeCenter.template.variable.recommend.alarmTime' },
+  { id: 'alarmTime', i18nName: 'NoticeCenter.template.variable.recommend.alarmTime', type: 'date', expands: { format: 'yyyy-MM-dd HH:mm:ss' } },
   { id: 'sourceType', i18nName: 'NoticeCenter.template.variable.recommend.sourceType' },
   { id: 'sourceName', i18nName: 'NoticeCenter.template.variable.recommend.sourceName' },
 ]
@@ -104,6 +104,12 @@ const recommendedVariablesByProvider: Record<string, NoticeTemplateVariable[]> =
     ...alarmVariables.filter(item => item.id !== 'targetName'),
     { id: 'targetId', i18nName: 'NoticeCenter.template.variable.recommend.deviceId' },
     { id: 'targetName', i18nName: 'NoticeCenter.template.variable.recommend.deviceName' },
+    ...['productId', 'productName', 'property', 'propertyName', 'propertyValue', 'propertyValueText', 'propertyUnit', 'event', 'eventText', 'levelText', 'relieveTime'].map(id => ({
+      id,
+      i18nName: `NoticeCenter.template.variable.recommend.${id}`,
+      type: id === 'relieveTime' ? 'date' : 'string',
+      expands: { descriptionKey: 'NoticeCenter.template.variable.propertyOptional', ...(id === 'relieveTime' ? { format: 'yyyy-MM-dd HH:mm:ss' } : {}) },
+    })),
   ],
   'alarm-product': [
     ...alarmVariables.filter(item => item.id !== 'targetName'),
@@ -187,10 +193,15 @@ export const getRecommendedVariables = (
   providerCode?: string,
   resolveName: (key: string) => string = key => key,
 ): NoticeTemplateVariable[] =>
-  normalizeDetailVariables(recommendedVariablesByProvider[providerCode || ''] || [])
-    .map(variable => ({
+  [
+    { id: 'message', i18nName: 'NoticeCenter.template.variable.recommend.message' },
+    { id: 'notifyTime', i18nName: 'NoticeCenter.template.variable.recommend.notifyTime', type: 'date', expands: { format: 'yyyy-MM-dd HH:mm:ss' } },
+    ...normalizeDetailVariables(recommendedVariablesByProvider[providerCode === 'alarm-device-relieve' ? 'alarm-device' : providerCode || ''] || []),
+  ]
+    .map((variable: NoticeTemplateVariable) => ({
       ...variable,
       name: variable.i18nName ? resolveName(variable.i18nName) : variable.name,
+      description: variable.expands?.descriptionKey ? resolveName(String(variable.expands.descriptionKey)) : variable.description,
       expands: { ...variable.expands, recommended: true },
     }))
 
@@ -200,9 +211,11 @@ export const mergeRecommendedVariables = (
 ): NoticeTemplateVariable[] => {
   const variables = new Map(fallbackVariables.map(variable => [variable.id, variable]))
   normalizeDetailVariables(providerVariables).forEach(variable => {
+    const fallback = variables.get(variable.id)
     variables.set(variable.id, {
       ...variable,
-      expands: { ...variable.expands, recommended: true },
+      ...fallback,
+      expands: { ...variable.expands, ...fallback?.expands, recommended: true },
     })
   })
   return Array.from(variables.values())
