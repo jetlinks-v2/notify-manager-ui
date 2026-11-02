@@ -6,7 +6,9 @@
       "name": {
         "zh_CN": "告警中心",
         "en_US": "Alerts",
-        "en": "Alerts"
+        "en": "Alerts",
+        "ja": "アラームセンター",
+        "ja_JP": "アラームセンター"
       }
     },
     "owner": "iot",
@@ -26,7 +28,9 @@
           "name": {
             "zh_CN": "消息通知",
             "en_US": "Notify",
-            "en": "Notify"
+            "en": "Notify",
+            "ja": "メッセージ通知",
+            "ja_JP": "メッセージ通知"
           }
         },
         "id": "alarms-notify",
@@ -44,7 +48,9 @@
               "name": {
                 "zh_CN": "消息模板",
                 "en_US": "Templates",
-                "en": "Templates"
+                "en": "Templates",
+                "ja": "メッセージテンプレート",
+                "ja_JP": "メッセージテンプレート"
               }
             },
             "id": "notice-template",
@@ -66,7 +72,9 @@
                 "i18nMessages": {
                   "zh_CN": "查看",
                   "en_US": "View",
-                  "en": "View"
+                  "en": "View",
+                  "ja": "表示",
+                  "ja_JP": "表示"
                 },
                 "permissions": [
                   {
@@ -96,7 +104,9 @@
                 "i18nMessages": {
                   "zh_CN": "编辑",
                   "en_US": "Edit",
-                  "en": "Edit"
+                  "en": "Edit",
+                  "ja": "編集",
+                  "ja_JP": "編集"
                 },
                 "permissions": [
                   {
@@ -143,7 +153,9 @@
               "name": {
                 "zh_CN": "通知渠道",
                 "en_US": "Delivery",
-                "en": "Delivery"
+                "en": "Delivery",
+                "ja": "通知チャネル",
+                "ja_JP": "通知チャネル"
               }
             },
             "id": "notice-channel",
@@ -173,7 +185,9 @@
                 "i18nMessages": {
                   "zh_CN": "查看",
                   "en_US": "View",
-                  "en": "View"
+                  "en": "View",
+                  "ja": "表示",
+                  "ja_JP": "表示"
                 },
                 "permissions": [
                   {
@@ -196,7 +210,9 @@
                 "i18nMessages": {
                   "zh_CN": "编辑",
                   "en_US": "Edit",
-                  "en": "Edit"
+                  "en": "Edit",
+                  "ja": "編集",
+                  "ja_JP": "編集"
                 },
                 "permissions": [
                   {
@@ -220,7 +236,9 @@
                 "i18nMessages": {
                   "zh_CN": "测试",
                   "en_US": "Test",
-                  "en": "Test"
+                  "en": "Test",
+                  "ja": "テスト",
+                  "ja_JP": "テスト"
                 },
                 "permissions": [
                   {
