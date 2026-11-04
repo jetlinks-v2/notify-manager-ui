@@ -180,6 +180,7 @@
   "NoticeCenter.template.option.voiceType.tts": "テキスト読み上げ",
   "NoticeCenter.template.option.bodyMode.context": "アラームコンテキストを使用",
   "NoticeCenter.template.option.bodyMode.custom": "カスタムリクエストボディ",
+  "NoticeCenter.template.message.alarmUnavailable": "指定されたアラーム種別を利用できないか、アクセス権限がありません。管理者にお問い合わせください。",
   "NoticeCenter.template.message.saveSuccess": "メッセージテンプレートを保存しました",
   "NoticeCenter.template.message.missingConfig": "このチャネルには利用可能な通知設定がありません。先に通知チャネルで設定を完了してから、テンプレートを編集してください",
   "NoticeCenter.template.message.copyTemplateSuccess": "テンプレート内容をコピーしました",

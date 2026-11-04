@@ -57,7 +57,12 @@ export type {
   NoticeTemplateTreeNode,
 } from './noticeTemplateModel'
 
-export const useNoticeTemplateCenter = () => {
+export interface NoticeTemplateCenterOptions {
+  initialProviderCode?: string
+  onTemplateSaved?: (providerCode: string) => void
+}
+
+export const useNoticeTemplateCenter = (options: NoticeTemplateCenterOptions = {}) => {
   const { t: $t } = useI18n()
   const loading = ref(false)
   const detailLoading = ref(false)
@@ -75,6 +80,7 @@ export const useNoticeTemplateCenter = () => {
   let detailVersion = 0
   let reloadVersion = 0
   let expansionInitialized = false
+  let initialSelectionHandled = false
   const detailReady = ref(false)
   const detailKey = (providerId: string, channelProvider: string) => JSON.stringify([providerId, channelProvider])
 
@@ -200,7 +206,23 @@ export const useNoticeTemplateCenter = () => {
       await loadNotifierConfigs(version)
       if (version !== reloadVersion) return
       normalizeGroups(getResponseResult<NoticeChannelConfig[]>(configResponse, []))
-      selectFirstAvailable()
+      if (!initialSelectionHandled && options.initialProviderCode) {
+        const alarm = groups.value.flatMap(group => group.alarms)
+          .find(item => item.providerCode === options.initialProviderCode)
+        if (!alarm) {
+          // Never silently select an unrelated alarm when the requested one is unavailable.
+          selectedAlarmKey.value = ''
+          selectedChannelProvider.value = ''
+          onlyMessage($t('NoticeCenter.template.message.alarmUnavailable'), 'warning')
+          return
+        }
+        initialSelectionHandled = true
+        expandedKeys.value = Array.from(new Set([...expandedKeys.value, alarm.key]))
+        selectedAlarmKey.value = alarm.key
+        selectedChannelProvider.value = (alarm.channels.find(item => item.configured) || alarm.channels[0])?.channelProvider || ''
+      } else {
+        selectFirstAvailable()
+      }
     } finally {
       if (version === reloadVersion) loading.value = false
     }
@@ -367,6 +389,9 @@ export const useNoticeTemplateCenter = () => {
       }
       if (!payload) return
       const response = await saveNoticeChannelTemplate_api(providerId, channelProvider, payload)
+      if (!response || response.success === false || (typeof response.status === 'number' && response.status >= 400)) return
+      // The saved provider remains valid even if the user switched selection while the request was pending.
+      options.onTemplateSaved?.(providerCode)
       // 保存响应只应用到发起时的选择；单通道返回值足够回显，不再重载整个主题树。
       if (scopeVersion !== reloadVersion || selectionVersion !== detailVersion) return
       applyTemplateDetail(
