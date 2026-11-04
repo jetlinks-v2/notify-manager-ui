@@ -204,6 +204,7 @@
   "NoticeCenter.template.option.voiceType.tts": "文本转语音",
   "NoticeCenter.template.option.bodyMode.context": "使用告警上下文",
   "NoticeCenter.template.option.bodyMode.custom": "自定义请求体",
+  "NoticeCenter.template.message.alarmUnavailable": "当前告警类型不可用或无权访问，请联系管理员",
   "NoticeCenter.template.message.saveSuccess": "消息模板已保存",
   "NoticeCenter.template.message.missingConfig": "当前渠道还没有可用的通知配置，请先在通知渠道中完成配置后再编辑模板",
   "NoticeCenter.template.message.copyTemplateSuccess": "模板内容已复制",

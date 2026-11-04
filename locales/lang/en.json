@@ -204,6 +204,7 @@
   "NoticeCenter.template.option.voiceType.tts": "Text to Speech",
   "NoticeCenter.template.option.bodyMode.context": "Use Alert Context",
   "NoticeCenter.template.option.bodyMode.custom": "Custom Body",
+  "NoticeCenter.template.message.alarmUnavailable": "The requested alarm type is unavailable or inaccessible. Contact an administrator.",
   "NoticeCenter.template.message.saveSuccess": "Message template saved",
   "NoticeCenter.template.message.missingConfig": "No notifier configuration is available for this channel. Configure the notification channel before editing the template.",
   "NoticeCenter.template.message.copyTemplateSuccess": "Template content copied",

@@ -94,6 +94,7 @@ function loadModule(filename) {
 
 const { useNoticeChannelCenter } = loadModule(resolve(directory, 'useNoticeChannelCenter.ts'))
 const { useNoticeTemplateCenter } = loadModule(resolve(directory, '../../template/hooks/useNoticeTemplateCenter.ts'))
+const { parseVisualAlarmTemplateContext, notifyVisualAlarmTemplateSaved } = loadModule(resolve(directory, '../../template/hooks/visualAlarmTemplateBridge.ts'))
 const renderer = vue.createRenderer({
   createElement: type => ({ type, children: [] }), createText: text => ({ text }),
   createComment: text => ({ text }), setText() {}, setElementText() {}, patchProp() {},
@@ -145,7 +146,7 @@ test('只有凭证权限时一次批量查询，超过50条配置仍可显式选
   } finally { mounted.close() }
 })
 
-function mountTemplate(options = {}) {
+function mountTemplate(options = {}, hookOptions = {}) {
   const channel = channelProvider => ({ id: channelProvider, providerId: 'topic', channelProvider, state: 'enabled' })
   return mount({
     mode: 'template', types: ['email', 'sms'],
@@ -155,9 +156,68 @@ function mountTemplate(options = {}) {
       'notifier-email': { channel: channel('notifier-email'), template: { id: 'email-template', configId: 'email-current', type: 'email', provider: 'email-service', name: 'email', template: { subject: 'original', text: 'body' } } },
       'notifier-sms': { channel: channel('notifier-sms'), template: { id: 'sms-template', configId: 'sms-current', type: 'sms', provider: 'sms-service', name: 'sms' } },
     }, ...options,
-  }, useNoticeTemplateCenter)
+  }, () => useNoticeTemplateCenter(hookOptions))
 }
 
+for (const target of ['aiSecurityAlarm', 'aiComplianceAlarm']) {
+  test(`通过 ${target} 参数定向初始告警并保持用户后续选择`, async () => {
+    const topics = [
+      { id: 'other', provider: 'unrelated', state: 'enabled' },
+      { id: 'topic', provider: target, state: 'disabled' },
+    ]
+    const mounted = mountTemplate({ topics }, { initialProviderCode: target })
+    try {
+      await mounted.state.reload(); await flush()
+      assert.equal(mounted.state.selectedAlarm.value.providerCode, target)
+      assert.ok(mounted.state.expandedKeys.value.includes('topic'))
+      assert.equal(scenario.calls.some(call => call.url.endsWith('/enable')), false)
+      mounted.state.selectChannel('other', 'notifier-email'); await flush()
+      await mounted.state.reload(); await flush()
+      assert.equal(mounted.state.selectedAlarm.value.providerCode, 'unrelated')
+    } finally { mounted.close() }
+  })
+}
+
+test('目标告警不可见时提示而非悄悄跳到其他告警', async () => {
+  const mounted = mountTemplate({}, { initialProviderCode: 'aiComplianceAlarm' })
+  try {
+    await mounted.state.reload(); await flush()
+    assert.equal(mounted.state.selectedAlarm.value, undefined)
+    assert.deepEqual(scenario.messages, [['NoticeCenter.template.message.alarmUnavailable', 'warning']])
+    await mounted.state.reload(); await flush()
+    assert.equal(mounted.state.selectedAlarm.value, undefined)
+    assert.equal(scenario.messages.length, 2)
+  } finally { mounted.close() }
+})
+
+test('保存成功才通知原页面，响应失败和提前返回均不通知', async () => {
+  const calls = []
+  const mounted = mountTemplate({ topics: [{ id: 'topic', provider: 'aiSecurityAlarm', state: 'enabled' }] }, { initialProviderCode: 'aiSecurityAlarm', onTemplateSaved: type => calls.push(type) })
+  const payload = { name: 'edited', type: 'email', provider: 'email-service', configId: 'email-current', template: { subject: 'title', text: 'body' }, variableDefinitions: [] }
+  try {
+    await mounted.state.reload(); await flush()
+    await mounted.state.saveTemplate(payload); assert.deepEqual(calls, ['aiSecurityAlarm'])
+    scenario.respond = ({ method }) => method === 'put' ? Promise.resolve({ success: false, status: 500 }) : undefined
+    await mounted.state.saveTemplate(payload); assert.deepEqual(calls, ['aiSecurityAlarm'])
+    scenario.respond = ({ method }) => method === 'put' ? Promise.reject(new Error('offline')) : undefined
+    await assert.rejects(mounted.state.saveTemplate(payload), /offline/); assert.deepEqual(calls, ['aiSecurityAlarm'])
+  } finally { mounted.close() }
+})
+test('跨标签桥只接受白名单类型与随机会话，匹配保存时发送最小事件', () => {
+  const session = 'abcdef0123456789abcdef0123456789'
+  const context = parseVisualAlarmTemplateContext({ aiAlarmType: 'aiSecurityAlarm', visualAlarmSession: session })
+  assert.deepEqual(context, { alarmType: 'aiSecurityAlarm', session })
+  assert.equal(parseVisualAlarmTemplateContext({ aiAlarmType: 'other', visualAlarmSession: session }), undefined)
+  assert.equal(parseVisualAlarmTemplateContext({ aiAlarmType: 'aiSecurityAlarm', visualAlarmSession: 'invalid' }), undefined)
+  assert.equal(parseVisualAlarmTemplateContext({ aiAlarmType: ['aiSecurityAlarm'], visualAlarmSession: session }), undefined)
+  const Original = globalThis.BroadcastChannel; const events = []
+  globalThis.BroadcastChannel = class { constructor(name) { events.push(['open', name]) } postMessage(data) { events.push(['message', data]) } close() { events.push(['close']) } }
+  try {
+    notifyVisualAlarmTemplateSaved(context, 'aiComplianceAlarm'); assert.deepEqual(events, [])
+    notifyVisualAlarmTemplateSaved(context, 'aiSecurityAlarm')
+    assert.deepEqual(events, [['open', `jetlinks.visual-alarm-template.v1.${session}`], ['message', { type: 'template-saved', version: 1, alarmType: 'aiSecurityAlarm' }], ['close']])
+  } finally { globalThis.BroadcastChannel = Original }
+})
 test('消息模板初次只展开首个分类，刷新保留手动展开与全部收起', async () => {
   const topics = [
     { id: 'topic', provider: 'first', state: 'enabled' },
@@ -258,6 +318,18 @@ test('模板详情A→B→A的迟到响应不能覆盖当前通道', async () =>
   } finally { mounted.close() }
 })
 
+test('模板保存成功时即使用户已切换通道，也按原告警类型发出通知', async () => {
+  const pending = deferred(); const callbacks = []
+  const mounted = mountTemplate({ topics: [{ id: 'topic', provider: 'aiSecurityAlarm', state: 'enabled' }], respond: ({ method }) => method === 'put' ? pending.promise : undefined }, { initialProviderCode: 'aiSecurityAlarm', onTemplateSaved: code => callbacks.push(code) })
+  try {
+    await mounted.state.reload(); await flush()
+    const saving = mounted.state.saveTemplate({ name: 'edited', type: 'email', provider: 'email-service', configId: 'email-current', template: {}, variableDefinitions: [] })
+    mounted.state.selectChannel('topic', 'notifier-sms'); await flush()
+    pending.resolve(success(scenario.templates['notifier-email'])); await saving
+    assert.deepEqual(callbacks, ['aiSecurityAlarm'])
+    assert.equal(mounted.state.selectedChannel.value.channelProvider, 'notifier-sms')
+  } finally { mounted.close() }
+})
 test('模板保存期间切换通道，旧响应不覆盖新选择或重载主题树', async () => {
   const pending = deferred()
   const mounted = mountTemplate({ respond: ({ method }) => method === 'put' ? pending.promise : undefined })

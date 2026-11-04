@@ -53,11 +53,19 @@
 
 <script setup lang="ts" name="NoticeCenterTemplate">
 import { onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import TemplateDetail from './components/TemplateDetail.vue'
 import TemplateTree from './components/TemplateTree.vue'
 import { useNoticeTemplateCenter } from './hooks/useNoticeTemplateCenter'
+import { notifyVisualAlarmTemplateSaved, parseVisualAlarmTemplateContext } from './hooks/visualAlarmTemplateBridge'
 import type { NoticeTemplateEditorPayload } from './hooks/useNoticeTemplateCenter'
 import PageHeader from '@jetlinks-web-core/components/PageHeader'
+
+const route = useRoute()
+const requestedType = typeof route.query.aiAlarmType === 'string' ? route.query.aiAlarmType : ''
+const initialProviderCode = requestedType === 'aiSecurityAlarm' || requestedType === 'aiComplianceAlarm' ? requestedType : undefined
+const visualAlarmContext = parseVisualAlarmTemplateContext(route.query)
+const notifyVisualAlarmSaved = (providerCode: string) => notifyVisualAlarmTemplateSaved(visualAlarmContext, providerCode)
 
 const savedVersion = ref(0)
 const {
@@ -85,7 +93,7 @@ const {
   saveTemplate,
   sendTest,
   toggleAlarmState,
-} = useNoticeTemplateCenter()
+} = useNoticeTemplateCenter({ initialProviderCode, onTemplateSaved: notifyVisualAlarmSaved })
 
 const handleSave = async (payload: NoticeTemplateEditorPayload) => {
   await saveTemplate(payload)
