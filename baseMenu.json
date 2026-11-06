@@ -61,6 +61,7 @@
               {
                 "permission": "notify-channel",
                 "actions": [
+                  "query",
                   "save"
                 ]
               }
@@ -80,6 +81,7 @@
                   {
                     "permission": "notify-channel",
                     "actions": [
+                      "query",
                       "save"
                     ]
                   },
@@ -112,6 +114,7 @@
                   {
                     "permission": "notify-channel",
                     "actions": [
+                      "query",
                       "save"
                     ]
                   },
@@ -124,6 +127,7 @@
                   {
                     "permission": "template",
                     "actions": [
+                      "query",
                       "save"
                     ]
                   }
