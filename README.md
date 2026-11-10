@@ -118,6 +118,12 @@ node --max_old_space_size=16384 --max-semi-space-size=64 ../node_modules/vite/bi
 
 构建保留既有的大 chunk、`User.vue` 重导出循环依赖、静态 assets 无法在 build-time 解析等警告；另提示 visualization player 未构建、部署后导出能力不可用。这些不是本次通知模块构建失败，但仍属于现有部署限制。
 
+## 待接入的通知模板辅助代码
+
+`views/notice/template/components/TemplateTypeList.vue`、`views/notice/template/hooks/useTemplateDetail.ts` 和 `views/notice/hooks/{noticeResponse,useNoticeDraftGuard}.ts` 属于原有通知模板模块，当前仅纳入版本管理，尚未接入页面或 API 调用，不改变现有页面行为。详情 hook 内部引用草稿保护 hook，但现有 `TemplateDetail.vue` 仍使用自身编辑逻辑，类型列表与响应校验也没有调用方。
+
+后续接入前需补齐中英日 `NoticeCenter.draft.{title,description,discard,keep}` 文案，并验证离开确认、切换选择及保存期间草稿保护。当前 `TemplateTypeList.vue` 定向样式检查通过，四个文件与上轮模块类型检查时内容一致、没有自身诊断；模块类型检查仍受 235 项既有诊断限制。上轮构建通过不代表这些未引用代码已经完成运行时验收。
+
 ## 消息模板查询权限
 
 `baseMenu.json` 的消息模板菜单及查看、编辑按钮补充 `notify-channel:query`，编辑按钮同时补充 `template:query`，对齐后端单通道与聚合模板查询同时要求两项查询权限的契约，保留现有保存权限。范围仅限运行时前端菜单，不修改后端及运营端。验证：JSON 解析、菜单及按钮权限映射检查、`git diff --check` 均通过；本次仅修改静态菜单与说明，未执行 lint/typecheck/build。既有环境需同步菜单、更新角色授权并刷新登录态后，再验证模板查询；配置文件修改不会直接更新已登录账号权限，运行时授权生效情况待验证。
