@@ -428,12 +428,6 @@
                       "query",
                       "send"
                     ]
-                  },
-                  {
-                    "permission": "template",
-                    "actions": [
-                      "query"
-                    ]
                   }
                 ]
               }

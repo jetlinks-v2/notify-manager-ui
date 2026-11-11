@@ -1,6 +1,9 @@
-import { createApp, defineComponent, h } from 'vue'
+import { createApp, defineComponent, h, reactive } from 'vue'
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 import { createPinia } from 'pinia'
+import { useAuthStore } from '@jetlinks-web-core/store/auth'
+import { useSystemStore } from '@jetlinks-web-core/store/system'
+import { trialRecords, officialWireMetadata } from './trialFixtures.mjs'
 import { useMenuStore } from '@jetlinks-web-core/store/menu'
 import AntDesign from 'ant-design-vue'
 import { AIcon, BadgeStatus, ProTable, PermissionButton, ConfigProvider } from '@jetlinks-web/components'
@@ -36,12 +39,18 @@ import '@jetlinks-web-core/style/components.less'
 const clone = value => JSON.parse(JSON.stringify(value))
 const calls = []
 const failures = new Set()
+const deniedPermissions = reactive(new Set())
 const flags = new URLSearchParams(location.search)
 // Keep loading feedback observable without contacting a real notification service.
 const writeDelay = Math.min(5000, Math.max(0, Number(flags.get('writeDelay')) || 0))
 for (const operation of flags.getAll('fail')) failures.add(operation)
 const configs = flags.has('fresh') ? [] : clone(fixtures.configs)
 const templates = clone(fixtures.templates)
+if (flags.has('unifiedTests')) {
+  configs.splice(0, configs.length, ...clone(trialRecords))
+  if (flags.has('missingTestSettings')) for (const config of configs) { delete config.configuration.testTemplate; delete config.configuration.agentId }
+}
+
 if (flags.has('robotSigning')) {
   configs.push(...['one', 'two', 'unsigned', 'masked'].map(id => ({
     id: `robot-${id}`, name: `robot-${id}`, type: 'dingTalk', provider: 'dingTalkRobotWebHook',
@@ -69,14 +78,21 @@ const queryRows = (rows, query) => rows.filter(row => (query.terms || []).every(
 
 // Test-only facade replaces every mutation/read entry before any page is mounted.
 Object.assign(messageNotificationApi, {
+  getCurrentEmail: async () => { record('getCurrentEmail', {}); return flags.has('noEmail') ? '' : 'tester@example.test' },
+  getCurrentPhone: async () => { record('getCurrentPhone', {}); return flags.has('noPhone') ? '' : '13800138000' },
+  getCurrentBindings: async () => {
+    record('getCurrentBindings', {})
+    return flags.has('noBinding') ? [] : configs.filter(config => ['dingTalkMessage', 'corpMessage', 'officialMessage'].includes(config.provider)).map(config => ({ type: `${config.type}_${config.provider}`, provider: config.id, thirdPartyUserId: `self_${config.provider}`, providerName: '测试用户' }))
+  },
+  sendInline: async (configId, template, context) => { if (writeDelay) await new Promise(resolve => setTimeout(resolve, writeDelay)); record('sendInline', { configId, template, context }) },
   queryTemplateDirectory: async () => { record('queryTemplateDirectory', {}); return clone(flags.get('directory') === 'tree' ? templateDirectoryFixture.businessTypes : []) },
   queryTypes: async () => { record('queryTypes', {}); return clone(flags.get('catalog') === 'extended' ? [...channelTypes, extensionType] : channelTypes) },
-  queryProviders: async type => { record('queryProviders', type); if (flags.get('providerError') === type) throw new Error('Provider fixture failure'); return clone(type === extensionType.id ? extensionProviders : channelProviders[type] || []) },
+  queryProviders: async type => { record('queryProviders', type); if (flags.get('providerError') === type) throw new Error('Provider fixture failure'); return clone(type === extensionType.id ? extensionProviders : flags.has('unifiedTests') && type === 'weixin' ? [...channelProviders.weixin, { id: 'officialMessage', name: '微信服务号' }] : channelProviders[type] || []) },
   queryAllConfigs: async () => { record('queryAllConfigs', {}); return clone(configs) },
   getConfigMetadata: async (type, provider) => {
     record('getConfigMetadata', { type, provider })
     if (flags.has('metadataError')) throw new Error('Metadata fixture failure')
-    const metadata = clone(type === extensionType.id ? extensionMetadata : channelWireMetadata[`${type}:${provider}`])
+    const metadata = clone(type === extensionType.id ? extensionMetadata : flags.has('unifiedTests') && provider === 'officialMessage' ? officialWireMetadata : channelWireMetadata[`${type}:${provider}`])
     if (flags.has('legacyRobotMetadata') && type === 'dingTalk' && provider === 'dingTalkRobotWebHook') metadata.properties = metadata.properties.filter(field => field.property !== 'secret')
     return normalizeNotificationConfigMetadata(metadata)
   },
@@ -114,20 +130,23 @@ const router = createRouter({ history: createMemoryHistory(), routes: [
   { path: '/channels', name: 'system/MessageNotification/Channels', component: () => import('../../views/system/MessageNotification/Channels/index.vue') },
   { path: '/templates', name: 'system/MessageNotification/Templates', component: () => import('../../views/system/MessageNotification/Templates/index.vue') },
 ] })
+const fixturePermission = code => !deniedPermissions.has(String(code)) && !(flags.get('permission') === 'no-template' && String(code).includes('/Templates')) && !(flags.get('permission') === 'no-send' && String(code).endsWith(':action')) && flags.get('permission') !== 'denied' && !(flags.get('permission') === 'read' && String(code).endsWith(':add'))
 const Root = defineComponent({ setup() {
-  usePermissionContext({ hasPermission: code => flags.get('permission') !== 'denied' && !(flags.get('permission') === 'read' && String(code).endsWith(':add')) })
+  usePermissionContext({ hasPermission: fixturePermission })
   // 页面与产品列表共用项目默认面板；隔离环境也提供同一布局契约。
   return () => h(ConfigProvider, { TableConfig: { pagination: { pageSize: 12 } } }, () => h(ContentPanel, { fill: true }, () => h(RouterView)))
 } })
 const app = createApp(Root)
 app.use(createPinia()).use(AntDesign).use(i18n).use(router)
+useAuthStore().hasPermission = fixturePermission
+if (flags.has('unifiedTests')) useSystemStore().layout.title = '隔离验证平台'
 useMenuStore().jumpPage = (name, options) => router.push({ name, ...options })
 for (const [name, component] of Object.entries({ AIcon, FullPage, ContentPanel, SwitchGroup, TableActions, TableActionsItem,
   CloudEmpty, JlDrawerShell, KvGrid, CodeBlock, EqualHeightColumns, DetailHeader, Editable, StatusPill, StickyActionBar, JlConfirmDialog, FileUpload, MetadataValueItem,
   'j-pro-table': ProTable, 'j-permission-button': PermissionButton, 'j-badge-status': BadgeStatus })) app.component(name, component)
 app.provide(notificationHistoryAdapterKey, historyAdapter)
 i18n.global.locale.value = 'zh'
-window.__notificationSmoke = { calls, router, configs, templates, failures, i18n }
+window.__notificationSmoke = { calls, router, configs, templates, failures, i18n, deniedPermissions }
 await router.push(location.hash.slice(1) || '/records')
 await router.isReady()
 app.mount('#notification-test-root')

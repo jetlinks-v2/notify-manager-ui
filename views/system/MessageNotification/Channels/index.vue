@@ -46,12 +46,11 @@
                 <p>{{ help.description }}</p>
               </div>
               <div v-if="entry" class="notification-page__actions">
-                <j-permission-button v-if="configurationVisible && !entry.isNew && channel?.id === 'email:embedded'" :has-permission="[notificationPermissions.channels.action]" :disabled="!canTrial || operationBusy" @click="showSend">{{ t('messageNotification.channels.test') }}</j-permission-button>
+                <j-permission-button v-if="configurationVisible && trialSupported" :has-permission="[notificationPermissions.channels.action]" :disabled="!canTrial || operationBusy" @click="showSend">{{ t('messageNotification.channels.test') }}</j-permission-button>
                 <a-button :type="helpOpen ? 'primary' : 'default'" :ghost="helpOpen" :aria-expanded="helpOpen" aria-controls="notification-channel-help" @click="toggleHelp()"><template #icon><AIcon type="ReadOutlined" /></template>{{ t('messageNotification.channels.helpTitle') }}</a-button>
                 <a-dropdown v-if="configurationVisible && !entry.isNew" :trigger="['click']" :disabled="operationBusy">
                   <a-button :aria-label="t('messageNotification.channels.more')"><AIcon type="MoreOutlined" /></a-button>
                   <template #overlay><a-menu>
-                    <a-menu-item v-if="canManageTemplates" key="templates" @click="goTemplates">{{ t('messageNotification.channels.manageTemplates') }}</a-menu-item>
                     <a-menu-item key="delete"><j-permission-button type="text" danger :has-permission="[notificationPermissions.channels.delete]" :disabled="operationBusy" @click="requestRemove">{{ t('messageNotification.common.delete') }}</j-permission-button></a-menu-item>
                   </a-menu></template>
                 </a-dropdown>
@@ -71,7 +70,7 @@
                 <a-alert v-if="entry.failure" type="error" show-icon :message="t(`messageNotification.state.${entry.failure}`)" class="notification-channels__alert" />
                 <a-alert v-if="entry.refreshFailure" type="warning" show-icon :message="t('messageNotification.channels.savedRefreshFailed')" class="notification-channels__alert"><template #action><a-button :disabled="operationBusy" @click="workspace.refreshSaved()">{{ t('messageNotification.common.retry') }}</a-button></template></a-alert>
                 <div class="notification-channels__content" :class="{ 'notification-channels__content--help': helpOpen }">
-                  <ChannelConfiguration :entry="entry" :disabled="!canEdit || sending" :busy="busy" :submit="saveFields" @field="workspace.changeField" @focus="focusField" />
+                  <ChannelConfiguration ref="configurationPanel" :entry="entry" :disabled="!canEdit || sending" :busy="busy" :submit="saveFields" @field="workspace.changeField" @focus="focusField" />
                   <ChannelHelp v-if="helpOpen" :model="help" :active-step="activeHelpStep" @close="toggleHelp(false)" />
                 </div>
               </div>
@@ -84,7 +83,7 @@
         </section>
       </template>
     </EqualHeightColumns>
-    <ChannelSendDrawer :model="sendDrawer" @close="trial.close" @template="trial.selectTemplate" @parameters="updateSendParameters" @send="trial.send" />
+    <ChannelTestModal :model="testModel" @close="trial.close()" @recipient="trial.selectRecipient" @address="trial.setAddress" @validate="trial.validateRecipient" @retry-identity="trial.loadIdentity" @send="trial.send" @again="trial.again" @fix="fixTestConfiguration" @closed="afterTestClosed" />
     <JlConfirmDialog :open="deleteOpen" :title="t('messageNotification.common.delete')" :message="t('messageNotification.channels.confirmDelete')" :confirm-text="t('messageNotification.common.delete')" :cancel-text="t('messageNotification.common.cancel')" @confirm="remove" @cancel="deleteOpen = false" @update:open="deleteOpen = $event" />
     <JlConfirmDialog :open="leaveOpen" :title="t('messageNotification.channels.leaveTitle')" :message="t('messageNotification.channels.confirmLeave')" :confirm-text="t('messageNotification.channels.leave')" :cancel-text="t('messageNotification.channels.stay')" @confirm="decideLeave(true)" @cancel="decideLeave(false)" @update:open="!$event && decideLeave(false)" />
   </FullPage>
@@ -95,16 +94,16 @@ import { DingTalk, Email, Sms, Voice, Webhook, WeixinCorp } from '@jetlinks-web-
 import AutoTree from '@jetlinks-web-core/components/AutoTree'
 import { useChannelsPage } from './useChannelsPage'
 import ChannelConfiguration from './ChannelConfiguration.vue'
-import ChannelSendDrawer from './ChannelSendDrawer.vue'
+import ChannelTestModal from './testing/ChannelTestModal.vue'
 import ChannelHelp from './configuration/ChannelHelp.vue'
 defineOptions({ name: 'MessageNotificationChannels' })
 const channelIcons: Record<string, string> = { email: Email, dingTalk: DingTalk, weixin: WeixinCorp, voice: Voice, sms: Sms, webhook: Webhook }
 const channelIcon = (type: string) => channelIcons[type]
 const {
   t, notificationPermissions, isNarrow, channelOptions, channelSearch, filteredChannelTree, openChannelKeys, selectChannel, configurationOptions,
-  canQuery, canManageTemplates, channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId,
-  busy, dirty, canEdit, operationBusy, canTrial, leaveOpen, decideLeave, sendDrawer,
-  workspace, trial, refresh, save, remove, goTemplates, showSend, updateSendParameters, configurationVisible,
+  canQuery, channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId,
+  busy, dirty, canEdit, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave, configurationPanel,
+  workspace, trial, testModel, fixTestConfiguration, afterTestClosed, refresh, save, remove, showSend, configurationVisible,
   catalog, directoryState, providerFeedback, channelTitle, help, helpOpen, toggleHelp, saveFields, focusField, activeHelpStep, sending, deleteOpen, requestRemove,
 } = useChannelsPage()
 </script>

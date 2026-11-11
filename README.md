@@ -7,6 +7,35 @@
 - 接口封装：`api/notice-center.ts`
 - 后端接口：`/notify/channel/**`、`/notifier/config/**`、`/notifier/**`
 
+## 微信服务号配置说明
+
+`views/system/MessageNotification/Channels/` 的微信服务号配置页仅展示服务端配置字段，已移除渠道测试入口、测试模板和样例参数设置；沿用现有配置表单与说明面板，中英日说明同步。参考线上 `https://doc.jetlinks.cn/` 的微信服务号配置说明（`doc.WeixinApp.707693-*`），介绍 AppID、AppSecret 以及“微信公众平台 → 设置与开发 → 基本配置”的获取路径。保留已有配置值、业务消息模板和其他渠道能力，服务号调整不改变后端接口或配置数据；统一试发沿用既有发送接口，并移除渠道试发按钮对业务模板查询权限的依赖。
+
+实现入口：`Channels/testing/channelTestConfig.ts` 不再为服务号注入测试字段，`channelTestAdapter.ts` 移除服务号试发适配；`useChannelsPage.ts` 和 `index.vue` 按适配器能力显示试发入口。`configuration/channelHelp.ts` 定义服务号专属指引，并将 AppId / AppSecret 编辑定位到对应步骤；三语资源位于 `locales/lang/{zh,en,ja}.json`。历史 `configuration.testTemplate` 保留在保存数据中，不参与服务号配置校验，不影响业务模板。
+
+## 通知渠道统一试发
+
+统一入口为 `Channels/testing/ChannelTestModal.vue` 与 `useChannelTest.ts`。邮件、钉钉工作通知 / 群机器人、企业微信、阿里云短信 / 语音、Webhook 共用「发一条测试 · 渠道名称」弹窗、发送锁定、失败重试及结果反馈。渠道更多菜单仅保留删除配置，独立模板页面保持原有行为。
+
+- 默认发给自己，可选择其他单个接收人；校验邮箱、手机或渠道成员 ID，禁止列表和广播目标。本人邮箱沿用主邮箱身份、首个邮箱身份、资料邮箱的优先级；手机读取账号资料；第三方绑定必须同时匹配 `type_provider` 与当前通知器 ID。加载失败支持重试，与确实未绑定分开显示。群机器人 / Webhook 直接使用当前配置的群 / 地址。
+- 邮件、钉钉、企业微信、机器人和 Webhook 使用固定测试消息，系统名称读取 `useSystemStore().layout.title`。短信、语音只读渠道中保存的服务商测试模板和样例参数，提示实际内容以服务商模板为准。
+- `channelTestAdapter.ts` 集中管理七类提供商的配置条件、接收人规则及内联参数。发送仅调用 `POST /notifier/{configId}/_send`，参数为 `{ template, context }`，不查询或写入业务模板；微信服务号及未支持的提供商不显示渠道试发入口。
+- 只允许已保存、无未保存修改且具有渠道查询 / 发送权限的配置试发。弹窗使用保存值的快照；发送期间锁定重复操作，失败保留输入。关闭、配置切换、保存值刷新、权限变化或组件卸载后忽略过期响应。缺配置时引导到对应编辑字段，等待弹窗关闭及焦点恢复后再打开编辑器。成功仅表示「已提交，请检查接收端」。
+
+新增设置通过现有渠道保存接口持久化；`ChannelTestSettings.vue` 以具名字段和参数键值行编辑，试发弹窗不编辑配置、不选择业务模板、不输入 JSON。
+
+| 提供商 | 保存路径与字段 |
+| --- | --- |
+| 钉钉工作通知 / 企业微信 | `configuration.agentId`；企微复用已有字段，钉钉补充同名字段，试发显式传入内联模板 |
+| 阿里云短信 | `configuration.testTemplate`：`signName`、`code`、`parameters` |
+| 阿里云语音 | `configuration.testTemplate`：`templateType`（`tts` / `voice`）、`templateCode`、可选 `calledShowNumbers`、`parameters` |
+
+`parameters` 为 `{ name, value }[]`；无变量时可省略或为空数组，有变量时名称唯一、值非空，禁止覆盖接收人或路由字段。旧配置可以缺少这些设置，仍可读取和编辑；缺少试发条件时禁用发送并列出缺项。测试设置不改变业务模板规则或历史模板数据，无后端接口 / 数据库变更。仅修改 `runtime-ui/modules/notify-manager-ui`，保留工作区既有变更，不修改运营端 `ui/`。
+
+提交范围验证（2026-11-12）：从当前分支 HEAD 提取仅含服务号调整及必要统一试发前置改造的副本验证。渠道、试发、接口和菜单检查共 93 项：修正 AgentId 的旧断言后，渠道 39/39 复验通过，其余 54 项已通过；日志 `/tmp/weixin-submit-tests.log`、`/tmp/weixin-submit-channels-final.log`。在 `jetlinks-web-core/` 执行 `node --max_old_space_size=16384 ../node_modules/vite/bin/vite.js build --outDir /tmp/weixin-submit-build -- --module-name notify-manager-ui`，模块构建通过（17.96 秒），四个变更 Vue 文件通过定向样式检查，工作区无独立 lint 脚本。`./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json` 与 HEAD 基线均为 213 项既有诊断，无新增或移除，完整类型检查尚未通过；修复既有问题后需重跑。日志前缀 `/tmp/weixin-submit-`。
+
+工作区页面的 Playwright 内存夹具验证已通过：七类渠道试发、微信服务号隐藏测试入口和参数、中英日说明及 390px 窄屏均符合预期，无页面错误或业务网络请求，报告 `/tmp/weixin-official-browser/report.json`。独立副本的浏览器复验在 Vite 预构建依赖初始化阶段被 `isFunction is not a function` 阻断，未进入页面断言；报告 `/tmp/weixin-submit-browser/report.json`。修复隔离开发环境后，使用 `SMOKE_PLAYWRIGHT_MODULE=/Volumes/SSD/work/jetlinks/cloud.jetlinks/ui/node_modules/playwright SMOKE_BASE_URL=http://127.0.0.1:19201 node tests/messageNotificationBrowser/trials.mjs` 重跑候选页面验证。未发送真实消息，真实账号授权与服务商投递仍需测试账号联调。
+
 ## 钉钉机器人可选加签
 
 实现提交：前端 `7eba75d`（本地 `2.20`），后端 `8444cd9ee`；后端评审见 [PR #1717](https://github.com/jetlinks-v2/jetlinks-components/pull/1717)（目标 `2.20`，草稿，待恢复 Maven 私服访问后验证）。

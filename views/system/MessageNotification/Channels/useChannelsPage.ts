@@ -1,36 +1,40 @@
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import type { TreeProps } from 'ant-design-vue'
 import { usePermission } from '@jetlinks-web/hooks'
 import { useWindowSize } from '@vueuse/core'
 import { onlyMessage } from '@jetlinks-web/utils'
-import { useMenuStore } from '@jetlinks-web-core/store/menu'
-import { findNotificationChannel, notificationNavigationTarget, notificationPermissions, notificationQuery, normalizeNotificationNavigation, type NotificationChannel, type NotificationNavigation } from '../shared'
+import { useAuthStore } from '@jetlinks-web-core/store/auth'
+import { useSystemStore } from '@jetlinks-web-core/store/system'
+import { findNotificationChannel, notificationPermissions, notificationQuery, normalizeNotificationNavigation, type NotificationChannel, type NotificationNavigation } from '../shared'
 import { useChannelWorkspace, type ChannelFieldChange } from './useChannelWorkspace'
 import { useChannelCatalog } from './useChannelCatalog'
-import { useChannelSend } from './useChannelSend'
+import { useChannelTest } from './testing/useChannelTest'
+import { channelTestSettingsKinds } from './testing/channelTestConfig'
+import { channelTestAdapters } from './testing/channelTestAdapter'
 import { useChannelLeaveGuard } from './useChannelLeaveGuard'
 import { channelHelp, channelHelpStep } from './configuration/channelHelp'
-import type { ChannelSendDrawerModel } from './useChannelSendDrawer'
 
 /** Own backend directory, routing, permissions and draft effects outside rendering components. */
 export function useChannelsPage() {
   const { t, te } = useI18n()
   const route = useRoute()
   const router = useRouter()
-  const menu = useMenuStore()
+  const system = useSystemStore()
+  const configurationPanel = ref<{ editField: (key: string) => void }>()
+  const auth = useAuthStore()
   const { width } = useWindowSize()
   const isNarrow = computed(() => width.value < 768)
+  // Trial permissions follow changes to the current session and role.
   const permissions = {
-    query: usePermission(notificationPermissions.channels.query).hasPerm,
+    query: computed(() => auth.hasPermission(notificationPermissions.channels.query)),
     add: usePermission(notificationPermissions.channels.add).hasPerm,
     update: usePermission(notificationPermissions.channels.update).hasPerm,
     delete: usePermission(notificationPermissions.channels.delete).hasPerm,
-    action: usePermission(notificationPermissions.channels.action).hasPerm,
+    action: computed(() => auth.hasPermission(notificationPermissions.channels.action)),
   }
   const canQuery = permissions.query
-  const canViewTemplates = usePermission(notificationPermissions.templates.query).hasPerm
   const catalog = useChannelCatalog(canQuery)
   const channelTitle = (item: NotificationChannel) => item.labelKey ? t(item.labelKey) : item.name || item.id
   const channelOptions = computed(() => catalog.channels.value.map(item => ({ value: item.id, label: channelTitle(item) })))
@@ -61,7 +65,7 @@ export function useChannelsPage() {
   }))
   const directoryState = catalog.state
   function navigate(navigation: NotificationNavigation) { void router.replace({ query: notificationQuery(navigation, route.query, catalog.channels.value) }) }
-  const trial = useChannelSend()
+  const trial = useChannelTest()
   const workspace = useChannelWorkspace({ permissions, navigate, blocked: trial.sending, channels: catalog.channels, loadConfigs: catalog.loadConfigs, loadDefinition: catalog.loadDefinition, channelName: channelTitle })
   const { channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId, busy, dirty, hasUnsavedChanges, canEdit } = workspace
   const operationBusy = computed(() => busy.value || trial.sending.value)
@@ -78,15 +82,9 @@ export function useChannelsPage() {
   }
   const configurationVisible = computed(() => !!entry.value && ![state.value, detailState.value].some(value => ['loading', 'unavailable', 'forbidden', 'error'].includes(value)))
   const { leaveOpen, decideLeave } = useChannelLeaveGuard(hasUnsavedChanges, operationBusy)
-  const canManageTemplates = computed(() => canViewTemplates.value && !!findNotificationChannel(channelId.value))
-  const canTrial = computed(() => canQuery.value && canViewTemplates.value && permissions.action.value && !!entry.value?.baseline?.id && !entry.value?.isNew && !dirty.value && channel.value?.id === 'email:embedded')
+  const trialSupported = computed(() => !!channelTestAdapters[channelId.value])
+  const canTrial = computed(() => trialSupported.value && canQuery.value && permissions.action.value && !!entry.value?.baseline?.id && !entry.value?.isNew && !dirty.value && configurationVisible.value)
   const configurationOptions = computed(() => configs.value.map(item => ({ value: item.id, label: `${item.name} · ${item.id}` })))
-  const sendDrawer = computed<ChannelSendDrawerModel>(() => ({
-    open: trial.open.value, configId: trial.configId.value, state: trial.state.value,
-    templates: trial.templates.value, selected: trial.selected.value, parameters: trial.parameters.value,
-    invalidParameters: trial.invalidParameters.value, missing: trial.missing.value,
-    sending: trial.sending.value, sent: trial.sent.value, error: trial.error.value, canSend: trial.canSend.value,
-  }))
   const helpChoices = reactive(new Map<string, boolean>())
   const helpOpen = computed(() => helpChoices.get(channelId.value) ?? !!entry.value?.isNew)
   const help = computed(() => channelHelp(channel.value, entry.value?.definition, t))
@@ -119,18 +117,38 @@ export function useChannelsPage() {
     return ok
   }
   async function remove() { deleteOpen.value = false; if (await workspace.deleteConfig()) onlyMessage(t('messageNotification.channels.deleteSuccess'), 'success') }
-  function goTemplates() {
-    if (!entry.value?.baseline?.id || !canManageTemplates.value) return
-    const target = notificationNavigationTarget('templates', { channel: channelId.value, configId: entry.value.baseline.id })
-    void menu.jumpPage(target.name, target.options)
-  }
   function showSend() {
     if (!canTrial.value || !channel.value || !entry.value?.baseline?.id) return
     const id = entry.value.baseline.id
-    void trial.show({ channel: channel.value, configId: id, permitted: () => permissions.query.value && canViewTemplates.value && permissions.action.value, clean: () => !dirty.value && !entry.value?.isNew && entry.value?.baseline?.id === id })
+    trial.show({ config: entry.value.baseline, channelName: channelTitle(channel.value), systemName: system.layout.title,
+      permitted: () => canQuery.value && permissions.action.value,
+      clean: () => !dirty.value && !entry.value?.isNew && entry.value?.baseline?.id === id && !busy.value })
   }
-  function updateSendParameters(value: string) { trial.parameters.value = value }
-  watch([channelId, selectedConfigId], () => { trial.close(); deleteOpen.value = false; focusedField.value = '' })
+  const pendingTestField = ref<{ configId: string; key: string }>()
+  function fixTestConfiguration() {
+    if (trial.sending.value) return
+    const key = channelTestSettingsKinds[channelId.value] ? 'testTemplate'
+      : ['weixin:corpMessage', 'dingTalk:dingTalkMessage'].includes(channelId.value) ? 'agentId'
+        : channelId.value === 'email:embedded' ? 'host' : 'url'
+    pendingTestField.value = { configId: selectedConfigId.value || '', key }
+    trial.close()
+  }
+  /** Wait for modal focus restoration before opening an inline editor, which otherwise blurs and closes. */
+  async function afterTestClosed() {
+    const target = pendingTestField.value
+    pendingTestField.value = undefined
+    if (!target || target.configId !== selectedConfigId.value || !canEdit.value || operationBusy.value) return
+    helpChoices.set(channelId.value, true)
+    focusedField.value = target.key
+    await nextTick()
+    configurationPanel.value?.editField(`config:${target.key}`)
+  }
+  // Navigation, saved configuration and permission changes invalidate the active send snapshot.
+  watch([() => route.query.channel, () => route.query.ch, () => route.query.configId], () => trial.close(true))
+  watch(() => entry.value?.baseline, () => trial.close(true))
+  watch([channelId, selectedConfigId], () => { trial.close(true); deleteOpen.value = false; focusedField.value = '' })
+  watch([canQuery, permissions.action], ([query, send]) => { if (!query || !send) trial.close(true) })
+  onBeforeUnmount(() => trial.close(true))
   watch(channel, value => {
     const key = `type:${value?.type}`
     if (value && channelTree.value.some(node => node.key === key) && !openChannelKeys.value.includes(key)) openChannelKeys.value.push(key)
@@ -138,9 +156,9 @@ export function useChannelsPage() {
 
   return {
     t, notificationPermissions, isNarrow, channelOptions, channelSearch, filteredChannelTree, openChannelKeys, selectChannel, configurationOptions,
-    canQuery, canViewTemplates, canManageTemplates, channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId,
-    busy, dirty, canEdit, operationBusy, canTrial, leaveOpen, decideLeave, sendDrawer,
-    sending: trial.sending, workspace, trial, refresh, save, remove, goTemplates, showSend, updateSendParameters, configurationVisible,
+    canQuery, channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId,
+    busy, dirty, canEdit, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave, configurationPanel,
+    sending: trial.sending, workspace, trial, testModel: trial.model, fixTestConfiguration, afterTestClosed, refresh, save, remove, showSend, configurationVisible,
     catalog, directoryState, providerFeedback, channelTitle, help, helpOpen, toggleHelp, saveFields, focusField, activeHelpStep, deleteOpen, requestRemove,
   }
 }

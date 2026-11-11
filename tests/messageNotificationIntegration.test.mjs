@@ -135,7 +135,7 @@ test('verified notifier and template backend declarations keep read, save, delet
         add: ['notifier:query', 'notifier:save'],
         update: ['notifier:query', 'notifier:save'],
         delete: ['notifier:delete', 'notifier:query'],
-        action: ['notifier:query', 'notifier:send', 'template:query'],
+        action: ['notifier:query', 'notifier:send'],
       },
     },
     Templates: {
@@ -179,7 +179,7 @@ test('selected read, edit and trial menu declarations preserve frontend action I
     ['Records', ['query'], ['notifier:query']],
     ['Channels', ['query', 'update'], ['notifier:query', 'notifier:save']],
     ['Templates', ['query', 'update'], ['notifier:query', 'template:query', 'template:save']],
-    ['Channels', ['query', 'action'], ['notifier:query', 'notifier:send', 'template:query']],
+    ['Channels', ['query', 'action'], ['notifier:query', 'notifier:send']],
   ]
   for (const [page, actions, backend] of cases) {
     assert.deepEqual(selected(page, actions), {

@@ -388,3 +388,45 @@ test('robot signing keys never merge across record IDs or provider boundaries', 
     assert.equal(payload.configuration.url, undefined)
   }
 })
+
+test('inline send reuses content endpoint and current email follows personal-center identity precedence', async () => {
+  const template = { name: 'Selected built-in', type: 'email', provider: 'embedded', template: { subject: 'subject', text: 'body', sendTo: [] } }
+  const context = { sendTo: ['recipient@example.test'] }
+  await api.sendInline('smtp/id', template, context)
+  assert.deepEqual(calls[0], { method: 'post', url: '/notifier/smtp%2Fid/_send', data: { template, context }, options: { hiddenError: true } })
+  response.result = [{ provider: 'email', identity: 'first@example.test' }, { provider: 'email', identity: 'primary@example.test', isPrimary: true }]
+  assert.equal(await api.getCurrentEmail(), 'primary@example.test')
+  assert.equal(calls.at(-1).url, '/user/identity/_me')
+  response.result = [{ provider: 'email', identity: 'first@example.test' }]
+  assert.equal(await api.getCurrentEmail(), 'first@example.test')
+  response.result = { email: 'malformed@example.test' }
+  await assert.rejects(api.getCurrentEmail(), { kind: 'error' })
+  failure = { response: { status: 403 } }
+  await assert.rejects(api.getCurrentEmail(), { kind: 'forbidden' })
+  assert.equal(calls.some(call => call.url === '/user/detail'), false)
+})
+
+test('personal phone and notification binding reads distinguish missing, malformed and failed responses', async () => {
+  response.result = { telephone: '13800138000' }
+  assert.equal(await api.getCurrentPhone(), '13800138000')
+  assert.deepEqual(calls.at(-1), { method: 'get', url: '/user/detail', data: undefined, options: { applicationScope: false, hiddenError: true } })
+  response.result = {}
+  assert.equal(await api.getCurrentPhone(), '')
+  for (const malformed of [null, [], { telephone: 123 }]) {
+    response.result = malformed
+    await assert.rejects(api.getCurrentPhone(), { kind: 'error' })
+  }
+  const binding = { type: 'weixin_corpMessage', provider: 'corp-config', thirdPartyUserId: 'member', providerName: 'Member' }
+  response.result = [binding]
+  assert.deepEqual(await api.getCurrentBindings(), [binding])
+  assert.deepEqual(calls.at(-1), { method: 'get', url: '/user/third-party/me', data: undefined, options: { hiddenError: true } })
+  response.result = []
+  assert.deepEqual(await api.getCurrentBindings(), [])
+  for (const malformed of [undefined, {}, [null], [{ ...binding, provider: undefined }]]) {
+    response.result = malformed
+    await assert.rejects(api.getCurrentBindings(), { kind: 'error' })
+  }
+  failure = { response: { status: 403 } }
+  await assert.rejects(api.getCurrentPhone(), { kind: 'forbidden' })
+  await assert.rejects(api.getCurrentBindings(), { kind: 'forbidden' })
+})

@@ -2,6 +2,7 @@ import type { NotifierConfig, NotifierConfigPayload, NotificationObject, Notific
 import { buildNotificationConfigPayload, createNotificationConfigDraft, isNotificationSecretMask, NotificationSecretInputRequiredError, notificationSecretsRequiringInput, notificationEnumValue, resolveNotificationChannel } from '../shared'
 import type { ChannelDefinition } from './configuration/channelMetadata'
 import { aliyunRegionElements } from '../../../notice/channel/hooks/noticeChannelModel'
+import { channelTestSettingsKinds, testSettingsIssues } from './testing/channelTestConfig'
 
 export interface ChannelField {
   key: string
@@ -16,9 +17,9 @@ export interface ChannelField {
 /** Field IDs follow provider metadata; SMTP options stay in properties rather than a synthetic secure flag. */
 export const channelConfigFields: Record<string, ChannelField[]> = {
   'email:embedded': [{ key: 'host', required: true }, { key: 'port', kind: 'number' }, { key: 'sender' }, { key: 'username' }, { key: 'password', kind: 'secret' }],
-  'dingTalk:dingTalkMessage': [{ key: 'appKey', required: true }, { key: 'appSecret', kind: 'secret', required: true }],
+  'dingTalk:dingTalkMessage': [{ key: 'appKey', required: true }, { key: 'agentId' }, { key: 'appSecret', kind: 'secret', required: true }],
   'dingTalk:dingTalkRobotWebHook': [{ key: 'url', kind: 'secret', required: true }, { key: 'secret', kind: 'secret' }],
-  'weixin:corpMessage': [{ key: 'corpId', required: true }, { key: 'corpSecret', kind: 'secret', required: true }],
+  'weixin:corpMessage': [{ key: 'corpId', required: true }, { key: 'agentId' }, { key: 'corpSecret', kind: 'secret', required: true }],
   'voice:aliyun': [{ key: 'regionId', options: aliyunRegionElements }, { key: 'accessKeyId', required: true }, { key: 'secret', kind: 'secret', required: true }],
   'sms:aliyunSms': [{ key: 'regionId', options: aliyunRegionElements }, { key: 'accessKeyId', required: true }, { key: 'secret', kind: 'secret', required: true }],
   'webhook:http': [{ key: 'url', kind: 'url', required: true }],
@@ -89,6 +90,10 @@ export function validateChannelDraft(draft: NotifierConfigPayload, baseline?: No
     }
   }
   const headers = draft.type === 'webhook' && draft.provider === 'http' ? draft.configuration.headers : undefined
+  const channelId = `${draft.type}:${draft.provider}`
+  if (channelTestSettingsKinds[channelId] && testSettingsIssues(channelId, draft.configuration.testTemplate).length) {
+    issues.push({ path: 'testTemplate', key: 'invalidValue' })
+  }
   if (Array.isArray(headers) && headers.every(row => row && typeof row.key === 'string')) {
     if (headers.some(row => effectiveHeaderValue(row.key, row.value, baseline) === undefined)) issues.push({ path: 'headers', key: 'secretRequired' })
     if (new Set(headers.map(row => row.key.toLowerCase())).size !== headers.length) issues.push({ path: 'headers', key: 'headers' })
@@ -128,12 +133,4 @@ function validMetadataValue(value: unknown, property: NotificationConfigProperty
   if (type.type === 'array' && !Array.isArray(value)) return false
   if (type.type === 'object' && (!value || typeof value !== 'object' || Array.isArray(value))) return false
   return !(typeof value === 'string' && typeof rules.maxLength === 'number' && value.length > rules.maxLength)
-}
-
-/** Required template variables must be explicit; JSON arrays/primitives are not send contexts. */
-export function parseChannelSendVariables(text: string): NotificationObject | undefined {
-  try {
-    const value: unknown = JSON.parse(text)
-    return value && typeof value === 'object' && !Array.isArray(value) ? value as NotificationObject : undefined
-  } catch { return undefined }
 }

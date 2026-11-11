@@ -28,6 +28,8 @@ const dependencies = {
   '@jetlinks-web/hooks': { usePermission: code => ({ hasPerm: pageContext.permissions.get(code) }) },
   '@vueuse/core': { useWindowSize: () => ({ width: pageContext.width }) },
   '@jetlinks-web/utils': { onlyMessage: (...args) => pageContext.messages.push(args), randomString: length => randomBytes(length).toString('hex').slice(0, length) },
+  '@jetlinks-web-core/store/auth': { useAuthStore: () => ({ hasPermission: code => pageContext.permissions.get(code)?.value ?? false }) },
+  '@jetlinks-web-core/store/system': { useSystemStore: () => ({ layout: { title: 'Test platform' } }) },
   '@jetlinks-web-core/store/menu': { useMenuStore: () => ({ jumpPage: (...args) => pageContext.jumps.push(args) }) },
 }
 const cache = new Map()
@@ -57,11 +59,9 @@ const { channelDefinition, channelDefaults } = load(resolve(root, 'configuration
 const { emailEncryption, emailEncryptionProperties } = load(resolve(root, 'configuration/emailSettings.ts'))
 const { useChannelConfiguration } = load(resolve(root, 'useChannelConfiguration.ts'))
 const { useChannelWorkspace } = load(resolve(root, 'useChannelWorkspace.ts'))
-const { createChannelConfigDraft, channelConfigPayload, validateChannelDraft, parseChannelSendVariables } = load(resolve(root, 'channelSchema.ts'))
-const { useChannelSend, missingChannelSendParameters } = load(resolve(root, 'useChannelSend.ts'))
+const { createChannelConfigDraft, channelConfigPayload, validateChannelDraft } = load(resolve(root, 'channelSchema.ts'))
 const { useChannelLeaveGuard } = load(resolve(root, 'useChannelLeaveGuard.ts'))
 const { useChannelsPage } = load(resolve(root, 'useChannelsPage.ts'))
-const { useChannelSendDrawer } = load(resolve(root, 'useChannelSendDrawer.ts'))
 const { useConfigurationPairs } = load(resolve(root, 'useConfigurationPairs.ts'))
 const { notificationChannels, notificationPermissions } = load(resolve(root, '../shared/index.ts'))
 const ChannelConfiguration = load(resolve(root, 'ChannelConfiguration.vue')).default
@@ -318,94 +318,9 @@ test('SMTP fields and confidential HTTP header rows follow actual schema and saf
   assert.deepEqual(channelConfigPayload(draft, record).configuration.headers, [])
 })
 
-const template = () => ({ id: 'template-real', name: 'Actual template', type: 'email', provider: 'embedded', template: { subject: 'Hello', text: 'Body', sendTo: [], attachments: [{ name: 'Log', location: '' }] }, variableDefinitions: [{ id: 'code', required: true, type: 'string' }] })
 
-test('trial email requires an actual compatible template, recipients and all dynamic attachment parameters', async () => {
-  const io = testApi()
-  const actual = template()
-  io.api.queryTemplates = async () => ({ data: [actual, { ...actual, id: 'wrong-config', configId: 'other' }] })
-  io.api.getTemplate = async () => actual
-  const send = useChannelSend(io.api)
-  const context = { channel: notificationChannels[0], configId: 'smtp-real', permitted: () => true, clean: () => true }
-  await send.show(context)
-  assert.equal(send.templates.value.length, 1)
-  assert.equal(send.selected.value, undefined)
-  assert.equal(await send.send(), false)
-  await send.selectTemplate('template-real')
-  assert.deepEqual(send.missing.value.sort(), ['_attach_location_1', 'code', 'sendTo'])
-  send.parameters.value = '{"code":"42","sendTo":["recipient@example.org"]}'
-  assert.equal(await send.send(), false)
-  send.parameters.value = '{"code":"42","sendTo":["recipient@example.org"],"_attach_location_1":"file-id"}'
-  assert.equal(send.canSend.value, true)
-  assert.equal(await send.send(), true)
-  assert.deepEqual(io.calls.find(([method]) => method === 'send'), ['send', 'smtp-real', 'template-real', { code: '42', sendTo: ['recipient@example.org'], _attach_location_1: 'file-id' }])
-  assert.equal(send.sent.value, true)
-  assert.equal(missingChannelSendParameters({ ...actual, template: { sendTo: ['fixed@example.org'] }, variableDefinitions: [] }, {}).length, 0)
-})
 
-test('trial failures retain input, permission/dirty/unknown-provider paths do not send', async () => {
-  const io = testApi()
-  const actual = { ...template(), template: { sendTo: ['fixed@example.org'] }, variableDefinitions: [] }
-  io.api.queryTemplates = async () => ({ data: [actual] })
-  io.api.getTemplate = async () => actual
-  const permitted = vue.ref(true)
-  const clean = vue.ref(true)
-  const send = useChannelSend(io.api)
-  await send.show({ channel: notificationChannels[0], configId: 'smtp-real', permitted: () => permitted.value, clean: () => clean.value })
-  await send.selectTemplate(actual.id)
-  send.parameters.value = '[]'
-  assert.equal(await send.send(), false)
-  send.parameters.value = '{"custom":"keep"}'
-  clean.value = false
-  assert.equal(await send.send(), false)
-  clean.value = true
-  permitted.value = false
-  assert.equal(await send.send(), false)
-  permitted.value = true
-  io.api.send = async () => { throw new Error('offline') }
-  assert.equal(await send.send(), false)
-  assert.equal(send.error.value, 'error')
-  assert.equal(send.sent.value, false)
-  assert.equal(send.parameters.value, '{"custom":"keep"}')
-  send.close()
-  assert.equal(send.parameters.value, '{}')
-  await send.show({ channel: notificationChannels[1], configId: 'ding', permitted: () => true, clean: () => true })
-  assert.equal(send.state.value, 'unavailable')
-  assert.equal(parseChannelSendVariables('null'), undefined)
-  assert.equal(parseChannelSendVariables('invalid'), undefined)
-})
 
-test('an active trial freezes channel/config navigation and displays its original actual config ID', async () => {
-  const io = testApi([email(), sms()])
-  const actual = { ...template(), template: { sendTo: ['fixed@example.org'] }, variableDefinitions: [] }
-  io.api.queryTemplates = async () => ({ data: [actual] })
-  io.api.getTemplate = async () => actual
-  let release
-  io.api.send = () => new Promise(resolve => { release = resolve })
-  const trial = useChannelSend(io.api)
-  const workspace = useChannelWorkspace({ api: io.api, permissions: permissions(), blocked: trial.sending })
-  await workspace.activate('email:embedded')
-  await trial.show({ channel: notificationChannels[0], configId: 'smtp-real', permitted: () => true, clean: () => !workspace.dirty.value })
-  await trial.selectTemplate(actual.id)
-  const pending = trial.send()
-  assert.equal(trial.sending.value, true)
-  assert.equal(await trial.send(), false)
-  await workspace.activate('sms:aliyunSms')
-  workspace.createConfig()
-  workspace.changeField('name', 'must not change', true)
-  trial.close()
-  assert.equal(workspace.channelId.value, 'email:embedded')
-  assert.equal(workspace.selectedConfigId.value, 'smtp-real')
-  assert.equal(workspace.entry.value.draft.name, 'smtp-real')
-  assert.equal(trial.configId.value, 'smtp-real')
-  assert.equal(trial.open.value, true)
-  release(undefined)
-  assert.equal(await pending, true)
-  await workspace.activate('sms:aliyunSms')
-  assert.equal(workspace.selectedConfigId.value, 'sms-real')
-  trial.close()
-  assert.equal(trial.configId.value, '')
-})
 
 const renderer = vue.createRenderer({
   createElement: () => ({}), createText: () => ({}), createComment: () => ({}), insert() {}, remove() {},
@@ -477,7 +392,7 @@ test('actual leave hook keeps navigation pending, supports stay/leave and cleans
   assert.equal(listeners.size, 0)
 })
 
-test('extracted page orchestration preserves route filters, template-read gates and failed save recovery', async () => {
+test('extracted page orchestration preserves route filters, send-only trial permission and failed save recovery', async () => {
   const io = testApi([email(), email('smtp-backup')])
   const originalWindow = globalThis.window
   globalThis.window = { addEventListener() {}, removeEventListener() {} }
@@ -513,8 +428,9 @@ test('extracted page orchestration preserves route filters, template-read gates 
     assert.equal(pageContext.route.query.configId, 'smtp-real')
     assert.equal(pageContext.route.query.q, 'kept-filter')
     assert.equal(io.calls.filter(([method]) => method === 'getConfig').length, 1)
-    assert.equal(page.canTrial.value, false)
+    assert.equal(page.canTrial.value, true)
     page.showSend()
+    page.trial.close(true)
     assert.equal(io.calls.some(([method]) => method === 'queryTemplates'), false)
     page.workspace.changeField('password', 'replacement-secret')
     page.workspace.changeField('host', 'smtp.updated.example.org')
@@ -530,15 +446,13 @@ test('extracted page orchestration preserves route filters, template-read gates 
     assert.equal(pageContext.messages.length, 1)
     permissionRefs.get(notificationPermissions.templates.query).value = true
     assert.equal(page.canTrial.value, true)
-    page.goTemplates()
-    assert.deepEqual(pageContext.jumps.at(-1), ['system/MessageNotification/Templates', { query: { channel: 'email:embedded', configId: 'smtp-real' } }])
     assert.equal(io.calls.some(([method]) => method === 'send'), false)
     page.selectChannel([], { node: { key: 'dingTalk:dingTalkMessage' } })
     for (let index = 0; index < 24; index++) { await Promise.resolve(); await vue.nextTick() }
     assert.equal(page.channelId.value, 'dingTalk:dingTalkMessage')
     assert.equal(pageContext.route.query.channel, 'dingTalk:dingTalkMessage')
     assert.equal(page.entry.value.isNew, true)
-    for (const [channelId, fields] of [['sms:aliyunSms', ['regionId', 'accessKeyId', 'secret']], ['webhook:http', ['url', 'headers']]]) {
+    for (const [channelId, fields] of [['sms:aliyunSms', ['regionId', 'accessKeyId', 'secret', 'testTemplate']], ['webhook:http', ['url', 'headers']]]) {
       await page.workspace.activate(channelId)
       assert.equal(page.state.value, 'empty')
       assert.equal(page.entry.value.isNew, true)
@@ -569,25 +483,9 @@ test('pair editing emits replacements and rejects malformed saved rows without m
   assert.deepEqual(editor.rows.value, [])
 })
 
-test('drawer focus hook waits for ready templates and preserves actual template options', async () => {
-  const model = vue.reactive({ open: true, state: 'loading', templates: [template()] })
-  let focusCount = 0
-  let drawer
-  const app = mount(vue.defineComponent({ setup() { drawer = useChannelSendDrawer(() => model); return () => null } }))
-  try {
-    drawer.templateSelect.value = { focus: () => { focusCount += 1 } }
-    await vue.nextTick()
-    assert.equal(focusCount, 0)
-    model.state = 'ready'
-    await vue.nextTick()
-    await vue.nextTick()
-    assert.equal(focusCount, 1)
-    assert.deepEqual(drawer.templateOptions.value, [{ value: 'template-real', label: 'Actual template · template-real' }])
-  } finally { app.unmount() }
-})
 
 test('all channel SFCs compile through Vue script/template without auto-named script extensions', () => {
-  for (const filename of ['index.vue', 'ChannelConfiguration.vue', 'ConfigurationPairs.vue', 'ChannelSendDrawer.vue', 'configuration/ChannelHelp.vue']) {
+  for (const filename of ['index.vue', 'ChannelConfiguration.vue', 'ConfigurationPairs.vue', 'testing/ChannelTestModal.vue', 'testing/ChannelTestSettings.vue', 'configuration/ChannelHelp.vue']) {
     const source = readFileSync(resolve(root, filename), 'utf8')
     const { descriptor, errors } = parse(source, { filename })
     assert.deepEqual(errors, [])
@@ -687,14 +585,14 @@ test('metadata preserves unknown fields, false/zero defaults, constraints and se
   assert.throws(() => channelConfigPayload(editable, baseline, definition))
 })
 
-test('backend additions to a known provider remain visible and template-only fields are never fabricated', () => {
+test('backend extensions remain visible alongside supported channel settings', () => {
   const known = notificationChannels.find(item => item.id === 'dingTalk:dingTalkMessage')
   const metadata = clone(channelMetadata[known.id])
   metadata.properties.push({ id: 'newSetting', name: '服务商新增字段', valueType: { type: 'string', expands: { required: true } } })
   const definition = channelDefinition(known, metadata)
-  assert.deepEqual(definition.fields.map(item => item.key), ['appKey', 'appSecret', 'newSetting'])
+  assert.deepEqual(definition.fields.map(item => item.key), ['appKey', 'appSecret', 'newSetting', 'agentId'])
   assert.deepEqual(definition.secretFields, ['appSecret'])
-  assert.equal(definition.fields.some(item => item.key === 'agentId'), false)
+  assert.equal(definition.fields.some(item => item.key === 'agentId'), true)
   const fields = validateChannelDraft({ id: 'generated', name: 'Generated', type: known.type, provider: known.provider, configuration: { appKey: 'key', appSecret: 'secret' } }, undefined, definition)
   assert.deepEqual(fields, [{ path: 'newSetting', key: 'required' }])
   const unknownProvider = { ...customChannel, id: 'sms:custom', type: 'sms' }

@@ -18,6 +18,8 @@ import { readHistoryCounts } from './notificationHistoryCounts'
 import { httpWebhookConfigMetadata, normalizeNotificationConfigMetadata } from './notificationConfigMetadata'
 import type { NoticeChannelConfig } from '../notice-center'
 
+export interface CurrentNotificationBinding { type: string; provider: string; providerName?: string; thirdPartyUserId: string }
+
 /** Preserve platform request behavior, but require success before a page updates its saved baseline. */
 async function checked<T>(operation: Promise<AxiosResponseRewrite<T>>): Promise<T> {
   try {
@@ -130,6 +132,34 @@ export const messageNotificationApi = {
   },
   send(configId: string, templateId: string, variables: NotificationObject): Promise<unknown> {
     return checked<unknown>(request.post(`/notifier/${idSegment(configId)}/${idSegment(templateId)}/_send`, variables))
+  },
+  /** Inline trials use the existing notifier send action and do not create a database template. */
+  sendInline(configId: string, template: NotificationTemplatePayload, context: NotificationObject): Promise<unknown> {
+    return checked<unknown>(request.post(`/notifier/${idSegment(configId)}/_send`, { template, context }, { hiddenError: true }))
+  },
+  /** Match personal-center precedence: primary email identity, first email identity, then profile email. */
+  async getCurrentEmail(): Promise<string> {
+    const identities = await checked<{ provider: string; identity: string; isPrimary?: boolean }[]>(
+      request.get('/user/identity/_me', undefined, { hiddenError: true }),
+    )
+    if (!Array.isArray(identities)) throw new NotificationRequestError('error')
+    const emails = identities.filter(item => item.provider === 'email')
+    const identity = emails.find(item => item.isPrimary) || emails[0]
+    if (identity?.identity) return identity.identity
+    const profile = await checked<{ email?: string }>(request.get('/user/detail', undefined, { applicationScope: false, hiddenError: true }))
+    if (!profile || typeof profile !== 'object') throw new NotificationRequestError('error')
+    return typeof profile.email === 'string' ? profile.email : ''
+  },
+  /** Personal phone and bindings need no member-management or template-query permission. */
+  async getCurrentPhone(): Promise<string> {
+    const profile = await checked<{ telephone?: string }>(request.get('/user/detail', undefined, { applicationScope: false, hiddenError: true }))
+    if (!profile || typeof profile !== 'object' || Array.isArray(profile) || (profile.telephone != null && typeof profile.telephone !== 'string')) throw new NotificationRequestError('error')
+    return profile.telephone || ''
+  },
+  async getCurrentBindings(): Promise<CurrentNotificationBinding[]> {
+    const bindings = await checked<CurrentNotificationBinding[]>(request.get('/user/third-party/me', undefined, { hiddenError: true }))
+    if (!Array.isArray(bindings) || bindings.some(item => !item || typeof item.type !== 'string' || typeof item.provider !== 'string' || typeof item.thirdPartyUserId !== 'string')) throw new NotificationRequestError('error')
+    return bindings
   },
 }
 

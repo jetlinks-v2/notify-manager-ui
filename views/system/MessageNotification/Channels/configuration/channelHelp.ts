@@ -12,6 +12,7 @@ const guides: Record<string, { kind: string; steps: number; questions: number }>
   'dingTalk:dingTalkMessage': { kind: 'dingTalk', steps: 3, questions: 1 },
   'dingTalk:dingTalkRobotWebHook': { kind: 'robot', steps: 2, questions: 1 },
   'weixin:corpMessage': { kind: 'weixin', steps: 3, questions: 1 },
+  'weixin:officialMessage': { kind: 'official', steps: 3, questions: 0 },
   'sms:aliyunSms': { kind: 'sms', steps: 3, questions: 1 },
   'voice:aliyun': { kind: 'voice', steps: 3, questions: 1 },
   'webhook:http': { kind: 'webhook', steps: 2, questions: 1 },
@@ -28,6 +29,7 @@ export function channelHelpStep(channel: NotificationChannel | undefined, defini
   if (channel.id === 'email:embedded') return ['username', 'password', 'sender'].includes(key) ? 2 : 1
   if (channel.id === 'webhook:http') return key === 'headers' ? 1 : 0
   if (channel.id === 'dingTalk:dingTalkRobotWebHook') return key === 'secret' ? 1 : 0
+  if (channel.id === 'weixin:officialMessage') return key === 'appId' ? 1 : key === 'secret' ? 2 : undefined
   return 1
 }
 

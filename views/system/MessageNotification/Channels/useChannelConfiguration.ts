@@ -6,6 +6,7 @@ import { channelConfigFields, type ChannelField } from './channelSchema'
 import type { ChannelDraftEntry, ChannelFieldChange } from './useChannelWorkspace'
 import type { ConfigurationPairsModel } from './useConfigurationPairs'
 import { propertyRules } from './configuration/channelMetadata'
+import { readTestSettings, testText } from './testing/channelTestConfig'
 import { emailEncryption, emailEncryptionChanges, emailEncryptionProperties, emailPresets, type EmailEncryption } from './configuration/emailSettings'
 
 export interface ChannelConfigurationProps {
@@ -45,14 +46,17 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
     return value ? t(`messageNotification.channels.validation.${value.key}`) : undefined
   }
   function label(field: ChannelField): string {
+    if (field.key === 'testTemplate') return t('messageNotification.channelTest.fields.testTemplate')
     if (props.entry.draft.type === 'dingTalk' && props.entry.draft.provider === 'dingTalkRobotWebHook' && field.key === 'secret') return t('messageNotification.channels.robot.secretLabel')
     const known = channelConfigFields[`${props.entry.draft.type}:${props.entry.draft.provider}`]
     const key = `messageNotification.channels.fields.${field.key}`
     return known && (known.some(item => item.key === field.key) || ['properties', 'headers'].includes(field.key)) ? t(key) : field.property?.name || field.key
   }
   function hint(field: ChannelField): string | undefined {
+    if (field.key === 'testTemplate') return t('messageNotification.channelTest.settings.hint')
     if (props.entry.draft.type === 'dingTalk' && props.entry.draft.provider === 'dingTalkRobotWebHook' && field.key === 'secret') return t('messageNotification.channels.robot.secretHint')
     const key = `messageNotification.channels.hints.${props.entry.draft.type}.${field.key}`
+    if (props.entry.draft.type === 'weixin' && props.entry.draft.provider === 'corpMessage' && field.key === 'agentId') return t(key)
     return props.entry.draft.type === 'email' && props.entry.draft.provider === 'embedded' && ['host', 'username', 'password', 'sender'].includes(field.key) ? t(key) : field.property?.description
   }
   function fieldType(field: ChannelField) { return field.options?.length ? 'enum' : field.property?.valueType.type || (field.kind === 'number' ? 'int' : 'string') }
@@ -144,14 +148,19 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
     const editor = field.kind === 'secret' ? 'password' : pairs || ['array', 'object', 'date', 'time'].includes(type) ? 'custom'
       : isSelect ? 'select' : ['int', 'long', 'float', 'double'].includes(type) ? 'number' : 'text'
     const pairDisplay = pairs && Array.isArray(saved) ? saved.map(row => `${row[pairKind.value === 'headers' ? 'key' : 'name']}: ${pairKind.value === 'headers' ? notificationSecretMask : row.value}`).join('\n') : undefined
+    const trialSettings = readTestSettings(saved)
+    // A legacy masked credential can block the transaction even when the test settings are valid.
+    const blockedSecret = field.key === 'testTemplate' ? props.entry.issues.find(item => item.key === 'secretRequired') : undefined
+    const preservationError = blockedSecret ? `${label(fields.value.find(item => item.key === blockedSecret.path) || { key: blockedSecret.path })}: ${issue(blockedSecret.path)}` : undefined
+    const testDisplay = field.key === 'testTemplate' ? testText(trialSettings.code || trialSettings.templateCode || trialSettings.wxTemplateId) : undefined
     return {
       key: `config:${field.key}`, label: label(field), editor, required: field.required,
       value: isSelect ? selectedValue(field) : value,
       initialValue: isSelect ? (() => { const index = rawSelectOptions(field).findIndex(option => option.value === saved); return index < 0 ? undefined : index })() : saved,
-      displayValue: pairDisplay, options: isSelect ? selectOptions(field) : undefined,
+      displayValue: testDisplay || pairDisplay, options: isSelect ? selectOptions(field) : undefined,
       secretSet: !!props.entry.baseline?.configuration[field.key],
       placeholder: field.kind === 'secret' ? t(props.entry.baseline ? 'messageNotification.channels.keepSecret' : 'messageNotification.channels.enterSecret') : undefined,
-      hint: hint(field), error: fieldError(field.key), fullWidth: !['port', 'password', 'sender'].includes(field.key),
+      hint: hint(field), error: fieldError(field.key) || preservationError, fullWidth: !['port', 'password', 'sender'].includes(field.key),
       ...numberBounds(field), precision: ['int', 'long'].includes(type) ? 0 : field.property?.valueType.scale, maxLength: maxLength(field),
     }
   }

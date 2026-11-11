@@ -20,6 +20,15 @@ function objectValue(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === 'object' ? value as Record<string, unknown> : undefined
 }
 
+/** Preserve server explanations through checked(), without exposing generic Axios or wrapper messages. */
+export function notificationFailureMessage(error: unknown): string | undefined {
+  const value = objectValue(error instanceof NotificationRequestError ? error.original : error)
+  const response = objectValue(value?.response)
+  const data = objectValue(response?.data) ?? objectValue(value?.data) ?? response ?? value
+  const message = data?.message
+  return typeof message === 'string' && message.trim() && !(data instanceof Error) ? message : undefined
+}
+
 /** Accept the platform's rejected Axios error and resolved unsuccessful response shapes. */
 export function classifyNotificationFailure(error: unknown): NotificationFailureKind {
   if (error instanceof NotificationRequestError) return error.kind

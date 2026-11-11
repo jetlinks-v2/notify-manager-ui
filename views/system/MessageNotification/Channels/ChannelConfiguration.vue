@@ -2,7 +2,11 @@
   <div class="channel-configuration">
     <InlineEditForm :key="entry.key" ref="form" :groups="formGroups" :mode="entry.isNew ? 'form' : 'detail'" :disabled="disabled" :busy="busy" :messages="formMessages" :submit="submitValue" @change="changeValue" @cancel="cancelValue" @focus="emit('focus', $event)">
       <template #editor="{ field, value, update, commit, blur, disabled: fieldDisabled }">
-        <div v-if="customPairModel(field.key, value, fieldDisabled)" @focusout="blur"><ConfigurationPairs :model="customPairModel(field.key, value, fieldDisabled)!" @change="update" /></div>
+        <div v-if="field.key === 'config:testTemplate'" @focusout="blur">
+          <ChannelTestSettings :channel-id="`${entry.draft.type}:${entry.draft.provider}`" :value="value" :disabled="fieldDisabled" @change="update" />
+          <a-alert v-if="field.error && !entry.isNew" type="error" show-icon :message="field.error" />
+        </div>
+        <div v-else-if="customPairModel(field.key, value, fieldDisabled)" @focusout="blur"><ConfigurationPairs :model="customPairModel(field.key, value, fieldDisabled)!" @change="update" /></div>
         <MetadataValueItem v-else :key="`${entry.key}-${field.key}`" :item="metadataField(field.key)?.property" :model-value="value" :aria-label="field.label" :disabled="fieldDisabled" @update:model-value="!fieldDisabled && update($event)" @change="commit" />
       </template>
     </InlineEditForm>
@@ -20,6 +24,7 @@ import { InlineEditForm } from '@jetlinks-web-core/components/InlineEditForm'
 import type { ChannelDraftEntry, ChannelFieldChange } from './useChannelWorkspace'
 import { useChannelConfiguration } from './useChannelConfiguration'
 import ConfigurationPairs from './ConfigurationPairs.vue'
+import ChannelTestSettings from './testing/ChannelTestSettings.vue'
 const props = defineProps({
   entry: { type: Object as PropType<ChannelDraftEntry>, required: true },
   disabled: { type: Boolean, default: false },
@@ -28,6 +33,7 @@ const props = defineProps({
 })
 const emit = defineEmits<{ (event: 'field', key: string, value: unknown, topLevel?: boolean): void; (event: 'focus', key: string): void }>()
 const form = ref<InstanceType<typeof InlineEditForm>>()
+defineExpose({ editField: (key: string) => form.value?.editField(key) })
 const {
   t, formGroups, formMessages, changeValue, cancelValue, submitValue, metadataField, customPairModel,
   canClearSigningSecret, clearSecretOpen, clearSecretPending, clearSecretError, requestClearSigningSecret, cancelClearSigningSecret, clearSigningSecret,
