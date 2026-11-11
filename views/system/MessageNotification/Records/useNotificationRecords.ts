@@ -12,8 +12,9 @@ import {
 } from '../shared'
 import {
   buildHistoryQuery, historyPage, notificationHistoryAdapterKey, replaceHistoryState, selectedHistoryState,
-  unavailableNotificationHistoryAdapter, type NotificationHistoryAdapter,
+  notificationHistoryAdapter, type NotificationHistoryAdapter,
 } from './recordQuery'
+import { useHistoryCounts } from './useHistoryCounts'
 
 /** One generation owns rows, totals and failures; permission/capability failures never become empty success. */
 export function createNotificationRecordsController(adapter: NotificationHistoryAdapter, allowed: Ref<boolean>, query: Ref<NotificationQuery>) {
@@ -72,23 +73,30 @@ export function useNotificationRecords(fields: Ref<ConditionFilterField[]>) {
   const route = useRoute()
   const router = useRouter()
   const { hasPerm } = usePermission(notificationPermissions.records.query)
-  const adapter = inject(notificationHistoryAdapterKey, unavailableNotificationHistoryAdapter)
+  const adapter = inject(notificationHistoryAdapterKey, notificationHistoryAdapter)
   const navigation = computed(() => normalizeNotificationNavigation(route.query))
   const pageIndex = computed(() => historyPage(route.query.page, 1) - 1)
   const pageSize = computed(() => historyPage(route.query.size, 12, 100))
   const terms = computed(() => {
     const decoded = decodeConditionFilterQuery(route.query.q, fields.value)
-    return navigation.value.state ? replaceHistoryState(decoded, navigation.value.state) : decoded
+    if (navigation.value.state) return replaceHistoryState(decoded, navigation.value.state)
+    // An explicit all/search URL survives reload; only an untouched entry defaults to failures.
+    return route.query.state === 'all' || route.query.q ? decoded : replaceHistoryState(decoded, 'error')
   })
   const selectedState = computed(() => selectedHistoryState(terms.value))
   const query = computed(() => buildHistoryQuery(buildQueryFilter(terms.value, fields.value).terms, navigation.value, pageIndex.value, pageSize.value))
   const records = createNotificationRecordsController(adapter, hasPerm, query)
   const interactive = computed(() => hasPerm.value && adapter.available)
+  const countFilter = computed(() => ({
+    terms: buildHistoryQuery(buildQueryFilter(replaceHistoryState(terms.value), fields.value).terms, navigation.value, 0, 12).terms,
+  }))
+  const statistics = useHistoryCounts(adapter, hasPerm, countFilter)
+  const selectionScope = computed(() => JSON.stringify(query.value.terms))
 
   /** Route encoding and adapter filters share field metadata; page resets atomically with search. */
   function changeTerms(value: ConditionFilterTerm[]) {
     const next = notificationQuery({ ...navigation.value, state: selectedHistoryState(value) }, route.query)
-    void router.replace({ query: { ...next, q: encodeConditionFilterQuery(value, fields.value) || undefined, page: undefined } })
+    void router.replace({ query: { ...next, state: selectedHistoryState(value) || 'all', q: encodeConditionFilterQuery(value, fields.value) || undefined, page: undefined } })
   }
 
   function changeState(value: string | number) {
@@ -100,5 +108,5 @@ export function useNotificationRecords(fields: Ref<ConditionFilterField[]>) {
     void router.replace({ query: { ...route.query, page: String(size === pageSize.value ? page : 1), size: String(size) } })
   }
 
-  return { ...records, terms, selectedState, pageIndex, pageSize, interactive, changeTerms, changeState, changePage }
+  return { ...records, ...statistics, selectionScope, terms, selectedState, pageIndex, pageSize, interactive, changeTerms, changeState, changePage }
 }

@@ -12,6 +12,7 @@ export function useTemplatePreview(props: { draft: TemplateDraft }) {
   const text = computed(() => previewTemplateText(props.draft.text, examples))
   const providerContent = computed(() => previewTemplateText(props.draft.templateJson, examples))
   const attachmentNames = computed(() => props.draft.attachments.map(item => item.name).join(', '))
+  const recipients = computed(() => props.draft.sendTo.map(value => previewTemplateText(value, examples)).join(', '))
   watch(() => props.draft.variables, definitions => {
     for (const key of Object.keys(examples)) if (!definitions.some(variable => variable.id === key)) delete examples[key]
     for (const variable of definitions) if (variable.id && !Object.hasOwn(examples, variable.id)) {
@@ -19,5 +20,5 @@ export function useTemplatePreview(props: { draft: TemplateDraft }) {
     }
   }, { deep: true, immediate: true })
 
-  return { t, examples, variables, emailDraft, subject, text, providerContent, attachmentNames }
+  return { t, examples, variables, emailDraft, subject, text, providerContent, attachmentNames, recipients }
 }

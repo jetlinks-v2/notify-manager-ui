@@ -1,90 +1,137 @@
 <template>
   <FullPage class="notification-page notification-channels" transparentBackground :flex="true">
-    <a-select v-if="isNarrow" :value="channelId" :options="channelOptions" :disabled="operationBusy || sending" :aria-label="t('messageNotification.channels.navigation')" class="notification-channels__mobile-nav" @change="workspace.activate(String($event))" />
+    <a-select v-if="isNarrow" :value="channelId" :options="channelOptions" :disabled="operationBusy || directoryState === 'loading'" :aria-label="t('messageNotification.channels.navigation')" class="notification-channels__mobile-nav" @change="workspace.activate(String($event))" />
+    <div v-if="isNarrow && providerFeedback.length" class="notification-channels__mobile-feedback">
+      <div v-for="feedback in providerFeedback" :key="feedback.id" class="notification-channels__provider-feedback" role="status">
+        <span>{{ feedback.name }} · {{ t(feedback.state === 'empty' ? 'messageNotification.channels.noProviders' : `messageNotification.state.${feedback.state}`) }}</span>
+        <a-button v-if="feedback.state !== 'empty'" type="link" size="small" :disabled="operationBusy" @click="catalog.loadProviders(feedback.id)">{{ t('messageNotification.common.retry') }}</a-button>
+      </div>
+    </div>
     <EqualHeightColumns class="notification-page__layout" left-width="15rem" right-width="1fr" :show-left="!isNarrow">
       <template #left>
         <nav class="notification-page__sidebar" :aria-label="t('messageNotification.channels.navigation')">
           <strong class="notification-page__title">{{ t('messageNotification.channels.navigation') }}</strong>
-          <a-menu class="notification-page__body" :selected-keys="[channelId]" mode="inline" :disabled="operationBusy" @click="workspace.activate(String($event.key))">
-            <a-menu-item-group v-for="group in channelGroups" :key="group.id" :title="t(`messageNotification.channels.groups.${group.id}`)">
-              <a-menu-item v-for="item in group.items" :key="item.id">{{ t(item.labelKey) }}</a-menu-item>
-            </a-menu-item-group>
-          </a-menu>
+          <a-input v-model:value="channelSearch" allow-clear :placeholder="t('messageNotification.channels.search')" :aria-label="t('messageNotification.channels.search')"><template #prefix><AIcon type="SearchOutlined" aria-hidden="true" /></template></a-input>
+          <div class="notification-page__body">
+            <a-spin v-if="directoryState === 'loading'" />
+            <AutoTree v-else-if="filteredChannelTree.length" v-model:expanded-keys="openChannelKeys" class="notification-channels__tree" block-node :show-line="{ showLeafIcon: false }" :tree-data="filteredChannelTree" :selected-keys="[channelId]" :disabled="operationBusy" @select="selectChannel">
+              <template #title="node">
+                <span class="notification-channels__node" :title="node.title">
+                  <img v-if="channelIcon(node.type)" class="notification-channels__icon" :src="channelIcon(node.type)" alt="" />
+                  <AIcon v-else type="NotificationOutlined" class="notification-channels__icon" aria-hidden="true" />
+                  <span class="notification-channels__node-label">{{ node.title }}</span>
+                  <span v-if="node.count === 0" class="notification-channels__node-state">{{ t('messageNotification.channels.unconfigured') }}</span>
+                  <span v-else-if="node.multipleConfigurations && node.count > 1" class="notification-channels__node-state">{{ node.count }}</span>
+                </span>
+              </template>
+            </AutoTree>
+            <CloudEmpty v-else-if="directoryState === 'ready'" :description="t('messageNotification.channels.noMatches')" />
+            <div v-for="feedback in providerFeedback" :key="feedback.id" class="notification-channels__provider-feedback" role="status">
+              <span>{{ feedback.name }} · {{ t(feedback.state === 'empty' ? 'messageNotification.channels.noProviders' : `messageNotification.state.${feedback.state}`) }}</span>
+              <a-button v-if="feedback.state !== 'empty'" type="link" size="small" :disabled="operationBusy" @click="catalog.loadProviders(feedback.id)">{{ t('messageNotification.common.retry') }}</a-button>
+            </div>
+          </div>
         </nav>
       </template>
       <template #right>
-        <section class="notification-page__workspace notification-channels__panel" :aria-label="channel ? t(channel.labelKey) : t('messageNotification.channels.title')">
-          <div class="notification-page__toolbar">
-            <div class="notification-channels__selection">
+        <section class="notification-page__workspace notification-channels__panel" :aria-label="channel ? channelTitle(channel) : t('messageNotification.channels.title')">
+          <div v-if="directoryState === 'loading' || directoryState === 'idle'" class="notification-page__feedback" role="status"><a-spin :tip="t('messageNotification.common.loading')" /></div>
+          <CloudEmpty v-else-if="['unavailable', 'forbidden', 'error', 'empty'].includes(directoryState)" class="notification-page__feedback" :description="t(directoryState === 'empty' ? 'messageNotification.channels.noChannels' : `messageNotification.state.${directoryState}`)"><a-button v-if="canQuery" @click="catalog.reload()">{{ t('messageNotification.common.retry') }}</a-button></CloudEmpty>
+          <template v-else>
+            <header v-if="channel" class="notification-channels__heading">
+              <img v-if="channelIcon(channel.type)" class="notification-channels__heading-icon" :src="channelIcon(channel.type)" alt="" />
+              <AIcon v-else type="NotificationOutlined" class="notification-channels__heading-icon" aria-hidden="true" />
+              <div class="notification-channels__summary">
+                <div class="notification-channels__title-row"><h2>{{ channelTitle(channel) }}</h2><StatusPill v-if="['ready', 'empty'].includes(state)" :status="t(state === 'empty' ? 'messageNotification.channels.unconfigured' : dirty || entry?.isNew ? 'messageNotification.channels.draft' : 'messageNotification.channels.configured')" /></div>
+                <p>{{ help.description }}</p>
+              </div>
+              <div v-if="entry" class="notification-page__actions">
+                <j-permission-button v-if="configurationVisible && !entry.isNew && channel?.id === 'email:embedded'" :has-permission="[notificationPermissions.channels.action]" :disabled="!canTrial || operationBusy" @click="showSend">{{ t('messageNotification.channels.test') }}</j-permission-button>
+                <a-button :type="helpOpen ? 'primary' : 'default'" :ghost="helpOpen" :aria-expanded="helpOpen" aria-controls="notification-channel-help" @click="toggleHelp()"><template #icon><AIcon type="ReadOutlined" /></template>{{ t('messageNotification.channels.helpTitle') }}</a-button>
+                <a-dropdown v-if="configurationVisible && !entry.isNew" :trigger="['click']" :disabled="operationBusy">
+                  <a-button :aria-label="t('messageNotification.channels.more')"><AIcon type="MoreOutlined" /></a-button>
+                  <template #overlay><a-menu>
+                    <a-menu-item v-if="canManageTemplates" key="templates" @click="goTemplates">{{ t('messageNotification.channels.manageTemplates') }}</a-menu-item>
+                    <a-menu-item key="delete"><j-permission-button type="text" danger :has-permission="[notificationPermissions.channels.delete]" :disabled="operationBusy" @click="requestRemove">{{ t('messageNotification.common.delete') }}</j-permission-button></a-menu-item>
+                  </a-menu></template>
+                </a-dropdown>
+              </div>
+            </header>
+            <div v-if="multipleConfigurations && configs.length" class="notification-page__toolbar">
               <a-select :value="selectedConfigId" class="notification-channels__selector" :options="configurationOptions" :disabled="operationBusy || !canQuery || state === 'loading'" :placeholder="t('messageNotification.channels.chooseConfig')" :aria-label="t('messageNotification.channels.chooseConfig')" @change="workspace.selectConfig(String($event))" />
-              <StatusPill v-if="entry" :status="t(dirty || entry.isNew ? 'messageNotification.channels.draft' : 'messageNotification.channels.saved')" />
+              <div class="notification-page__actions">
+                <j-permission-button :has-permission="[notificationPermissions.channels.add]" :disabled="operationBusy || !['ready', 'empty'].includes(state)" @click="workspace.createConfig()"><template #icon><AIcon type="PlusOutlined" /></template>{{ t('messageNotification.channels.add') }}</j-permission-button>
+              </div>
             </div>
-            <div class="notification-page__actions">
-              <j-permission-button v-if="canQuery" type="primary" :has-permission="[notificationPermissions.channels.add]" :disabled="operationBusy || !['ready', 'empty'].includes(state)" @click="workspace.createConfig()"><template #icon><AIcon type="PlusOutlined" /></template>{{ t('messageNotification.channels.add') }}</j-permission-button>
-              <template v-if="configurationVisible && entry">
-                <a-button :disabled="entry.isNew || !canViewTemplates || operationBusy" @click="goTemplates">{{ t('messageNotification.channels.manageTemplates') }}</a-button>
-                <a-tooltip :title="channel?.id !== 'email:embedded' ? t('messageNotification.channels.sendUnavailable') : dirty ? t('messageNotification.channels.saveBeforeSend') : undefined">
-                  <j-permission-button :has-permission="[notificationPermissions.channels.action]" :disabled="!canTrial || operationBusy" @click="showSend">{{ t('messageNotification.channels.test') }}</j-permission-button>
-                </a-tooltip>
-                <a-popconfirm v-if="!entry.isNew" :title="t('messageNotification.channels.confirmDelete')" @confirm="remove">
-                  <j-permission-button danger :has-permission="[notificationPermissions.channels.delete]" :disabled="operationBusy">{{ t('messageNotification.common.delete') }}</j-permission-button>
-                </a-popconfirm>
-              </template>
-            </div>
-          </div>
-          <div v-if="state === 'loading' || detailState === 'loading'" class="notification-page__feedback" role="status"><a-spin :tip="t('messageNotification.common.loading')" /></div>
-          <CloudEmpty v-else-if="['unavailable', 'forbidden', 'error'].includes(state)" class="notification-page__feedback" :description="t(`messageNotification.state.${state}`)">
-            <a-button v-if="canQuery && channel" @click="refresh">{{ t('messageNotification.common.retry') }}</a-button>
-          </CloudEmpty>
-          <CloudEmpty v-else-if="['unavailable', 'forbidden', 'error'].includes(detailState)" class="notification-page__feedback" :description="t(`messageNotification.state.${detailState}`)">
-            <a-button v-if="canQuery && selectedConfigId" @click="workspace.selectConfig(selectedConfigId)">{{ t('messageNotification.common.retry') }}</a-button>
-          </CloudEmpty>
-          <template v-else-if="entry">
-            <div class="notification-page__body notification-channels__body">
-              <a-alert v-if="entry.failure" type="error" show-icon :message="t(`messageNotification.state.${entry.failure}`)" class="notification-channels__alert" />
-              <ChannelConfiguration :entry="entry" :disabled="!canEdit || operationBusy" @field="workspace.changeField" />
-              <a-collapse :key="entry.key" ghost :default-active-key="entry.isNew ? ['help'] : []" class="notification-channels__help">
-                <a-collapse-panel key="help" :header="t('messageNotification.channels.helpTitle')"><p>{{ t(`messageNotification.channels.help.${channel?.type}`) }}</p></a-collapse-panel>
-              </a-collapse>
-            </div>
-            <StickyActionBar position="inline" class="notification-page__footer" :hint="dirty ? t('messageNotification.channels.unsaved') : undefined">
-              <a-popconfirm :title="t('messageNotification.channels.confirmReset')" :disabled="!dirty || operationBusy" @confirm="workspace.resetDraft()">
-                <a-button :disabled="!dirty || operationBusy">{{ t('messageNotification.common.reset') }}</a-button>
-              </a-popconfirm>
-              <j-permission-button type="primary" :has-permission="[entry.isNew ? notificationPermissions.channels.add : notificationPermissions.channels.update]" :loading="busy" :disabled="!dirty || !canEdit || operationBusy" @click="save">{{ t('messageNotification.common.save') }}</j-permission-button>
-            </StickyActionBar>
+            <div v-if="state === 'loading' || detailState === 'loading'" class="notification-page__feedback" role="status"><a-spin :tip="t('messageNotification.common.loading')" /></div>
+            <CloudEmpty v-else-if="['unavailable', 'forbidden', 'error'].includes(state)" class="notification-page__feedback" :description="t(`messageNotification.state.${state}`)"><a-button v-if="canQuery && channel" @click="refresh">{{ t('messageNotification.common.retry') }}</a-button></CloudEmpty>
+            <CloudEmpty v-else-if="['unavailable', 'forbidden', 'error'].includes(detailState)" class="notification-page__feedback" :description="t(`messageNotification.state.${detailState}`)"><a-button v-if="canQuery && selectedConfigId" @click="workspace.selectConfig(selectedConfigId)">{{ t('messageNotification.common.retry') }}</a-button></CloudEmpty>
+            <template v-else-if="entry">
+              <div class="notification-page__body notification-channels__body">
+                <a-alert v-if="entry.failure" type="error" show-icon :message="t(`messageNotification.state.${entry.failure}`)" class="notification-channels__alert" />
+                <a-alert v-if="entry.refreshFailure" type="warning" show-icon :message="t('messageNotification.channels.savedRefreshFailed')" class="notification-channels__alert"><template #action><a-button :disabled="operationBusy" @click="workspace.refreshSaved()">{{ t('messageNotification.common.retry') }}</a-button></template></a-alert>
+                <div class="notification-channels__content" :class="{ 'notification-channels__content--help': helpOpen }">
+                  <ChannelConfiguration :entry="entry" :disabled="!canEdit || sending" :busy="busy" :submit="saveFields" @field="workspace.changeField" @focus="focusField" />
+                  <ChannelHelp v-if="helpOpen" :model="help" :active-step="activeHelpStep" @close="toggleHelp(false)" />
+                </div>
+              </div>
+              <StickyActionBar v-if="entry.isNew" position="inline" class="notification-page__footer notification-channels__footer">
+                <j-permission-button type="primary" :has-permission="[entry.isNew ? notificationPermissions.channels.add : notificationPermissions.channels.update]" :loading="busy" :disabled="(!entry.isNew && !dirty) || !canEdit || operationBusy" @click="save">{{ t('messageNotification.common.save') }}</j-permission-button>
+              </StickyActionBar>
+            </template>
+            <CloudEmpty v-else class="notification-page__feedback" :description="t(state === 'empty' ? 'messageNotification.channels.cannotCreate' : 'messageNotification.channels.selectConfig')" />
           </template>
-          <CloudEmpty v-else class="notification-page__feedback" :description="t(state === 'empty' ? 'messageNotification.channels.empty' : 'messageNotification.channels.selectConfig')" />
         </section>
       </template>
     </EqualHeightColumns>
     <ChannelSendDrawer :model="sendDrawer" @close="trial.close" @template="trial.selectTemplate" @parameters="updateSendParameters" @send="trial.send" />
+    <JlConfirmDialog :open="deleteOpen" :title="t('messageNotification.common.delete')" :message="t('messageNotification.channels.confirmDelete')" :confirm-text="t('messageNotification.common.delete')" :cancel-text="t('messageNotification.common.cancel')" @confirm="remove" @cancel="deleteOpen = false" @update:open="deleteOpen = $event" />
     <JlConfirmDialog :open="leaveOpen" :title="t('messageNotification.channels.leaveTitle')" :message="t('messageNotification.channels.confirmLeave')" :confirm-text="t('messageNotification.channels.leave')" :cancel-text="t('messageNotification.channels.stay')" @confirm="decideLeave(true)" @cancel="decideLeave(false)" @update:open="!$event && decideLeave(false)" />
   </FullPage>
 </template>
 
 <script setup lang="ts">
+import { DingTalk, Email, Sms, Voice, Webhook, WeixinCorp } from '@jetlinks-web-core/assets/notice'
+import AutoTree from '@jetlinks-web-core/components/AutoTree'
 import { useChannelsPage } from './useChannelsPage'
 import ChannelConfiguration from './ChannelConfiguration.vue'
 import ChannelSendDrawer from './ChannelSendDrawer.vue'
-
+import ChannelHelp from './configuration/ChannelHelp.vue'
 defineOptions({ name: 'MessageNotificationChannels' })
+const channelIcons: Record<string, string> = { email: Email, dingTalk: DingTalk, weixin: WeixinCorp, voice: Voice, sms: Sms, webhook: Webhook }
+const channelIcon = (type: string) => channelIcons[type]
 const {
-  t, notificationPermissions, isNarrow, channelOptions, channelGroups, configurationOptions,
-  canQuery, canViewTemplates, channelId, channel, state, detailState, entry, selectedConfigId,
-  busy, dirty, canEdit, operationBusy, canTrial, leaveOpen, decideLeave, sendDrawer, sending,
+  t, notificationPermissions, isNarrow, channelOptions, channelSearch, filteredChannelTree, openChannelKeys, selectChannel, configurationOptions,
+  canQuery, canManageTemplates, channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId,
+  busy, dirty, canEdit, operationBusy, canTrial, leaveOpen, decideLeave, sendDrawer,
   workspace, trial, refresh, save, remove, goTemplates, showSend, updateSendParameters, configurationVisible,
+  catalog, directoryState, providerFeedback, channelTitle, help, helpOpen, toggleHelp, saveFields, focusField, activeHelpStep, sending, deleteOpen, requestRemove,
 } = useChannelsPage()
 </script>
 
 <style scoped src="../shared/layout.css"></style>
 <style scoped>
-.notification-channels__selection { display: flex; flex: 1 1 20rem; align-items: center; gap: var(--space-2); min-width: 0; max-width: 34rem; }
-.notification-channels__selector { flex: 1; min-width: 0; max-width: 28rem; }
+.notification-channels__tree { background: transparent; }
+.notification-channels__tree :deep(.ant-tree-title) { display: block; width: 100%; min-width: 0; }
+.notification-channels__node { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
+.notification-channels__node-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notification-channels__icon { flex: 0 0 auto; width: var(--space-5); height: var(--space-5); object-fit: contain; }
+.notification-channels__node-state { margin-left: auto; color: var(--text-color-secondary); font-size: var(--fs-12); white-space: nowrap; }
+.notification-channels__provider-feedback { margin-top: var(--space-3); color: var(--text-color-secondary); font-size: var(--fs-12); }
+.notification-channels__heading { display: flex; align-items: flex-start; gap: var(--space-3); }
+.notification-channels__heading-icon { flex-shrink: 0; width: var(--space-8); height: var(--space-8); object-fit: contain; }
+.notification-channels__summary { flex: 1; min-width: 0; }
+.notification-channels__title-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.notification-channels__title-row h2 { margin: 0; font-size: var(--fs-18); font-weight: 500; }
+.notification-channels__summary p { margin: var(--space-2) 0 0; font-size: var(--fs-12); color: var(--text-color-secondary); }
+.notification-channels__selector { flex: 1 1 15rem; min-width: 0; max-width: 28rem; }
 .notification-channels__body { padding-right: var(--space-2); }
+.notification-channels__content { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: var(--space-6); }
+.notification-channels__content--help { grid-template-columns: minmax(0, 1fr) minmax(16rem, 34%); }
 .notification-channels__alert { margin-bottom: var(--space-4); }
-.notification-channels__help { margin-top: var(--space-4); margin-bottom: var(--space-4); }
-.notification-channels__help p { color: var(--text-color-secondary); margin: 0; }
+.notification-channels__footer { justify-content: flex-start; }
 .notification-channels__mobile-nav { flex-shrink: 0; }
-@media (max-width: 48rem) { .notification-channels__selection { flex-basis: 100%; } }
+.notification-channels__mobile-feedback { flex-shrink: 0; max-height: 8rem; overflow-y: auto; }
+@media (max-width: 64rem) { .notification-channels__content--help { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 48rem) { .notification-channels__heading { flex-wrap: wrap; } .notification-channels__summary { flex-basis: calc(100% - 3rem); } }
 </style>

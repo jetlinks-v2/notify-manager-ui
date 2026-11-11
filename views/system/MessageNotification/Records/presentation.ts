@@ -7,6 +7,12 @@ import {
 
 type Translate = (key: string, values?: Record<string, unknown>) => string
 
+/** Historical providers outside the known catalog keep a neutral channel icon. */
+export function historyChannelIcon(type: NotificationEnum | undefined): string {
+  const icons: Record<string, string> = { email: 'MailOutlined', dingTalk: 'DingdingOutlined', weixin: 'WechatOutlined', sms: 'MessageOutlined', voice: 'PhoneOutlined', webhook: 'ApiOutlined' }
+  return icons[notificationEnumValue(type)] || 'NotificationOutlined'
+}
+
 /** Preserve backend EnumDict text; translate only known raw state values. */
 export function historyStateLabel(value: NotificationEnum | undefined, t: Translate): string {
   if (typeof value === 'object' && value?.text) return value.text

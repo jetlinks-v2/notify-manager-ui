@@ -153,12 +153,11 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     finally { saving.value = false }
   }
 
-  /** Revert only the active draft; other template drafts remain protected by the route guard. */
+  /** Revert only the active draft; cancelling an unsaved template removes its local entry. */
   async function discardDraft() {
     const key = activeKey.value
     drafts.delete(key)
-    if (key.startsWith('new:')) createTemplate()
-    else await selectTemplate(key)
+    await selectTemplate(key.startsWith('new:') ? '' : key)
   }
 
   return { channelId, templates, configs, listState, configState, detailState, saveState, activeKey,

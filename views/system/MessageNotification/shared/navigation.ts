@@ -26,13 +26,13 @@ function queryString(value: LocationQuery[string]): string | undefined {
 }
 
 /** Normalize shared query keys once; prototype business categories are not persisted bindings. */
-export function normalizeNotificationNavigation(query: LocationQuery): NotificationNavigation {
+export function normalizeNotificationNavigation(query: LocationQuery, channels: readonly NotificationChannel[] = notificationChannels): NotificationNavigation {
   const requestedChannel = queryString(query.channel)
   const prototypeType = prototypeChannelTypes[queryString(query.ch) ?? '']
-  const matches = notificationChannels.filter(channel => channel.type === prototypeType)
+  const matches = channels.filter(channel => channel.type === prototypeType)
   // Ambiguous prototype channels require a provider selection rather than silently using the first.
   const fallback = matches.length === 1 ? matches[0] : undefined
-  const channel = findNotificationChannel(requestedChannel)?.id ?? (!requestedChannel ? fallback?.id : undefined)
+  const channel = findNotificationChannel(requestedChannel, channels)?.id ?? (!requestedChannel ? fallback?.id : undefined)
   const state = queryString(query.state) ?? queryString(query.status)
   return {
     ...(channel ? { channel } : {}),
@@ -43,10 +43,10 @@ export function normalizeNotificationNavigation(query: LocationQuery): Notificat
 }
 
 /** Preserve ConditionFilter and host-owned query keys while replacing this feature's selection. */
-export function notificationQuery(navigation: NotificationNavigation, existing: LocationQueryRaw = {}): LocationQueryRaw {
+export function notificationQuery(navigation: NotificationNavigation, existing: LocationQueryRaw = {}, channels: readonly NotificationChannel[] = notificationChannels): LocationQueryRaw {
   const query = { ...existing }
   for (const key of ['channel', 'configId', 'templateId', 'state', 'ch', 'status', 'sub', 'sec', 'tab']) delete query[key]
-  if (findNotificationChannel(navigation.channel)) query.channel = navigation.channel
+  if (findNotificationChannel(navigation.channel, channels)) query.channel = navigation.channel
   if (navigation.configId) query.configId = navigation.configId
   if (navigation.templateId) query.templateId = navigation.templateId
   if (navigation.state && notificationStates.includes(navigation.state)) query.state = navigation.state

@@ -1,6 +1,8 @@
 import { request } from '@jetlinks-web/core'
 import type { AxiosResponseRewrite } from '@jetlinks-web/types'
 import type {
+  NotificationHistory,
+  NotificationHistoryCounts,
   NotificationObject,
   NotificationPage,
   NotificationQuery,
@@ -8,8 +10,13 @@ import type {
   NotificationTemplatePayload,
   NotifierConfig,
   NotifierConfigPayload,
+  NotificationProvider,
+  NotificationConfigMetadata,
 } from './messageNotificationTypes'
 import { classifyNotificationFailure, normalizeNotificationPage, NotificationRequestError } from './messageNotificationState'
+import { readHistoryCounts } from './notificationHistoryCounts'
+import { httpWebhookConfigMetadata, normalizeNotificationConfigMetadata } from './notificationConfigMetadata'
+import type { NoticeChannelConfig } from '../notice-center'
 
 /** Preserve platform request behavior, but require success before a page updates its saved baseline. */
 async function checked<T>(operation: Promise<AxiosResponseRewrite<T>>): Promise<T> {
@@ -29,8 +36,68 @@ function idSegment(id: string): string {
   return encodeURIComponent(id)
 }
 
-/** Typed config/template facade. History querying remains unavailable pending a separate integration. */
+function nonemptyString(value: unknown): value is string {
+  return typeof value === 'string' && !!value.trim()
+}
+
+function enumIdentity(value: unknown): boolean {
+  return nonemptyString(value) || !!value && typeof value === 'object' && 'value' in value && nonemptyString(value.value)
+}
+
+/** A malformed directory is an error, never evidence that a type has no providers. */
+function directory(value: unknown): NotificationProvider[] {
+  if (!Array.isArray(value) || value.some(item => !item || !nonemptyString(item.id))) {
+    throw new NotificationRequestError('error')
+  }
+  return value
+}
+
+/** Typed notification facade using the platform request context and checked responses. */
 export const messageNotificationApi = {
+  /** Existing business directory supplies grouping and exact template bindings, never name matching. */
+  async queryTemplateDirectory(): Promise<NoticeChannelConfig[]> {
+    const result = await checked<NoticeChannelConfig[]>(request.get('/notify/channel/all-for-save'))
+    if (!Array.isArray(result) || result.some(item => !item || typeof item !== 'object'
+      || (item.channels !== undefined && !Array.isArray(item.channels)))) throw new NotificationRequestError('error')
+    return result
+  },
+  async queryTypes(): Promise<NotificationProvider[]> {
+    return directory(await checked<unknown>(request.get('/notifier/config/types')))
+  },
+  async queryProviders(type: string): Promise<NotificationProvider[]> {
+    return directory(await checked<unknown>(request.get(`/notifier/config/type/${idSegment(type)}/providers`)))
+  },
+  async getConfigMetadata(type: string, provider: string): Promise<NotificationConfigMetadata> {
+    const result = await checked<unknown>(request.get(`/notifier/config/${idSegment(type)}/${idSegment(provider)}/metadata`))
+    // Only the verified HTTP provider omits metadata; errors and unknown providers remain explicit.
+    return normalizeNotificationConfigMetadata(result ?? (type === 'webhook' && provider === 'http' ? httpWebhookConfigMetadata : undefined))
+  },
+  async queryAllConfigs(): Promise<NotifierConfig[]> {
+    const result = await checked<unknown>(request.post('/notifier/config/_query/no-paging', {}))
+    if (!Array.isArray(result) || result.some(item => !item || !nonemptyString(item.id) || typeof item.name !== 'string'
+      || !enumIdentity(item.type) || !enumIdentity(item.provider) || !item.configuration
+      || typeof item.configuration !== 'object' || Array.isArray(item.configuration))) throw new NotificationRequestError('error')
+    return normalizeNotificationPage<NotifierConfig>(result).data
+  },
+  /** Global history is scoped by backend asset permissions; keep filters and cancellation intact. */
+  async queryHistory(query: NotificationQuery, signal?: AbortSignal): Promise<NotificationPage<NotificationHistory>> {
+    return normalizeNotificationPage(await checked<NotificationPage<NotificationHistory> | NotificationHistory[]>(
+      request.post('/notify/history/_query', query, { signal }),
+    ))
+  },
+  /** Aggregate the same asset-filtered history scope; malformed counts must not become zero. */
+  async countHistory(filter: NotificationQuery, signal?: AbortSignal): Promise<NotificationHistoryCounts> {
+    try {
+      // This Flux endpoint only produces SSE (JSON negotiation returns 406). Axios buffers the finite stream.
+      return readHistoryCounts(await request.post('/notify/history/_agg', {
+        columns: [{ column: 'id', alias: 'total', aggregation: 'COUNT' }],
+        groupBy: [{ column: 'state', alias: 'state' }], filter, limit: 100,
+      }, { signal, headers: { Accept: 'text/event-stream' }, responseType: 'text' }))
+    } catch (error) {
+      if (error instanceof NotificationRequestError) throw error
+      throw new NotificationRequestError(classifyNotificationFailure(error), error)
+    }
+  },
   async queryConfigs(query: NotificationQuery): Promise<NotificationPage<NotifierConfig>> {
     return normalizeNotificationPage(await checked<NotificationPage<NotifierConfig> | NotifierConfig[]>(request.post('/notifier/config/_query', query)))
   },

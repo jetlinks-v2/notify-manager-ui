@@ -1,48 +1,72 @@
 <template>
   <FullPage class="notification-page message-templates" transparentBackground :flex="true">
-    <div class="notification-page__toolbar">
-      <div class="message-templates__channels">
-        <SwitchGroup :model-value="channelId" :options="channelOptions" :disabled="busy" :aria-label="t('messageNotification.templates.channelFilter')" @change="changeChannel" />
-      </div>
-      <div class="notification-page__actions">
-        <a-button type="primary" :disabled="!canAdd || busy" @click="createTemplate"><AIcon type="PlusOutlined" />{{ t('messageNotification.templates.create') }}</a-button>
-        <a-button :disabled="!canQuery || busy" @click="reload"><template #icon><AIcon type="ReloadOutlined" /></template>{{ t('messageNotification.templates.reload') }}</a-button>
-      </div>
-    </div>
     <EqualHeightColumns class="notification-page__layout" :show-left="!compact" left-width="15rem" right-width="1fr">
       <template #left>
         <aside class="notification-page__sidebar message-templates__directory" :aria-label="t('messageNotification.templates.title')">
-          <strong class="notification-page__title">{{ t('messageNotification.templates.title') }}</strong>
-          <TemplateDirectory :templates="templates" :state="listState" :selected-id="activeKey" :disabled="busy" @select="selectTemplate" @reload="reload" />
+          <TemplateDirectory :templates="templates" :business-types="businessTypes" :directory-state="directoryState" :state="listState" :selected-id="activeKey" :disabled="busy" @select="selectTemplate" @reload="reload" />
         </aside>
       </template>
       <template #right>
         <section class="notification-page__workspace message-templates__workspace">
+          <DetailHeader class="message-templates__header" :title="title">
+            <template v-if="draft?.description" #description>
+              <p class="message-templates__description" :title="draft.description">{{ draft.description }}</p>
+            </template>
+            <template #titleExtra>
+              <a-tag v-if="dirty">{{ t('messageNotification.templates.unsaved') }}</a-tag>
+            </template>
+            <template #actions>
+              <a-button v-if="draft && !editing && detailState === 'ready'" type="primary" :disabled="!canSave || busy" :aria-label="t('messageNotification.templates.edit')" @click="startEditing">
+                {{ t('messageNotification.templates.edit') }}
+              </a-button>
+              <a-button v-else-if="!draft" type="primary" :disabled="!canAdd || !canQuery || busy" @click="createTemplate">
+                {{ t('messageNotification.templates.create') }}
+              </a-button>
+              <a-dropdown :trigger="['click']" placement="bottomRight">
+                <a-button type="text" :aria-label="t('messageNotification.templates.more')"><AIcon type="EllipsisOutlined" /></a-button>
+                <template #overlay>
+                  <a-menu>
+                    <a-menu-item key="create" :disabled="!canAdd || !canQuery || busy" @click="createTemplate">
+                      <AIcon type="PlusOutlined" /> {{ t('messageNotification.templates.create') }}
+                    </a-menu-item>
+                    <a-menu-item key="reload" :disabled="!canQuery || busy" @click="reload">
+                      <AIcon type="ReloadOutlined" /> {{ t('messageNotification.templates.reload') }}
+                    </a-menu-item>
+                  </a-menu>
+                </template>
+              </a-dropdown>
+            </template>
+          </DetailHeader>
+          <div class="message-templates__channels">
+            <SwitchGroup :model-value="channelId" :options="channelOptions" :disabled="busy" :aria-label="t('messageNotification.templates.channelFilter')" @change="changeChannel" />
+          </div>
           <div v-if="compact" class="message-templates__mobile-picker">
             <a-select
-              :value="selectedTemplateId"
-              :options="templateOptions" :loading="listState === 'loading'" :disabled="busy || !canQuery"
-              :placeholder="t('messageNotification.templates.selectTemplate')"
-              :aria-label="t('messageNotification.templates.templatePicker')"
+              :value="selectedTemplateId" :options="templateOptions" :loading="listState === 'loading'" :disabled="busy || !canQuery"
+              :placeholder="t('messageNotification.templates.selectTemplate')" :aria-label="t('messageNotification.templates.templatePicker')"
               show-search option-filter-prop="label" @change="selectTemplate"
             />
-            <a-alert v-if="listFailure" type="warning" show-icon :message="t(`messageNotification.templates.${listState}`)" />
+            <a-alert v-if="listFailure" type="warning" show-icon :message="t(`messageNotification.templates.${listState}`)">
+              <template #action><a-button size="small" @click="reload">{{ t('messageNotification.templates.reload') }}</a-button></template>
+            </a-alert>
           </div>
-          <a-spin wrapper-class-name="notification-page__body message-templates__detail" :spinning="detailState === 'loading'">
+          <a-spin wrapper-class-name="notification-page__body message-templates__detail" :spinning="detailState === 'loading' || listState === 'loading'">
             <a-alert v-if="saved" type="success" show-icon :message="t('messageNotification.templates.saved')" />
-            <a-alert v-if="detailFailure" type="warning" show-icon :message="t(`messageNotification.templates.${detailState}`)" />
+            <a-alert v-if="detailFailure" type="warning" show-icon :message="t(`messageNotification.templates.${detailState}`)">
+              <template #action><a-button size="small" :disabled="busy" @click="reload">{{ t('messageNotification.templates.reload') }}</a-button></template>
+            </a-alert>
             <template v-else-if="draft && detailState === 'ready'">
-              <div :key="activeKey" class="message-templates__editor-grid">
-                <TemplateEditor :draft="draft" :existing="entry?.existing" :configs="configs" :config-state="configState" :disabled="!canSave || saving" @uploading="setUploading" />
-                <TemplatePreview :draft="draft" />
+              <div :key="activeKey" class="message-templates__content" :class="{ 'message-templates__content--editing': editing }">
+                <TemplateEditor v-if="editing" :draft="draft" :existing="entry?.existing" :configs="configs" :config-state="configState" :disabled="!canSave || saving" @uploading="setUploading" />
+                <TemplatePreview :draft="draft" :editing="editing" />
               </div>
               <a-alert v-if="validationMessage" type="error" show-icon :message="validationMessage" />
               <a-alert v-else-if="saveFailure" type="error" show-icon :message="t(`messageNotification.templates.${saveState}`)" />
             </template>
-            <CloudEmpty v-else class="notification-page__feedback" :description="t('messageNotification.templates.selectTemplate')" />
+            <CloudEmpty v-else-if="listState !== 'loading' && detailState !== 'loading'" class="notification-page__feedback" :description="t(listState === 'empty' ? 'messageNotification.templates.empty' : 'messageNotification.templates.selectTemplate')" />
           </a-spin>
-          <StickyActionBar v-if="draft && detailState === 'ready'" position="inline" class="notification-page__footer" :hint="dirty ? t('messageNotification.templates.unsaved') : ''">
-            <a-button :disabled="!dirty || busy" @click="requestDiscard">{{ t('messageNotification.templates.discard') }}</a-button>
+          <StickyActionBar v-if="editing && draft && detailState === 'ready'" position="inline" class="notification-page__footer" :hint="dirty ? t('messageNotification.templates.unsaved') : ''">
+            <a-button :disabled="busy" @click="requestDiscard">{{ t('messageNotification.templates.cancelEdit') }}</a-button>
             <a-button type="primary" :loading="saving" :disabled="!canSave || uploading || !dirty" @click="save">{{ t('messageNotification.templates.save') }}</a-button>
           </StickyActionBar>
         </section>
@@ -59,23 +83,27 @@ import TemplateEditor from './components/TemplateEditor.vue'
 import TemplatePreview from './components/TemplatePreview.vue'
 
 const {
-  t, compact, workspace, channelId, templates, configs, listState, configState,
-  detailState, saveState, activeKey, draft, entry, dirty, saving, canSave, canQuery,
+  t, compact, workspace, channelId, templates, configs, listState, configState, businessTypes, directoryState,
+  detailState, activeKey, draft, entry, dirty, saving, canSave, canQuery, editing, title,
   canAdd, busy, uploading, validationMessage, saved, channelOptions, templateOptions,
-  selectedTemplateId, listFailure, detailFailure, saveFailure, confirmation,
+  selectedTemplateId, listFailure, detailFailure, saveFailure, saveState, confirmation,
   setUploading, reload, changeChannel, selectTemplate, createTemplate, save,
-  requestDiscard, resolveConfirmation,
+  startEditing, requestDiscard, resolveConfirmation,
 } = useTemplatePage()
 </script>
 
 <style scoped src="../shared/layout.css"></style>
 <style scoped>
-.message-templates__channels { overflow-x: auto; min-width: 0; max-width: 100%; }
 .message-templates__directory > .template-directory { flex: 1; min-height: 0; }
+.message-templates .message-templates__header { flex-direction: row; flex-wrap: wrap; padding: 0; margin: 0; border: 0; border-radius: 0; background: transparent; }
+.message-templates__header :deep(.cloud-detail-header__actions) { width: auto; }
+.message-templates__description { margin: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.message-templates__channels { flex-shrink: 0; overflow-x: auto; min-width: 0; max-width: 100%; padding-bottom: var(--space-1); }
 .message-templates__detail :deep(.ant-spin-container) { display: flex; flex-direction: column; gap: var(--space-4); min-height: 100%; }
 .message-templates__detail :deep(.ant-spin-container > *) { flex-shrink: 0; }
 .message-templates__mobile-picker { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .message-templates__mobile-picker :deep(.ant-select) { width: 100%; }
-.message-templates__editor-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: start; gap: var(--space-6); padding-right: var(--space-2); }
-@media (max-width: 67.5rem) { .message-templates__editor-grid { grid-template-columns: minmax(0, 1fr); } }
+.message-templates__content { min-width: 0; }
+.message-templates__content--editing { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: start; gap: var(--space-6); padding-right: var(--space-2); }
+@media (max-width: 67.5rem) { .message-templates__content--editing { grid-template-columns: minmax(0, 1fr); } }
 </style>

@@ -1,13 +1,13 @@
 <template>
   <FullPage :flex="true" transparentBackground class="notification-page notification-records">
     <j-pro-table
-      class="notification-records__table pro-table__no-padding" mode="TABLE" row-key="id" :columns="columns"
-      :data-source="rows" :loading="state === 'loading'" :no-pagination="true" :scroll="{ x: 1050 }"
+      class="notification-records__table pro-table__no-padding" mode="TABLE" row-key="id" :columns="columns" :alert-render="false"
+      :data-source="rows" :loading="state === 'loading'" :no-pagination="true" :scroll="{ x: 1420 }" :row-selection="rowSelection"
     >
       <template #headerLeftRender>
         <div class="notification-page__toolbar notification-records__toolbar">
           <ConditionFilter
-            :model-value="terms" :fields="fields" :common-fields="['notifyMessage', 'receiver', 'notifyTime']"
+            :model-value="terms" :fields="fields" :common-fields="['notifyMessage', 'receiver', 'bizType', 'notifyType', 'notifyTime']"
             :disabled="!interactive" class="notification-records__filter"
             :placeholder="t('messageNotification.records.searchPlaceholder')" @change="({ terms: value }) => changeTerms(value)"
           />
@@ -16,17 +16,25 @@
               :model-value="selectedState || 'all'" :options="stateOptions" :disabled="!interactive"
               :aria-label="t('messageNotification.records.field.state')" @change="changeState"
             />
-            <a-tooltip :title="t('messageNotification.records.actionUnavailable')">
-              <a-button disabled><AIcon type="ExportOutlined" />{{ t('messageNotification.records.export') }}</a-button>
-            </a-tooltip>
+            <span v-if="selectionCount" aria-live="polite">{{ t('messageNotification.records.selectedCount', { count: selectionCount }) }}</span>
+            <a-button v-if="selectionCount" type="link" @click="clearSelection">{{ t('messageNotification.records.clearSelection') }}</a-button>
+            <a-button :disabled="!interactive || !selectionCount" @click="exportSelected"><AIcon type="ExportOutlined" />{{ t('messageNotification.records.exportSelected') }}</a-button>
           </div>
         </div>
       </template>
       <template #notifyTime="row">{{ historyTime(row.notifyTime) }}</template>
-      <template #channel="row">{{ historyChannelLabel(row.notifyType, row.provider, t) }}</template>
+      <template #bizType="row">{{ row.bizType || '—' }}</template>
+      <template #channel="row"><span class="notification-records__channel"><AIcon :type="historyChannelIcon(row.notifyType)" aria-hidden="true" />{{ historyChannelLabel(row.notifyType, row.provider, t) }}</span></template>
+      <template #errorMessage="row"><span :title="row.errorMessage || row.errorType">{{ row.errorMessage || row.errorType || '—' }}</span></template>
       <template #state="row"><j-badge-status class="notification-records__status" :text="historyStateLabel(row.state, t)" :status="notificationEnumValue(row.state)" :status-names="{ success: 'success', error: 'error', retrying: 'processing', cancel: 'default' }" /></template>
       <template #receiver="row"><span :title="row.receiver?.join(', ')">{{ row.receiver?.join(', ') || '—' }}</span></template>
-      <template #notifyMessage="row"><span :title="row.notifyMessage">{{ row.notifyMessage || '—' }}</span></template>
+      <template #notifyMessage="row">
+        <j-permission-button
+          v-if="row.notifyMessage" type="link" class="notification-records__content" :title="row.notifyMessage"
+          :has-permission="notificationPermissions.records.query" @click="openDetail(row, $event)"
+        ><span class="notification-records__content-text">{{ row.notifyMessage }}</span></j-permission-button>
+        <span v-else>—</span>
+      </template>
       <template #action="row">
         <TableActions>
           <TableActionsItem common>
@@ -70,7 +78,7 @@
 import ConditionFilter from '@jetlinks-web-core/components/ConditionFilter'
 import { notificationEnumValue, notificationPermissions } from '../shared'
 import RecordDetail from './components/RecordDetail.vue'
-import { historyChannelLabel, historyStateLabel, historyTime } from './presentation'
+import { historyChannelIcon, historyChannelLabel, historyStateLabel, historyTime } from './presentation'
 import { useRecordsPage } from './useRecordsPage'
 
 defineOptions({ name: 'MessageNotificationRecords' })
@@ -78,6 +86,7 @@ const {
   t, fields, stateOptions, columns,
   rows, total, state, selected, detailOpen, terms, selectedState, pageIndex, pageSize,
   interactive, changeTerms, changeState, changePage, load, openDetail, restoreDetailFocus,
+  selectionCount, rowSelection, clearSelection, exportSelected,
 } = useRecordsPage()
 </script>
 
@@ -86,6 +95,9 @@ const {
 .notification-records__filter { flex: 0 1 28rem; max-width: 28rem; min-width: 0; }
 .notification-records__table { flex: 1 1 0; min-height: 0; overflow: hidden; }
 .notification-records__status { white-space: nowrap; }
+.notification-records__channel { display: inline-flex; align-items: center; gap: var(--space-2); }
+.notification-records__content { display: block; width: 100%; height: auto; padding: 0; overflow: hidden; text-align: left; }
+.notification-records__content-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .notification-records__pagination { display: flex; flex-shrink: 0; justify-content: flex-end; }
 @media (max-width: 48rem) {
   .notification-records__filter { flex-basis: 100%; max-width: none; }

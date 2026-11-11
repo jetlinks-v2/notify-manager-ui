@@ -1,7 +1,9 @@
 import type { InjectionKey } from 'vue'
 import type { ConditionFilterTerm } from '@jetlinks-web-core/components/ConditionFilter'
+import { messageNotificationApi } from '../../../../api/notice/messageNotification'
+import type { NotificationHistoryCounts } from '../../../../api/notice/messageNotificationTypes'
 import {
-  findNotificationChannel, notificationCapabilities, notificationStates, NotificationRequestError,
+  findNotificationChannel, notificationCapabilities, notificationStates,
   type NotificationHistory, type NotificationNavigation, type NotificationPage,
   type NotificationQuery, type NotifyState,
 } from '../shared'
@@ -9,15 +11,17 @@ import {
 export interface NotificationHistoryAdapter {
   available: boolean
   query: (query: NotificationQuery, signal: AbortSignal) => Promise<NotificationPage<NotificationHistory>>
+  count?: (query: NotificationQuery, signal: AbortSignal) => Promise<NotificationHistoryCounts>
 }
 
-/** A future verified history adapter can be supplied at the owning page boundary. */
+/** Keep the page boundary injectable for isolated record interactions. */
 export const notificationHistoryAdapterKey: InjectionKey<NotificationHistoryAdapter> = Symbol('notification-history-adapter')
 
-/** History querying stays disabled in this migration; production never substitutes test data or an empty success. */
-export const unavailableNotificationHistoryAdapter: NotificationHistoryAdapter = {
+/** Use global history queries with the platform auth context and the controller's cancellation signal. */
+export const notificationHistoryAdapter: NotificationHistoryAdapter = {
   available: notificationCapabilities.history.query,
-  query: async () => { throw new NotificationRequestError('unavailable') },
+  query: (query, signal) => messageNotificationApi.queryHistory(query, signal),
+  count: (query, signal) => messageNotificationApi.countHistory(query, signal),
 }
 
 /** Only an unambiguous top-level equality is represented by the quick status control. */

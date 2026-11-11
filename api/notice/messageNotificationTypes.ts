@@ -1,8 +1,10 @@
 /** Verified notifier DTOs; provider-specific extension fields remain in their own maps. */
 export type NotificationObject = Record<string, unknown>
 export type NotificationEnum = string | { value: string; text?: string }
-export type NotifyType = 'email' | 'dingTalk' | 'weixin' | 'voice' | 'sms' | 'webhook'
+// 通知类型是后端扩展点，不能用前端已有展示类型限制可配置渠道。
+export type NotifyType = string
 export type NotifyState = 'success' | 'error' | 'retrying' | 'cancel'
+export type NotificationHistoryCounts = Record<NotifyState | 'all', number>
 
 export interface NotificationQuery {
   paging?: boolean
@@ -36,6 +38,42 @@ export interface NotifierConfigPayload {
   provider: string
   receiptKey?: string
   configuration: NotificationObject
+}
+
+export interface NotificationProvider {
+  id: string
+  name?: string
+  description?: string
+}
+
+export interface NotificationValueType {
+  type: string
+  expands?: NotificationObject
+  elements?: { value: unknown; text?: string; label?: string }[]
+  min?: number
+  max?: number
+  scale?: number
+  format?: string
+  trueValue?: unknown
+  falseValue?: unknown
+  trueText?: string
+  falseText?: string
+  elementType?: NotificationValueType
+  properties?: NotificationConfigProperty[]
+}
+
+export interface NotificationConfigProperty {
+  id: string
+  name?: string
+  description?: string
+  valueType: NotificationValueType
+  expands?: NotificationObject
+}
+
+export interface NotificationConfigMetadata {
+  name?: string
+  description?: string
+  properties: NotificationConfigProperty[]
 }
 
 export interface EmailProperty {

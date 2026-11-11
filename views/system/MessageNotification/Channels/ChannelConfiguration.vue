@@ -1,48 +1,31 @@
 <template>
-  <a-form layout="vertical" class="channel-configuration" :disabled="disabled" @submit.prevent>
-    <div class="channel-configuration__identity">
-      <a-form-item :label="t('messageNotification.channels.fields.id')" required :validate-status="issue('id') ? 'error' : undefined" :help="issue('id')">
-        <a-input v-if="entry.isNew" :value="entry.draft.id" :disabled="disabled" :aria-label="t('messageNotification.channels.fields.id')" @update:value="emit('field', 'id', $event, true)" />
-        <a-typography-text v-else copyable>{{ entry.draft.id }}</a-typography-text>
-      </a-form-item>
-      <a-form-item :label="t('messageNotification.channels.fields.name')" required :validate-status="issue('name') ? 'error' : undefined" :help="issue('name')">
-        <a-input v-if="entry.isNew" :value="entry.draft.name" :disabled="disabled" :aria-label="t('messageNotification.channels.fields.name')" @update:value="emit('field', 'name', $event, true)" />
-        <Editable v-else :key="`${entry.key}-name`" :value="entry.draft.name" :component-props="{ disabled, 'aria-label': t('messageNotification.channels.fields.name') }" :tabindex="disabled ? -1 : 0" role="textbox" :aria-label="t('messageNotification.channels.fields.name')" @keydown.enter="enterInlineEdit" @update:value="emit('field', 'name', $event, true)" />
-      </a-form-item>
-    </div>
-    <a-form-item v-for="field in fields" :key="field.key" :label="t(`messageNotification.channels.fields.${field.key}`)" :required="field.required" :validate-status="issue(field.key) ? 'error' : undefined" :help="issue(field.key)">
-      <template v-if="field.kind === 'secret'">
-        <a-input-password :value="stringValue(field.key)" :disabled="disabled" autocomplete="new-password" :aria-label="t(`messageNotification.channels.fields.${field.key}`)" :placeholder="entry.baseline ? t('messageNotification.channels.keepSecret') : t('messageNotification.channels.enterSecret')" @update:value="emit('field', field.key, $event)" />
-        <span v-if="entry.baseline?.configuration[field.key]" class="channel-configuration__secret-hint">{{ notificationSecretMask }} · {{ t('messageNotification.channels.secretSaved') }}</span>
+  <div class="channel-configuration">
+    <InlineEditForm :key="entry.key" ref="form" :groups="formGroups" :mode="entry.isNew ? 'form' : 'detail'" :disabled="disabled" :busy="busy" :messages="formMessages" :submit="submitValue" @change="changeValue" @cancel="cancelValue" @focus="emit('focus', $event)">
+      <template #editor="{ field, value, update, commit, blur, disabled: fieldDisabled }">
+        <div v-if="customPairModel(field.key, value, fieldDisabled)" @focusout="blur"><ConfigurationPairs :model="customPairModel(field.key, value, fieldDisabled)!" @change="update" /></div>
+        <MetadataValueItem v-else :key="`${entry.key}-${field.key}`" :item="metadataField(field.key)?.property" :model-value="value" :aria-label="field.label" :disabled="fieldDisabled" @update:model-value="!fieldDisabled && update($event)" @change="commit" />
       </template>
-      <a-input-number v-else-if="field.kind === 'number'" :value="numberValue(field.key)" :min="1" :max="65535" :precision="0" :disabled="disabled" :aria-label="t(`messageNotification.channels.fields.${field.key}`)" @update:value="emit('field', field.key, $event ?? undefined)" />
-      <a-input v-else-if="entry.isNew" :value="stringValue(field.key)" :disabled="disabled" :aria-label="t(`messageNotification.channels.fields.${field.key}`)" @update:value="emit('field', field.key, $event)" />
-      <Editable v-else :key="`${entry.key}-${field.key}`" :value="stringValue(field.key)" :component-props="{ disabled, 'aria-label': t(`messageNotification.channels.fields.${field.key}`) }" :tabindex="disabled ? -1 : 0" role="textbox" :aria-label="t(`messageNotification.channels.fields.${field.key}`)" @keydown.enter="enterInlineEdit" @update:value="emit('field', field.key, $event)" />
-    </a-form-item>
-    <a-form-item v-if="pairEditor" :label="t(`messageNotification.channels.fields.${pairEditor.kind}`)" :validate-status="issue(pairEditor.kind) ? 'error' : undefined" :help="issue(pairEditor.kind)">
-      <ConfigurationPairs :model="pairEditor" @change="emit('field', pairEditor!.kind, $event)" />
-    </a-form-item>
-  </a-form>
+    </InlineEditForm>
+  </div>
 </template>
 
 <script setup lang="ts">
-import type { PropType } from 'vue'
-import type { ChannelDraftEntry } from './useChannelWorkspace'
+import { ref, type PropType } from 'vue'
+import { InlineEditForm } from '@jetlinks-web-core/components/InlineEditForm'
+import type { ChannelDraftEntry, ChannelFieldChange } from './useChannelWorkspace'
 import { useChannelConfiguration } from './useChannelConfiguration'
 import ConfigurationPairs from './ConfigurationPairs.vue'
-
 const props = defineProps({
   entry: { type: Object as PropType<ChannelDraftEntry>, required: true },
   disabled: { type: Boolean, default: false },
+  busy: { type: Boolean, default: false },
+  submit: { type: Function as PropType<(changes: ChannelFieldChange[], errorPath: string) => Promise<boolean>>, default: undefined },
 })
-const emit = defineEmits<{ (event: 'field', key: string, value: unknown, topLevel?: boolean): void }>()
-const { t, notificationSecretMask, fields, pairEditor, stringValue, numberValue, issue, enterInlineEdit } = useChannelConfiguration(props)
+const emit = defineEmits<{ (event: 'field', key: string, value: unknown, topLevel?: boolean): void; (event: 'focus', key: string): void }>()
+const form = ref<InstanceType<typeof InlineEditForm>>()
+const { formGroups, formMessages, changeValue, cancelValue, submitValue, metadataField, customPairModel } = useChannelConfiguration(props, (key, value, topLevel) => emit('field', key, value, topLevel), key => form.value?.editField(key))
 </script>
 
 <style scoped>
-.channel-configuration { max-width: 56rem; }
-.channel-configuration__identity { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
-.channel-configuration :deep(.ant-input-number) { width: 100%; }
-.channel-configuration__secret-hint { display: block; margin-top: var(--space-1); color: var(--text-color-secondary); font-size: var(--fs-12); }
-@media (max-width: 48rem) { .channel-configuration__identity { grid-template-columns: minmax(0, 1fr); gap: 0; } }
+.channel-configuration { min-width: 0; width: 100%; max-width: 55rem; }
 </style>

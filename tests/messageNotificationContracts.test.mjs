@@ -5,14 +5,15 @@ import { dirname, resolve } from 'node:path'
 import test from 'node:test'
 import { transformSync } from 'esbuild'
 import * as vue from 'vue'
+import { aliyunSmsWireMetadata, channelWireMetadata } from './messageNotificationChannelFixtures.mjs'
 
 const require = createRequire(import.meta.url)
 const root = resolve(import.meta.dirname, '..')
 const calls = []
 let response = { success: true, result: undefined }
 let failure
-const request = Object.fromEntries(['get', 'post', 'patch', 'remove'].map(method => [method, async (url, data) => {
-  calls.push({ method, url, data })
+const request = Object.fromEntries(['get', 'post', 'patch', 'remove'].map(method => [method, async (url, data, options) => {
+  calls.push({ method, url, data, ...(options ? { options } : {}) })
   if (failure) throw failure
   return response
 }]))
@@ -59,8 +60,9 @@ test('catalog distinguishes real providers and excludes unverified inbox/busines
   assert.equal(resolveNotificationChannel('weixin', 'robot'), undefined)
   assert.equal(resolveNotificationChannel('inbox', 'embedded'), undefined)
   assert.deepEqual(notificationStates, ['success', 'error', 'retrying', 'cancel'])
-  assert.equal(notificationCapabilities.history.query, false)
-  assert.equal(notificationCapabilities.history.count, false)
+  assert.equal(notificationCapabilities.history.query, true)
+  assert.equal(notificationCapabilities.history.count, true)
+  assert.equal(notificationCapabilities.history.export, true)
   assert.equal(notificationCapabilities.history.retry, false)
   assert.equal(notificationPermissions.templates.update, 'system/MessageNotification/Templates:update')
 })
@@ -198,7 +200,7 @@ test('facade uses verified endpoints, opaque encoded IDs and preserves query ter
   assert.deepEqual(calls[3], { method: 'patch', url: '/notifier/template', data: payload })
 })
 
-test('facade rejects unsuccessful and forbidden requests and keeps unavailable history free of HTTP', async () => {
+test('facade rejects unsuccessful and forbidden requests', async () => {
   response = { success: false, status: 403, result: { data: [] } }
   await assert.rejects(api.queryConfigs({}), error => error instanceof NotificationRequestError && error.kind === 'forbidden')
   failure = { response: { status: 405 } }
@@ -207,9 +209,61 @@ test('facade rejects unsuccessful and forbidden requests and keeps unavailable h
   await assert.rejects(api.getConfig('id'), error => error.kind === 'error')
   assert.equal(classifyNotificationFailure({ response: { status: 401 } }), 'forbidden')
   assert.equal(classifyNotificationFailure({ status: 404 }), 'error')
-  assert.equal(Object.hasOwn(api, 'queryHistory'), false)
   assert.equal(calls.length, 3)
-  assert.equal(calls.some(call => /histor|notifications/.test(call.url)), false)
+})
+
+test('global history preserves paging, nested filters, snapshots and the caller cancellation signal', async () => {
+  const history = { id: 'history-one', state: { value: 'cancel', text: 'Cancelled' }, template: '${saved}', context: { saved: 'old value' } }
+  response = { success: true, result: { data: [history], total: 37, pageIndex: 1, pageSize: 12 } }
+  const query = { paging: true, pageIndex: 1, pageSize: 12, terms: [{ terms: [{ column: 'state', termType: 'eq', value: 'cancel' }], type: 'and' }], sorts: [{ name: 'notifyTime', order: 'desc' }] }
+  const controller = new AbortController()
+  assert.deepEqual(await api.queryHistory(query, controller.signal), response.result)
+  assert.deepEqual(calls, [{ method: 'post', url: '/notify/history/_query', data: query, options: { signal: controller.signal } }])
+  controller.abort()
+  assert.equal(calls[0].options.signal.aborted, true)
+})
+
+test('history only reports empty after a valid success and keeps permission, unavailable and error failures', async () => {
+  response = { success: true, result: { data: [], total: 0 } }
+  assert.deepEqual(await api.queryHistory({}), { data: [], total: 0 })
+  response = { success: true, result: { total: 0 } }
+  await assert.rejects(api.queryHistory({}), { kind: 'error' })
+  for (const [status, kind] of [[401, 'forbidden'], [403, 'forbidden'], [405, 'unavailable'], [501, 'unavailable'], [404, 'error'], [500, 'error']]) {
+    response = { success: false, status, result: { data: [] } }
+    await assert.rejects(api.queryHistory({}), { kind })
+    failure = { response: { status } }
+    await assert.rejects(api.queryHistory({}), { kind })
+    failure = undefined
+  }
+  failure = new Error('offline')
+  await assert.rejects(api.queryHistory({}), { kind: 'error' })
+})
+
+test('history counts use asset-filtered aggregation and reject invalid or duplicate buckets', async () => {
+  const stream = rows => rows.map(row => `data:${JSON.stringify(row)}\n\n`).join('')
+  response = stream([{ state: 'success', total: 7 }, { state: 'error', total: '3' }, { state: 'future-state', total: 1 }])
+  const filter = { terms: [{ column: 'notifierId', termType: 'eq', value: 'smtp-one' }] }
+  const controller = new AbortController()
+  assert.deepEqual(await api.countHistory(filter, controller.signal), { all: 11, success: 7, error: 3, retrying: 0, cancel: 0 })
+  assert.deepEqual(calls[0], { method: 'post', url: '/notify/history/_agg', data: {
+    columns: [{ column: 'id', alias: 'total', aggregation: 'COUNT' }], groupBy: [{ column: 'state', alias: 'state' }], filter, limit: 100,
+  }, options: { signal: controller.signal, headers: { Accept: 'text/event-stream' }, responseType: 'text' } })
+  for (const result of [null, {}, [null], [{ state: 'error' }], [{ state: 'error', total: -1 }], [{ state: 'error', total: null }], [{ state: 'error', total: 1.5 }], [{ state: 'error', total: 1 }, { state: 'error', total: 2 }]]) {
+    response = Array.isArray(result) ? stream(result) : result
+    await assert.rejects(api.countHistory(filter), { kind: 'error' })
+  }
+  response = { success: false, status: 403 }
+  await assert.rejects(api.countHistory(filter), { kind: 'forbidden' })
+  response = 'event:error\ndata:{"status":403}\n\n'
+  await assert.rejects(api.countHistory(filter), { kind: 'forbidden' })
+  response = '\uFEFF: keepalive\r\n\r\ndata: {"state":"error",\r\ndata: "total":2}\r\n\r\n'
+  assert.equal((await api.countHistory(filter)).error, 2)
+  response = ''
+  assert.equal((await api.countHistory(filter)).all, 0)
+  for (const invalid of ['not SSE', 'data:{broken}\n\n', 'event:error\n\n']) {
+    response = invalid
+    await assert.rejects(api.countHistory(filter), { kind: 'error' })
+  }
 })
 
 test('configuration invalidation carries only identifiers and a monotonic in-memory revision', () => {
@@ -218,4 +272,74 @@ test('configuration invalidation carries only identifiers and a monotonic in-mem
   assert.deepEqual(notificationConfigurationChange.value, { id: 'config', channel: 'email:embedded', action: 'saved', revision: initialRevision + 1 })
   publishNotificationConfigurationChange({ id: 'config', channel: 'email:embedded', action: 'deleted' })
   assert.equal(notificationConfigurationChange.value.revision, initialRevision + 2)
+})
+
+test('channel directory and metadata endpoints preserve opaque type/provider IDs and reject malformed records', async () => {
+  response = { success: true, result: [{ id: 'extension/type', name: 'Extension' }] }
+  assert.deepEqual(await api.queryTypes(), response.result)
+  await api.queryProviders('extension/type')
+  response = { success: true, result: { properties: [{ id: 'token', valueType: { type: 'password' } }] } }
+  assert.deepEqual(await api.getConfigMetadata('extension/type', 'provider/#'), response.result)
+  assert.deepEqual(calls.map(call => call.url), ['/notifier/config/types', '/notifier/config/type/extension%2Ftype/providers', '/notifier/config/extension%2Ftype/provider%2F%23/metadata'])
+  for (const properties of [[null], [{ id: 1, valueType: { type: 'string' } }], [{ id: 'field', valueType: { type: {} } }]]) {
+    response = { success: true, result: { properties } }
+    await assert.rejects(api.getConfigMetadata('extension', 'custom'), error => error.kind === 'error')
+  }
+  for (const result of [[null], [{ ...config(), id: '' }], [{ ...config(), type: {} }], [{ ...config(), configuration: [] }]]) {
+    response = { success: true, result }
+    await assert.rejects(api.queryAllConfigs(), error => error.kind === 'error')
+  }
+  response = { success: true, result: [{ ...config(), type: { value: 'email', text: '邮件' } }] }
+  assert.deepEqual(await api.queryAllConfigs(), response.result)
+  assert.deepEqual(calls.at(-1), { method: 'post', url: '/notifier/config/_query/no-paging', data: {} })
+})
+
+test('real ConfigMetadata property/type responses normalize without dropping provider fields', async () => {
+  for (const [id, metadata] of Object.entries(channelWireMetadata)) {
+    response = { success: true, result: structuredClone(metadata) }
+    const normalized = await api.getConfigMetadata(...id.split(':'))
+    assert.deepEqual(normalized.properties.map(field => field.id), metadata.properties.map(field => field.property))
+    assert.deepEqual(normalized.properties.map(field => field.valueType), metadata.properties.map(field => field.type))
+    assert.equal(normalized.description, metadata.description)
+  }
+  assert.equal(aliyunSmsWireMetadata.properties.some(field => 'id' in field || 'valueType' in field), false)
+  const property = { property: 'token', name: 'Token', type: { type: 'password', expands: { required: true } } }
+  response = { success: true, result: { properties: [{ property: 'settings', type: { type: 'array', expands: { defaultValue: [] }, elementType: { type: 'object', properties: [property] } } }] } }
+  const nested = (await api.getConfigMetadata('custom', 'provider')).properties[0]
+  assert.equal(nested.valueType.elementType.properties[0].id, 'token')
+  assert.equal(nested.valueType.elementType.properties[0].valueType.type, 'password')
+  assert.deepEqual(nested.valueType.expands.defaultValue, [])
+  assert.equal(response.result.properties[0].type.elementType.properties[0].property, 'token')
+  for (const malformed of [{ property: 'id' }, { property: 'id', type: 'string' }, { property: 'id', type: { type: 'object', properties: [null] } }]) {
+    response = { success: true, result: { properties: [malformed] } }
+    await assert.rejects(api.getConfigMetadata('custom', 'provider'), { kind: 'error' })
+  }
+})
+
+test('HTTP Webhook without metadata uses verified fields only after a successful response', async () => {
+  for (const result of [undefined, null]) {
+    response = { success: true, result }
+    const metadata = await api.getConfigMetadata('webhook', 'http')
+    assert.deepEqual(metadata.properties.map(field => field.id), ['url', 'headers'])
+    assert.equal(metadata.properties[0].valueType.expands.required, true)
+    assert.deepEqual(metadata.properties[1].valueType.elementType.properties.map(field => field.id), ['key', 'value'])
+    await assert.rejects(api.getConfigMetadata('extension', 'custom'), { kind: 'error' })
+  }
+  for (const result of [{}, { properties: [null] }]) {
+    response = { success: true, result }
+    await assert.rejects(api.getConfigMetadata('webhook', 'http'), { kind: 'error' })
+  }
+  response = { success: false, status: 403 }
+  await assert.rejects(api.getConfigMetadata('webhook', 'http'), { kind: 'forbidden' })
+})
+
+
+test('template business directory reads existing groups and exact channel template bindings', async () => {
+  response.result = [{ provider: 'alarm-device', type: { id: 'alarm', name: 'Alarm' }, channels: [{ channelConfiguration: { templateId: 'trigger' } }] }]
+  assert.deepEqual(await api.queryTemplateDirectory(), response.result)
+  assert.deepEqual(calls, [{ method: 'get', url: '/notify/channel/all-for-save', data: undefined }])
+  response.result = { data: [] }
+  await assert.rejects(api.queryTemplateDirectory(), NotificationRequestError)
+  response.result = [{ channels: 'invalid' }]
+  await assert.rejects(api.queryTemplateDirectory(), NotificationRequestError)
 })

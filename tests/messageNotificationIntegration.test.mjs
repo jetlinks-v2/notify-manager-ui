@@ -161,7 +161,7 @@ test('verified notifier and template backend declarations keep read, save, delet
     assert.ok(menu.permissions.every(({ actions }) => actions.every(action => action === 'query')))
     assert.ok([menu, ...menu.buttons].every(({ permissions }) => permissions.every(({ permission }) => ['notifier', 'template'].includes(permission))))
   }
-  assert.equal(shared.notificationCapabilities.history.query, false)
+  assert.equal(shared.notificationCapabilities.history.query, true)
   assert.deepEqual(calls, [])
 })
 

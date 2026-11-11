@@ -3,6 +3,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import test from 'node:test'
+import directoryFixture from './messageNotificationTemplateDirectoryFixture.mjs'
 import { transformSync } from 'esbuild'
 import * as vue from 'vue'
 import { compileScript, parse } from 'vue/compiler-sfc'
@@ -18,6 +19,8 @@ const dependencies = {
   '@jetlinks-web/core': { request: {} },
   '@jetlinks-web/utils': { downloadFileByUrl() {}, onlyMessage() {} },
   '@jetlinks-web-core/utils': { getImageUrl: id => `/files/${encodeURIComponent(id)}` },
+  // 页面守卫用例不渲染子组件，AutoTree 的真实布局由浏览器验证。
+  '@jetlinks-web-core/components/AutoTree': { __esModule: true, default: () => null },
   '@jetlinks-web-core/components/Upload/File/index.vue': { __esModule: true, default: () => null },
   '@jetlinks-web-core/components/Upload/File/useFileDownload': { getFileDownloadUrl: file => file.response?.result?.accessUrl || file.url },
 }
@@ -56,6 +59,7 @@ const access = (query = true, add = true, update = true) => ({ query: vue.ref(qu
 function mockApi() {
   const calls = []
   return { calls,
+    queryTemplateDirectory: async () => [],
     queryTemplates: async query => { calls.push(['queryTemplates', query]); return { data: [record()] } },
     queryConfigs: async query => { calls.push(['queryConfigs', query]); return { data: [{ id: 'smtp-one', name: 'SMTP', type: 'email', provider: 'embedded', configuration: {} }] } },
     getTemplate: async id => { calls.push(['getTemplate', id]); return record(id) },
@@ -340,6 +344,7 @@ test('actual page route guard keeps dirty drafts on cancel and confirms leaving;
     onBeforeRouteLeave: callback => { leaveGuard = callback },
   }
   dependencies['@jetlinks-web/hooks'] = { usePermission: () => ({ hasPerm: vue.ref(true) }) }
+  dependencies['@jetlinks-web/core'].request.get = async () => ({ success: true, result: [] })
   dependencies['@jetlinks-web/core'].request.post = async () => ({ success: true, result: { data: [] } })
   const Page = load(resolve(templatesRoot, 'index.vue'), false).default
   let page
@@ -368,4 +373,217 @@ test('actual page route guard keeps dirty drafts on cancel and confirms leaving;
   assert.equal(page.workspace.draft.value, undefined)
   assert.equal(page.workspace.hasDirtyDrafts.value, false)
   app.unmount()
+})
+
+async function settlePage() {
+  for (let index = 0; index < 12; index++) { await Promise.resolve(); await vue.nextTick() }
+}
+
+async function mountTemplatePage(query = {}, permission = () => true) {
+  const route = vue.reactive({ query })
+  const api = mockApi()
+  api.queryTemplates = async () => ({ data: [record('first'), record('second')] })
+  const facade = load(resolve(root, 'api/notice/messageNotification.ts'), false).messageNotificationApi
+  const original = { ...facade }
+  Object.assign(facade, api)
+  Object.assign(dependencies['vue-router'] ||= {}, {
+    useRoute: () => route,
+    useRouter: () => ({ replace: async target => { route.query = target.query; await vue.nextTick() } }),
+    onBeforeRouteLeave() {},
+  })
+  dependencies['@jetlinks-web/hooks'] ||= {}
+  dependencies['@jetlinks-web/hooks'].usePermission = code => ({ hasPerm: vue.ref(permission(code.value)) })
+  const Page = load(resolve(templatesRoot, 'index.vue'), false).default
+  let page
+  const renderer = vue.createRenderer({
+    createElement: () => ({}), createText: () => ({}), createComment: () => ({}), insert() {}, remove() {},
+    setText() {}, setElementText() {}, patchProp() {}, parentNode: () => null, nextSibling: () => null,
+  })
+  const app = renderer.createApp({ setup(_, context) { page = Page.setup({}, context); return () => null } })
+  app.mount({})
+  await settlePage()
+  return { page, route, api, facade, close() { app.unmount(); Object.assign(facade, original) } }
+}
+
+test('page opens a real template preview, honors deep links and keeps the selection on repeated channel clicks', async () => {
+  const current = await mountTemplatePage({ channel: 'email:embedded' })
+  try {
+    assert.equal(current.page.draft.value.id, 'first')
+    assert.equal(current.route.query.templateId, 'first')
+    assert.equal(current.page.editing.value, false)
+    current.page.changeChannel('email:embedded')
+    await settlePage()
+    assert.equal(current.route.query.templateId, 'first')
+    current.page.startEditing()
+    assert.equal(current.page.editing.value, true)
+    await current.page.requestDiscard()
+    assert.equal(current.page.confirmation.open, false)
+    assert.equal(current.page.editing.value, false)
+  } finally { current.close() }
+  const linked = await mountTemplatePage({ channel: 'email:embedded', templateId: 'second' })
+  try { assert.equal(linked.page.draft.value.id, 'second'); assert.equal(linked.page.editing.value, false) }
+  finally { linked.close() }
+})
+
+test('switching templates resumes only the dirty draft, and cancel discards only the active record', async () => {
+  const current = await mountTemplatePage({ channel: 'email:embedded', templateId: 'first' })
+  try {
+    const { page } = current
+    page.startEditing()
+    page.draft.value.subject = 'Keep first draft'
+    page.selectTemplate('second')
+    await settlePage()
+    assert.equal(page.editing.value, false)
+    page.startEditing()
+    page.draft.value.subject = 'Discard second draft'
+    let cancel = page.requestDiscard()
+    assert.equal(page.confirmation.open, true)
+    page.resolveConfirmation(false)
+    await cancel
+    assert.equal(page.draft.value.subject, 'Discard second draft')
+    assert.equal(page.editing.value, true)
+    cancel = page.requestDiscard()
+    page.resolveConfirmation(true)
+    await cancel
+    await settlePage()
+    assert.equal(page.editing.value, false)
+    assert.equal(page.draft.value.subject, 'Alarm ${device.name}')
+    assert.equal(page.workspace.hasDirtyDrafts.value, true)
+    page.selectTemplate('first')
+    await settlePage()
+    assert.equal(page.editing.value, true)
+    assert.equal(page.draft.value.subject, 'Keep first draft')
+  } finally { current.close() }
+})
+
+test('failed saves retain editing and successful saves return to preview without changing the template identity', async () => {
+  const current = await mountTemplatePage({ channel: 'email:embedded', templateId: 'first' })
+  try {
+    current.page.startEditing()
+    current.page.draft.value.subject = 'Changed subject'
+    current.facade.updateTemplate = async () => { throw new Error('offline') }
+    await current.page.save()
+    assert.equal(current.page.editing.value, true)
+    assert.equal(current.page.draft.value.subject, 'Changed subject')
+    assert.equal(current.page.saved.value, false)
+    current.facade.updateTemplate = current.api.updateTemplate
+    await current.page.save()
+    await settlePage()
+    assert.equal(current.page.editing.value, false)
+    assert.equal(current.page.saved.value, true)
+    assert.equal(current.page.draft.value.subject, 'Changed subject')
+    assert.equal(current.route.query.templateId, 'first')
+  } finally { current.close() }
+})
+
+test('new templates start editing, can be cancelled without a write, and read-only users cannot start editing', async () => {
+  const current = await mountTemplatePage({ channel: 'email:embedded' })
+  try {
+    await current.page.createTemplate()
+    await settlePage()
+    assert.equal(current.page.entry.value.existing, false)
+    assert.equal(current.page.editing.value, true)
+    current.page.draft.value.name = 'Cancelled new template'
+    const cancel = current.page.requestDiscard()
+    current.page.resolveConfirmation(true)
+    await cancel
+    await settlePage()
+    assert.equal(current.page.draft.value, undefined)
+    assert.equal(current.page.editing.value, false)
+    assert.equal(current.page.workspace.hasDirtyDrafts.value, false)
+    assert.equal(current.api.calls.some(([name]) => name === 'createTemplate'), false)
+  } finally { current.close() }
+  const readonly = await mountTemplatePage({ channel: 'email:embedded' }, code => String(code).endsWith(':query'))
+  try {
+    assert.equal(readonly.page.draft.value.id, 'first')
+    readonly.page.startEditing()
+    assert.equal(readonly.page.editing.value, false)
+    assert.equal(readonly.page.canSave.value, false)
+  } finally { readonly.close() }
+})
+
+
+test('business directory retains only business groups and actual bindings without guessing name associations', () => {
+  const { buildTemplateDirectory, filterTemplateDirectory, flattenTemplateDirectory } = load(resolve(templatesRoot, 'templateDirectoryModel.ts'))
+  const templates = [record('template-alarm'), ...directoryFixture.templates, record('template-maintenance'), record('unbound', { name: '设备告警 · 邮件' })]
+  const tree = buildTemplateDirectory(templates, directoryFixture.businessTypes, { other: '其他' }, key => key)
+  assert.deepEqual(tree.map(node => node.title), ['物联告警', '视联告警', '其他'])
+  const alarm = tree[0].children[0]
+  assert.equal(alarm.title, '设备告警')
+  assert.equal(alarm.templateId, 'template-alarm')
+  assert.equal(alarm.children[0].title, '告警解除')
+  assert.equal(alarm.children[0].templateId, 'template-relieve')
+  assert.equal(tree[1].children[0].selectable, false)
+  assert.ok(flattenTemplateDirectory(tree).every(node => node.templateId !== 'unbound'))
+  assert.deepEqual(buildTemplateDirectory(templates, [], { other: '其他' }, key => key), [])
+  const filtered = filterTemplateDirectory(tree, 'TEMPLATE-RELIEVE')
+  assert.equal(filtered.length, 1)
+  assert.equal(filtered[0].title, '物联告警')
+  assert.equal(filtered[0].children[0].children[0].templateId, 'template-relieve')
+  assert.deepEqual(filterTemplateDirectory(tree, 'missing-value'), [])
+  assert.equal(filterTemplateDirectory(tree, '视联告警')[0].children.length, 2)
+  const orphan = buildTemplateDirectory(templates, [directoryFixture.businessTypes[1]], { other: '其他' }, key => key)
+  assert.equal(orphan[0].children[0].templateId, 'template-relieve')
+})
+
+test('directory selects the child actual ID, preserves collapse on search and reveals deep-linked children', async () => {
+  const { useTemplateDirectory } = load(resolve(templatesRoot, 'hooks/useTemplateDirectory.ts'))
+  const props = vue.reactive({ templates: [record('template-alarm'), ...directoryFixture.templates], businessTypes: directoryFixture.businessTypes,
+    selectedId: 'template-alarm', state: 'ready', directoryState: 'ready', disabled: false })
+  const events = []
+  const scope = vue.effectScope()
+  const directory = scope.run(() => useTemplateDirectory(props, (...args) => events.push(args)))
+  const group = directory.visibleTemplates.value[0]
+  const parent = group.children[0]
+  const child = parent.children[0]
+  assert.ok(directory.expandedKeys.value.includes(parent.key))
+  directory.expand([group.key])
+  assert.ok(!directory.expandedKeys.value.includes(parent.key))
+  directory.search.value = '解除'
+  assert.ok(directory.expandedKeys.value.includes(parent.key))
+  directory.search.value = ''
+  assert.ok(!directory.expandedKeys.value.includes(parent.key))
+  directory.select([child.key])
+  assert.deepEqual(events, [['select', 'template-relieve']])
+  directory.select([])
+  directory.select([group.key])
+  props.disabled = true
+  directory.select([parent.key])
+  assert.equal(events.length, 1)
+  props.selectedId = 'template-relieve'
+  await vue.nextTick()
+  assert.deepEqual(directory.selectedKeys.value, [child.key])
+  assert.ok(directory.expandedKeys.value.includes(parent.key))
+  scope.stop()
+})
+
+test('business directory ignores late responses after refresh, permission loss and unmount', async () => {
+  const { useTemplateBusinessDirectory } = load(resolve(templatesRoot, 'hooks/useTemplateBusinessDirectory.ts'))
+  const slow = deferred()
+  const allowed = vue.ref(true)
+  const api = { ...mockApi(), queryTemplateDirectory: () => slow.promise }
+  const scope = vue.effectScope()
+  const directory = scope.run(() => useTemplateBusinessDirectory(allowed, api))
+  api.queryTemplateDirectory = async () => directoryFixture.businessTypes
+  await directory.reloadDirectory()
+  slow.resolve([])
+  await settlePage()
+  assert.equal(directory.businessTypes.value.length, directoryFixture.businessTypes.length)
+  const revoked = deferred()
+  api.queryTemplateDirectory = () => revoked.promise
+  const pending = directory.reloadDirectory()
+  allowed.value = false
+  await vue.nextTick()
+  revoked.resolve(directoryFixture.businessTypes)
+  await pending
+  assert.equal(directory.directoryState.value, 'forbidden')
+  assert.deepEqual(directory.businessTypes.value, [])
+  const unmounted = deferred()
+  api.queryTemplateDirectory = () => unmounted.promise
+  allowed.value = true
+  await vue.nextTick()
+  scope.stop()
+  unmounted.resolve(directoryFixture.businessTypes)
+  await settlePage()
+  assert.deepEqual(directory.businessTypes.value, [])
 })

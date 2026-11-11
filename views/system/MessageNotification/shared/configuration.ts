@@ -24,10 +24,9 @@ export function cloneNotificationValue<T>(value: T): T {
 }
 
 /** Keep secret inputs empty even if the backend returned clear text; the baseline stays in memory. */
-export function createNotificationConfigDraft(record: NotifierConfig): NotifierConfigPayload {
+export function createNotificationConfigDraft(record: NotifierConfig, secretFields = resolveNotificationChannel(record.type, record.provider)?.secretFields ?? []): NotifierConfigPayload {
   const configuration = cloneNotificationValue(record.configuration ?? {})
-  const channel = resolveNotificationChannel(record.type, record.provider)
-  for (const key of channel?.secretFields ?? []) configuration[key] = ''
+  for (const key of secretFields) configuration[key] = ''
   return {
     id: record.id,
     name: record.name,
@@ -43,10 +42,9 @@ function retainedSecret(input: unknown, previous: unknown): unknown {
 }
 
 /** Missing/masked saved values cannot be safely merged without verified backend secret preservation. */
-export function notificationSecretsRequiringInput(draft: NotifierConfigPayload, baseline?: NotifierConfig): string[] {
+export function notificationSecretsRequiringInput(draft: NotifierConfigPayload, baseline?: NotifierConfig, secretFields = resolveNotificationChannel(draft.type, draft.provider)?.secretFields ?? []): string[] {
   if (!baseline || baseline.id !== draft.id) return []
-  const channel = resolveNotificationChannel(draft.type, draft.provider)
-  return (channel?.secretFields ?? []).filter(key => {
+  return secretFields.filter(key => {
     const original = baseline.configuration?.[key]
     const unknownOriginal = original === undefined || original === null || isNotificationSecretMask(original)
     return unknownOriginal && retainedSecret(draft.configuration[key], undefined) === undefined
@@ -54,20 +52,19 @@ export function notificationSecretsRequiringInput(draft: NotifierConfigPayload, 
 }
 
 /** Preserve known secrets; require re-entry if an update could replace a masked/missing saved secret. */
-export function buildNotificationConfigPayload(draft: NotifierConfigPayload, baseline?: NotifierConfig): NotifierConfigPayload {
+export function buildNotificationConfigPayload(draft: NotifierConfigPayload, baseline?: NotifierConfig, secretFields = resolveNotificationChannel(draft.type, draft.provider)?.secretFields ?? []): NotifierConfigPayload {
   // Never merge another record/provider's credentials into a new or navigated draft.
   const previous = baseline?.id === draft.id
     && notificationEnumValue(baseline?.type) === draft.type
     && notificationEnumValue(baseline?.provider) === draft.provider ? baseline : undefined
   // PATCH may replace the nested map; omission is not proof that the server retains a secret.
-  const requiredSecrets = notificationSecretsRequiringInput(draft, previous)
+  const requiredSecrets = notificationSecretsRequiringInput(draft, previous, secretFields)
   if (requiredSecrets.length) throw new NotificationSecretInputRequiredError(requiredSecrets)
   const configuration: NotificationObject = {
     ...cloneNotificationValue(previous?.configuration ?? {}),
     ...cloneNotificationValue(draft.configuration),
   }
-  const channel = resolveNotificationChannel(draft.type, draft.provider)
-  for (const key of channel?.secretFields ?? []) {
+  for (const key of secretFields) {
     const value = retainedSecret(draft.configuration[key], previous?.configuration?.[key])
     if (value === undefined) delete configuration[key]
     else configuration[key] = value
