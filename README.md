@@ -9,6 +9,8 @@
 
 ## 钉钉机器人可选加签
 
+实现提交：前端 `7eba75d`（本地 `2.20`），后端 `8444cd9ee`；后端评审见 [PR #1717](https://github.com/jetlinks-v2/jetlinks-components/pull/1717)（目标 `2.20`，草稿，待恢复 Maven 私服访问后验证）。
+
 现有通知渠道支持可选加签，保留当前布局、多配置与发送入口。服务端元数据声明 `secret` 后，`Channels/ChannelConfiguration.vue` 通过现有密码编辑组件展示“加签密钥（选填）”；旧后端未声明时不显示该字段或清除操作。新增可不填，已保存密钥留空保留、非空替换。“清除加签密钥”需明确确认，沿用更新权限与 `useChannelWorkspace.saveFields` 链路；成功后更新本地状态，失败保留原值并允许重试。中、英、日文案同步。
 
 `views/system/MessageNotification/shared/configuration.ts` 通过字段策略区分可选密钥和明确清除意图，不硬编码钉钉判断；原本没有可选密钥的配置允许修改，掩码值仍需重填或明确清除。清除使用 `configuration.secret: ""`，前端意图标记不进入 API，配置 ID 间不复用密钥。后端 owning module 为 `modules/jetlinks-components/notify-component/notify-dingtalk`，先升级通知服务再发布前端；不修改 `ui/` 或增加数据库列。
