@@ -23,7 +23,7 @@ export function useTemplateDirectory(props: DirectoryProps, emit: DirectoryEvent
   const allNodes = computed(() => flattenTemplateDirectory(tree.value))
   const visibleTemplates = computed(() => filterTemplateDirectory(tree.value, search.value))
   const expandedKeys = computed(() => flattenTemplateDirectory(visibleTemplates.value)
-    .filter(node => node.children?.length && (node.kind === 'group' || search.value.trim() || !collapsedKeys.value.includes(node.key)))
+    .filter(node => node.children?.length && (search.value.trim() || !collapsedKeys.value.includes(node.key)))
     .map(node => node.key))
   const selectedKeys = computed(() => {
     if (!props.selectedId) return []
@@ -41,7 +41,7 @@ export function useTemplateDirectory(props: DirectoryProps, emit: DirectoryEvent
   })
   function expand(keys: (string | number)[]) {
     if (search.value.trim()) return
-    collapsedKeys.value = allNodes.value.filter(node => node.kind !== 'group' && node.children?.length && !keys.includes(node.key)).map(node => node.key)
+    collapsedKeys.value = allNodes.value.filter(node => node.children?.length && !keys.includes(node.key)).map(node => node.key)
   }
   function select(keys: (string | number)[]) {
     // 再次点击当前节点时保留编辑对象，不把树的取消选择传给工作区。

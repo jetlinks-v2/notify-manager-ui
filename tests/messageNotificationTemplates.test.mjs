@@ -526,7 +526,7 @@ test('business directory retains only business groups and actual bindings withou
   assert.equal(orphan[0].children[0].templateId, 'template-relieve')
 })
 
-test('directory selects the child actual ID, preserves collapse on search and reveals deep-linked children', async () => {
+test('directory selects the child actual ID, preserves group and business collapse on search and reveals deep-linked children', async () => {
   const { useTemplateDirectory } = load(resolve(templatesRoot, 'hooks/useTemplateDirectory.ts'))
   const props = vue.reactive({ templates: [record('template-alarm'), ...directoryFixture.templates], businessTypes: directoryFixture.businessTypes,
     selectedId: 'template-alarm', state: 'ready', directoryState: 'ready', disabled: false })
@@ -539,9 +539,15 @@ test('directory selects the child actual ID, preserves collapse on search and re
   assert.ok(directory.expandedKeys.value.includes(parent.key))
   directory.expand([group.key])
   assert.ok(!directory.expandedKeys.value.includes(parent.key))
+  directory.expand([])
+  assert.ok(!directory.expandedKeys.value.includes(group.key))
   directory.search.value = '解除'
+  assert.ok(directory.expandedKeys.value.includes(group.key))
   assert.ok(directory.expandedKeys.value.includes(parent.key))
+  directory.expand([])
+  assert.ok(directory.expandedKeys.value.includes(group.key))
   directory.search.value = ''
+  assert.ok(!directory.expandedKeys.value.includes(group.key))
   assert.ok(!directory.expandedKeys.value.includes(parent.key))
   directory.select([child.key])
   assert.deepEqual(events, [['select', 'template-relieve']])
@@ -553,6 +559,7 @@ test('directory selects the child actual ID, preserves collapse on search and re
   props.selectedId = 'template-relieve'
   await vue.nextTick()
   assert.deepEqual(directory.selectedKeys.value, [child.key])
+  assert.ok(directory.expandedKeys.value.includes(group.key))
   assert.ok(directory.expandedKeys.value.includes(parent.key))
   scope.stop()
 })

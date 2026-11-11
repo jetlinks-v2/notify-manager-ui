@@ -31,16 +31,6 @@
         </section>
       </div>
     </div>
-    <a-collapse v-if="variables.length" ghost class="template-preview__examples">
-      <a-collapse-panel key="examples" :header="t('messageNotification.templates.previewVariables')">
-        <p class="template-preview__hint">{{ t('messageNotification.templates.previewHint') }}</p>
-        <a-form layout="vertical" class="template-preview__form">
-          <a-form-item v-for="variable in variables" :key="variable.id" :label="variable.name || variable.id">
-            <a-input v-model:value="examples[variable.id]" :placeholder="t('messageNotification.templates.exampleValue')" />
-          </a-form-item>
-        </a-form>
-      </a-collapse-panel>
-    </a-collapse>
   </aside>
 </template>
 
@@ -53,7 +43,7 @@ const props = defineProps({
   draft: { type: Object as PropType<TemplateDraft>, required: true },
   editing: { type: Boolean, default: false },
 })
-const { t, examples, variables, emailDraft, subject, text, providerContent, attachmentNames, recipients } = useTemplatePreview(props)
+const { t, emailDraft, subject, text, providerContent, attachmentNames, recipients } = useTemplatePreview(props)
 </script>
 
 <style scoped>
@@ -73,8 +63,6 @@ const { t, examples, variables, emailDraft, subject, text, providerContent, atta
 .template-preview pre { margin: var(--space-4) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; color: var(--jet-theme-text-secondary); }
 .template-preview__recipients { margin: var(--space-3) 0 0; color: var(--jet-theme-text-secondary); font-size: var(--fs-12); overflow-wrap: anywhere; }
 .template-preview__attachments { display: flex; align-items: baseline; gap: var(--space-2); margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--line); font-size: var(--fs-12); overflow-wrap: anywhere; }
-.template-preview__hint { color: var(--jet-theme-text-secondary); font-size: var(--fs-12); }
-.template-preview__form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 0 var(--space-4); }
 .template-preview--editing .template-preview__canvas { padding: var(--space-4); }
 @media (max-width: 67.5rem) { .template-preview__panels { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 48rem) { .template-preview__canvas { padding: var(--space-4); } }

@@ -9,11 +9,13 @@
 
 ## 系统通知模板原型对齐
 
+- 左侧树按设备空间树参考图对齐（局部修正）：保留 `TemplateDirectory.vue` 的 `a-tree`，开启 `showLine` 并复用 core `src/style/components.less` 的 32px 行高、24px 层级缩进、浅灰虚线、左侧加减展开按钮及浅蓝圆角选中态，移除原局部覆盖，补充蓝色节点图标。分组与业务父节点均可展开 / 收起，搜索临时展开、清空恢复、深链展开祖先的规则保持一致；只调整模板目录及其 hook，不改接口、模板绑定或参考设备页，不添加设备数量。验证（2026-11-11）：模板 / 契约 / 装配测试 57/57 通过，增加分组折叠、搜索恢复与深链展开祖先的断言；模块构建通过（26.89 秒），`git diff --check` 通过。类型检查前后同为 213 项既有诊断，忽略行号后无变化；工作区无独立 lint 脚本。9200 实际页面只读核对树样式，隔离夹具实测 32px 行高、24px 缩进、虚线、浅蓝选中态、分组及业务节点展开 / 收起、搜索父链与清除恢复、子模板切换，夹具页面错误日志为空。未改真实数据；完整权限矩阵及长名称截断未重新验证。命令沿用本节，日志前缀 `/tmp/notification-template-tree-style-`，效果截图 `/Users/chris/.codex/visualizations/2026/11/11/01a1c9a2-4dad-76d3-a623-440d663cda60/notification-template-tree-style.jpg`；既有类型诊断修复后重跑类型检查。
+- 底部预览变量区：按原型移除 `Templates/components/TemplatePreview.vue` 底部的“预览变量”折叠表单及对应文案、样式；保留编辑器变量插入和自动示例渲染，示例不进入保存 payload。同步既有浏览器用例；本次为局部展示修正，不实施下方完整改造方案。验证（2026-11-11）：模板 / 契约 / 装配回归 57/57、模块构建（34.77 秒）、浏览器脚本语法检查及 `git diff --check` 通过；中英日各 318 个消息通知键一致。类型检查前后均为 213 项既有诊断，忽略行号后完全一致；无独立 lint 脚本，未声称完整 lint 通过。9200 实际页面查看 / 编辑态均无底部变量预览表单，自动示例和编辑器插入按钮仍正常；未保存真实数据。日志前缀 `/tmp/notification-template-preview-footer-`，截图 `/Users/chris/.codex/visualizations/2026/11/11/01a1c9a2-4dad-76d3-a623-440d663cda60/notification-template-preview-no-footer.jpg`。既有浏览器 smoke 脚本已更新自动示例断言，但未执行其中其他页面的全量流程；类型诊断修复后重跑本节类型检查命令。
 - 左侧目录局部修正：`Templates/components/TemplateDirectory.vue` 改用 Ant Design Vue `a-tree`，`Templates/templateDirectoryModel.ts` 只组织业务目录，不再追加“其他模板”及“设备告警 · 邮件”这类未绑定模板节点；同步调整目录 hook 和既有回归断言。保留真实绑定、多模板绑定子项、告警解除层级、搜索、展开与深链，不删除模板数据，不修改接口、保存或菜单。验证（2026-11-11）：模板 / 契约 / 装配回归 57/57、单文件样式门禁、模块构建（21.78 秒）及 `git diff --check` 通过；模块类型检查前后均为 213 项既有诊断，新增 0、移除 0，工作区无独立 lint 脚本。实际 9200 页面已确认无“其他模板”及未绑定模板节点，搜索保留父链，清除搜索恢复折叠状态，告警子级可展开 / 收起，原 templateId 深链仍展示原模板。日志前缀 `/tmp/notification-template-atree-`；既有类型错误修复后重跑下方类型检查命令。
 - 侧栏容器以设备列表 `IotDeviceScopeSidebar.vue` 为样式锚点：沿用 `EqualHeightColumns` 的 15rem 左列，透明底色、不另加内边距，搜索与树之间使用 `var(--space-4)`。移除通知模板页额外叠加的灰底和上下 16px / 左右 12px 内边距，保留现有业务分组与子级。
-- 目录修正：复用现有 `GET /notify/channel/all-for-save` 的业务类型、名称及 `channels[].channelConfiguration.templateId`，以实际模板 ID 关联当前渠道模板；分组标题、无图标行、白底描边选中态和子级缩进对齐原型。设备告警与告警解除仅作展示层父子排列，仍读写各自独立模板；其他业务类型由接口决定，未关联模板不再追加到左侧业务目录。补充搜索保留父链、展开收起、权限 / 失败回退与子级详情联动验证。
+- 目录修正：复用现有 `GET /notify/channel/all-for-save` 的业务类型、名称及 `channels[].channelConfiguration.templateId`，以实际模板 ID 关联当前渠道模板；树样式按本节设备空间树参考图统一为蓝色图标、层级虚线、左侧加减号与浅蓝选中态。设备告警与告警解除仅作展示层父子排列，仍读写各自独立模板；其他业务类型由接口决定，未关联模板不再追加到左侧业务目录。补充搜索保留父链、展开收起、权限 / 失败回退与子级详情联动验证。
 - 已确认目标：仅优化 `/system/notification/templates` 前端，对接现有接口能力。owning module 为 `runtime-ui/modules/notify-manager-ui`，入口 `views/system/MessageNotification/Templates/index.vue`。保留独立模板、type/provider 渠道查询、templateId 深链和现有权限，不改告警模板页、后端或菜单，业务分类和绑定只读取现有目录；不新增跨渠道业务模板关联、站内信及默认模板等当前契约未提供的能力。
-- 当前行为：左侧按现有业务分组及真实模板绑定组织目录，右侧为标题 / 说明 / 编辑及更多操作、渠道切换、浅底效果预览。进入渠道时自动预览首条实际模板，显式 templateId 深链优先；已有模板默认只读，右上角编辑进入现有表单，新建直接进入编辑。保存成功返回预览，取消仅放弃当前草稿，切换继续保留各 ID 的草稿；重复点击当前渠道保留选择。邮件展示摘要与正文预览，其他渠道保留完整模板内容预览；变量示例折叠展示，不进入保存 payload。
+- 当前行为：左侧按现有业务分组及真实模板绑定组织目录，右侧为标题 / 说明 / 编辑及更多操作、渠道切换、浅底效果预览。进入渠道时自动预览首条实际模板，显式 templateId 深链优先；已有模板默认只读，右上角编辑进入现有表单，新建直接进入编辑。保存成功返回预览，取消仅放弃当前草稿，切换继续保留各 ID 的草稿；重复点击当前渠道保留选择。邮件展示摘要与正文预览，其他渠道保留完整模板内容预览；示例自动用于预览，不单独展示底部变量输入区，不进入保存 payload。
 - 实施入口与复用：`index.vue` 组合 `FullPage`、`EqualHeightColumns`、core `DetailHeader`、`SwitchGroup`、Ant Design Vue 菜单 / 按钮；沿用 `TemplateDirectory.vue` / `a-tree`、`TemplateEditor.vue`、附件与变量组件、`StickyActionBar` 和 `JlConfirmDialog`。`hooks/useTemplatePage.ts` 编排查看 / 编辑及动作状态，`TemplatePreview.vue` / `hooks/useTemplatePreview.ts` 负责纯展示预览；继续复用 `useTemplateWorkspace.ts` 的真实模板查询、保存、按 ID 草稿与迟到响应保护。目录额外读取已有 `/notify/channel/all-for-save`，无后端修改。
 - 实现边界：页面状态归属 `useTemplatePage.ts`，预览派生归属 `useTemplatePreview.ts`，请求继续使用原 API；无新增基础组件。取消新模板删除本地草稿，取消已有模板只重读当前 ID；无修改时退出编辑无需确认。有未保存修改时继续复用确认框，其他模板草稿仍由原页面离开守卫保护。
 - 风险边界：渠道切换仍是切换独立模板集合；不以相同模板名称推断跨渠道关联。保留新增后返回 ID 未知、保存失败、权限不足、旧响应和未保存草稿处理。预览仅展示文本，不执行 HTML，不发送通知。
@@ -78,7 +80,7 @@
 - 渠道范围：邮件、钉钉企业应用、钉钉机器人、企业微信、语音、短信、Webhook，共七个入口；站内信不进入模板渠道目录，保留现有 `internalInboxTemplate: false`。
 - 业务选择：`templateDirectoryModel.ts` / `hooks/useTemplateDirectory.ts` 以业务为主键，业务无已保存模板也可选择和预览；切换渠道保持业务，左侧不出现“设备告警 · 邮件”这类独立模板节点。
 - 状态：`hooks/useTemplatePage.ts` 编排选中业务 / 渠道、预览 / 编辑和路由；`useTemplateWorkspace.ts` 管理按业务与渠道隔离的草稿、真实请求、版本和迟到响应保护。旧 templateId / configId 深链通过真实绑定解析，已有未绑定独立模板深链仍可读写，不把它自动绑定到某业务。
-- 预览模式：显示业务标题、说明、模板保存状态和当前渠道样式；确实缺配置时显示图 1 警示和“去配置”，业务禁用或未订阅状态仍如实展示，编辑不代表已启用发送。
+- 预览模式：显示业务标题、说明、模板保存状态和当前渠道样式；确实缺配置时显示图 1 警示和“去配置”，业务禁用或未订阅状态仍如实展示，编辑不代表已启用发送。底部不展示独立的“预览变量”区，示例值由前端模板定义自动提供。
 - 编辑模式：内容字段、可用变量、实时预览三栏；变量点击插入当前输入框的光标 / 选区，日期和可选变量预览与后端语义一致。邮件为主题 / 正文 / 附件，其他渠道使用真实供应商 schema；短信 / 语音签名及供应商模板编号不能从样例伪造。Webhook 按实际结构保留适用的结构化编辑器，不将所有非邮件渠道降为通用 JSON 文本框。
 - 组件：继续复用 FullPage、EqualHeightColumns、DetailHeader、SwitchGroup、a-tree、a-alert、附件上传、StickyActionBar 和确认框；请求不入展示组件，Vue 单文件不超过 300 行。新增文案遵循中英日 i18n，窄屏转分区显示并保证保存操作可达。
 - 保存、取消和恢复默认均只针对当前草稿；保存失败保留输入，跨业务切换保留各自草稿，路由跳转配置时保留恢复位置。不得以保存模板修改业务接收人或发送测试消息。
