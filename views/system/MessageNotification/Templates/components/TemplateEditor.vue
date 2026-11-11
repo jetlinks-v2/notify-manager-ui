@@ -1,46 +1,51 @@
 <template>
   <a-form layout="vertical" :model="draft" :disabled="disabled" class="template-editor">
-    <a-form-item :label="t('messageNotification.templates.name')" required>
+    <a-form-item v-if="!businessMode" :label="t('messageNotification.templates.name')" required>
       <a-input v-model:value="draft.name" :maxlength="128" />
     </a-form-item>
-    <a-form-item :label="t('messageNotification.templates.templateId')">
+    <a-form-item v-if="!businessMode" :label="t('messageNotification.templates.templateId')">
       <a-input v-model:value="draft.id" :disabled="existing || disabled" :placeholder="t('messageNotification.templates.idHint')" />
     </a-form-item>
+    <a-form-item v-if="!businessMode" :label="t('messageNotification.templates.description')">
+      <a-textarea v-model:value="draft.description" :rows="2" />
+    </a-form-item>
+    <p class="template-editor__intro">{{ t('messageNotification.templates.visual.contentOnlyHint') }}</p>
+    <component :is="channelEditor" v-if="channelEditor" :draft="draft" :editor="editor" :disabled="disabled" />
+    <template v-else>
+      <a-spin :spinning="metadataState === 'loading' && !known">
+        <a-form-item v-for="field in fields" :key="field.key" :label="t(field.labelKey)" :required="field.required">
+          <div @focusin="captureProviderCaret($event, field.path)" @click="captureProviderCaret($event, field.path)" @keyup="captureProviderCaret($event, field.path)" @input="captureProviderCaret($event, field.path)">
+            <TemplateFieldRenderer :field="field" :value="fieldValue(field)" @update="changeField(field, $event)" @activate="activateProviderField" @load-options="loadRemoteOptions" />
+          </div>
+        </a-form-item>
+        <template v-if="!genericJson">
+          <a-form-item v-for="property in metadataFields" :key="property.id" :label="property.name || property.id" :required="metadataRequired(property)">
+            <div @focusin="captureProviderCaret($event, [property.id])" @click="captureProviderCaret($event, [property.id])" @keyup="captureProviderCaret($event, [property.id])">
+              <MetadataValueItem :item="property" :model-value="metadataValue(property)" :disabled="disabled" @update:model-value="changeMetadata(property.id, $event)" />
+            </div>
+            <div v-if="property.description" class="template-editor__hint">{{ property.description }}</div>
+          </a-form-item>
+        </template>
+        <template v-else>
+          <a-alert v-if="!parsed.valid" type="error" show-icon :message="t('messageNotification.templates.invalidJson')" />
+          <a-alert v-else-if="!known && metadataState !== 'loading'" type="info" show-icon :message="t(`messageNotification.templates.presentation.${metadataFailure ? 'metadataError' : 'metadataUnavailable'}`)" />
+          <a-form-item :label="t('messageNotification.templates.providerContent')" required>
+            <div class="template-editor__hint">{{ t('messageNotification.templates.jsonHint') }}</div>
+            <a-textarea v-model:value="draft.templateJson" :rows="14" @focus="captureCaret($event, 'templateJson')" @click="captureCaret($event, 'templateJson')" @keyup="captureCaret($event, 'templateJson')" @input="captureCaret($event, 'templateJson')" />
+          </a-form-item>
+        </template>
+      </a-spin>
+    </template>
+    <a-collapse ghost :default-active-key="!draft.configId ? ['advanced'] : []" class="template-editor__advanced">
+      <a-collapse-panel key="advanced" :header="t('messageNotification.templates.visual.advancedSettings')">
     <a-form-item :label="t('messageNotification.templates.configuration')">
       <a-select v-model:value="draft.configId" :options="configOptions" allow-clear :placeholder="t('messageNotification.templates.configPlaceholder')" @clear="clearConfiguration" />
       <a-alert v-if="configFailure" type="warning" show-icon :message="t(`messageNotification.templates.${configState}`)" />
       <div v-else-if="configState === 'empty'" class="template-editor__hint">{{ t('messageNotification.templates.noConfig') }}</div>
     </a-form-item>
-    <a-form-item :label="t('messageNotification.templates.description')">
-      <a-textarea v-model:value="draft.description" :rows="2" />
-    </a-form-item>
-    <template v-if="emailDraft">
-      <a-form-item :label="t('messageNotification.templates.recipients')">
-        <a-select v-model:value="draft.sendTo" mode="tags" :token-separators="[',', ';']" :placeholder="t('messageNotification.templates.recipientHint')" />
-      </a-form-item>
-      <div v-if="draft.variables.length" class="template-editor__tokens">
-        <span class="template-editor__hint">{{ t('messageNotification.templates.insertVariable') }}</span>
-        <a-button v-for="variable in insertableVariables" :key="variable.id" size="small" :disabled="disabled" @mousedown.prevent @click="insertVariable(variable.id)">{{ variable.name || variable.id }}</a-button>
-      </div>
-      <a-form-item :label="t('messageNotification.templates.subject')" required>
-        <a-input v-model:value="draft.subject" :maxlength="255" @focus="captureCaret($event, 'subject')" @click="captureCaret($event, 'subject')" @keyup="captureCaret($event, 'subject')" @input="captureCaret($event, 'subject')" />
-      </a-form-item>
-      <a-form-item :label="t('messageNotification.templates.body')" required>
-        <a-textarea v-model:value="draft.text" :rows="10" :maxlength="5120" @focus="captureCaret($event, 'text')" @click="captureCaret($event, 'text')" @keyup="captureCaret($event, 'text')" @input="captureCaret($event, 'text')" />
-      </a-form-item>
-      <a-form-item :label="t('messageNotification.templates.attachments')">
-        <AttachmentEditor v-model:attachments="draft.attachments" :disabled="disabled" @uploading="setUploading" />
-      </a-form-item>
-    </template>
-    <a-form-item v-else :label="t('messageNotification.templates.providerContent')" required>
-      <div class="template-editor__hint">{{ t('messageNotification.templates.jsonHint') }}</div>
-      <a-textarea v-model:value="draft.templateJson" :rows="14" @focus="captureCaret($event, 'templateJson')" @click="captureCaret($event, 'templateJson')" @keyup="captureCaret($event, 'templateJson')" />
-      <a-space wrap>
-        <a-button v-for="variable in insertableVariables" :key="variable.id" size="small" @mousedown.prevent @click="insertVariable(variable.id)">{{ variable.name || variable.id }}</a-button>
-      </a-space>
-    </a-form-item>
-    <a-collapse ghost>
-      <a-collapse-panel key="variables" :header="t('messageNotification.templates.variables')">
+        <a-form-item v-if="emailDraft" :label="t('messageNotification.templates.recipients')">
+          <a-select v-model:value="draft.sendTo" mode="tags" :token-separators="[',', ';']" :placeholder="t('messageNotification.templates.recipientHint')" />
+        </a-form-item>
         <VariableDefinitions v-model:variables="draft.variables" :disabled="disabled" />
       </a-collapse-panel>
     </a-collapse>
@@ -48,29 +53,52 @@
 </template>
 
 <script setup lang="ts">
-import type { PropType } from 'vue'
-import type { NotificationLoadState, NotifierConfig } from '../../shared'
+import { computed, type Component, type PropType } from 'vue'
+import type { NotificationConfigMetadata, NotificationLoadState, NotificationVariable, NotifierConfig } from '../../shared'
 import type { TemplateDraft } from '../model'
 import { useTemplateEditor } from '../hooks/useTemplateEditor'
-import AttachmentEditor from './AttachmentEditor.vue'
+import EmailTemplateEditor from './channels/EmailTemplateEditor.vue'
+import DingTalkTemplateEditor from './channels/DingTalkTemplateEditor.vue'
+import WechatTemplateEditor from './channels/WechatTemplateEditor.vue'
+import VoiceTemplateEditor from './channels/VoiceTemplateEditor.vue'
+import SmsTemplateEditor from './channels/SmsTemplateEditor.vue'
+import WebhookTemplateEditor from './channels/WebhookTemplateEditor.vue'
 import VariableDefinitions from './VariableDefinitions.vue'
+import TemplateFieldRenderer from '../../../../notice/template/components/TemplateFieldRenderer.vue'
 
 const props = defineProps({
   draft: { type: Object as PropType<TemplateDraft>, required: true },
   existing: { type: Boolean, default: false },
+  businessMode: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false },
   configs: { type: Array as PropType<NotifierConfig[]>, default: () => [] },
   configState: { type: String as PropType<NotificationLoadState>, required: true },
+  metadata: { type: Object as PropType<NotificationConfigMetadata>, default: undefined },
+  metadataState: { type: String as PropType<NotificationLoadState>, default: 'idle' },
+  availableVariables: { type: Array as PropType<NotificationVariable[]>, default: () => [] },
 })
 const emit = defineEmits<{ (event: 'uploading', value: boolean): void }>()
+const editor = useTemplateEditor(props, emit)
 const {
-  t, emailDraft, insertableVariables, configFailure, configOptions, clearConfiguration,
-  setUploading, captureCaret, insertVariable,
-} = useTemplateEditor(props, emit)
+  t, emailDraft, insertableVariables, canInsertVariable, configFailure, configOptions, clearConfiguration,
+  setUploading, captureCaret, captureProviderCaret, activateProviderField, insertVariable,
+  known, fields, metadataFields, genericJson, metadataFailure, parsed, fieldValue, changeField,
+  changeMetadata, metadataValue, metadataRequired, loadRemoteOptions,
+} = editor
+const channelEditors: Record<string, Component> = {
+  'email:embedded': EmailTemplateEditor, 'dingTalk:dingTalkMessage': DingTalkTemplateEditor,
+  'dingTalk:dingTalkRobotWebHook': DingTalkTemplateEditor, 'weixin:corpMessage': WechatTemplateEditor,
+  'voice:aliyun': VoiceTemplateEditor, 'sms:aliyunSms': SmsTemplateEditor, 'webhook:http': WebhookTemplateEditor,
+}
+const channelEditor = computed(() => parsed.value.valid || emailDraft.value ? channelEditors[`${props.draft.type}:${props.draft.provider}`] : undefined)
+defineExpose({ insertVariable, canInsertVariable })
 </script>
 
 <style scoped>
 .template-editor { min-width: 0; }
 .template-editor__hint { margin-bottom: var(--space-2); color: var(--text-color-secondary); font-size: var(--fs-12); }
+.template-editor__intro { margin: 0 0 var(--space-4); padding-bottom: var(--space-4); border-bottom: 1px solid var(--line); color: var(--text-color-secondary); font-size: var(--fs-12); }
+.template-editor__advanced { margin-top: var(--space-4); }
 .template-editor__tokens { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4); }
+.template-editor__tokens code { margin-left: var(--space-1); color: var(--jet-theme-text-secondary); font-size: var(--fs-12); }
 </style>

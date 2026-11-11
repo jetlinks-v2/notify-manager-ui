@@ -27,7 +27,7 @@ export function useTemplateDirectory(props: DirectoryProps, emit: DirectoryEvent
     .map(node => node.key))
   const selectedKeys = computed(() => {
     if (!props.selectedId) return []
-    const matches = allNodes.value.filter(node => node.templateId === props.selectedId)
+    const matches = allNodes.value.filter(node => node.key === props.selectedId || node.templateId === props.selectedId)
     const node = matches.find(item => item.key === currentNodeKey.value) || matches[0]
     return node ? [node.key] : []
   })
@@ -46,7 +46,10 @@ export function useTemplateDirectory(props: DirectoryProps, emit: DirectoryEvent
   function select(keys: (string | number)[]) {
     // 再次点击当前节点时保留编辑对象，不把树的取消选择传给工作区。
     const node = allNodes.value.find(item => item.key === keys[0])
-    if (!props.disabled && node?.templateId) { currentNodeKey.value = node.key; emit('select', node.templateId) }
+    if (!props.disabled && node?.selectable) {
+      currentNodeKey.value = node.key
+      emit('select', node.kind === 'business' ? node.key : node.templateId || node.key)
+    }
   }
   function reload() { emit('reload') }
 

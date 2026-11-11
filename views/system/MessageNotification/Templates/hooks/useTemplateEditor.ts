@@ -1,43 +1,116 @@
-import { computed, nextTick, watch } from 'vue'
+import { computed, nextTick, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { NotificationLoadState, NotifierConfig } from '../../shared'
-import { insertTemplateVariable, isEmailDraft, type TemplateDraft } from '../model'
+import { cloneNotificationValue, type NotificationLoadState, type NotificationVariable } from '../../shared'
+import { insertTemplateVariable, isEmailDraft } from '../model'
+import { matchesTemplateConfiguration } from './templatePresentation'
+import { useTemplateProviderEditor, type ProviderEditorProps } from './useTemplateProviderEditor'
 
-interface EditorProps { draft: TemplateDraft; configs: NotifierConfig[]; configState: NotificationLoadState }
+interface EditorProps extends ProviderEditorProps { configState: NotificationLoadState; availableVariables?: NotificationVariable[] }
 type TextField = 'subject' | 'text' | 'templateJson'
-interface Caret { field: TextField; start: number; end: number; element?: HTMLInputElement | HTMLTextAreaElement }
+interface Caret { field: TextField; path?: string[]; start: number; end: number; element?: HTMLInputElement | HTMLTextAreaElement; custom?: TemplateCustomCaret }
+export interface TemplateCustomCaret {
+  read: () => string
+  write: (value: string) => boolean | void
+  editable: () => boolean
+  start: number
+  end: number
+  element?: HTMLInputElement | HTMLTextAreaElement
+}
+const textFieldKinds = ['input', 'textarea', 'monaco']
 
 /** One editor context retains real config choices and the focused field's text selection. */
 export function useTemplateEditor(props: EditorProps, emit: (event: 'uploading', value: boolean) => void) {
   const { t } = useI18n()
+  const providerEditor = useTemplateProviderEditor(props)
   const emailDraft = computed(() => isEmailDraft(props.draft))
-  const insertableVariables = computed(() => props.draft.variables.filter(item => item.id))
+  const insertableVariables = computed(() => {
+    const variables = new Map((props.availableVariables ?? []).filter(item => item.id).map(item => [item.id, item]))
+    // A saved declaration retains its type and format even when the available catalog is refreshed.
+    for (const variable of props.draft.variables) if (variable.id) variables.set(variable.id, variable)
+    return [...variables.values()]
+  })
   const configFailure = computed(() => ['forbidden', 'unavailable', 'error'].includes(props.configState))
   const configOptions = computed(() => {
-    const options = props.configs.map(item => ({ label: `${item.name} (${item.id})`, value: item.id }))
+    const options = props.configs.filter(item => matchesTemplateConfiguration(props.draft, item))
+      .map(item => ({ label: `${item.name} (${item.id})`, value: item.id, disabled: false }))
     if (props.draft.configId && !options.some(item => item.value === props.draft.configId)) {
-      options.push({ label: props.draft.configId, value: props.draft.configId })
+      options.push({ label: props.draft.configId, value: props.draft.configId, disabled: true })
     }
     return options
   })
-  let caret: Caret = { field: isEmailDraft(props.draft) ? 'text' : 'templateJson', start: 0, end: 0 }
-  watch(() => props.draft, () => { caret = { field: isEmailDraft(props.draft) ? 'text' : 'templateJson', start: 0, end: 0 } })
+  const caret = shallowRef<Caret>()
+  function editablePath(path: string[]): boolean {
+    return providerEditor.fields.value.some(field => field.path.join('.') === path.join('.')
+      && !field.disabled && textFieldKinds.includes(field.kind))
+      || !providerEditor.genericJson.value && providerEditor.metadataFields.value.some(property => property.id === path[0] && property.valueType.type === 'string')
+  }
+  const canInsertVariable = computed(() => {
+    const target = caret.value
+    return !props.disabled && !!target && (target.custom ? target.custom.editable() : target.path ? editablePath(target.path)
+      : target.field !== 'templateJson' || providerEditor.genericJson.value)
+  })
+  // Only a real content field receives a default target; raw JSON requires an explicit cursor selection.
+  function resetCaret() {
+    caret.value = emailDraft.value ? { field: 'text', start: 0, end: 0 } : undefined
+    if (emailDraft.value || providerEditor.genericJson.value) return
+    const field = providerEditor.fields.value.find(item => ['message', 'body', 'ttsmessage'].includes(item.key) && editablePath(item.path))
+    const property = providerEditor.metadataFields.value.find(item => ['message', 'content', 'text', 'body'].includes(item.id) && editablePath([item.id]))
+    const path = field?.path ?? (property ? [property.id] : undefined)
+    if (path) caret.value = { field: 'templateJson', path, start: providerEditor.valueAtPath(path).length, end: providerEditor.valueAtPath(path).length }
+  }
+  watch(() => props.draft, resetCaret)
+  watch(() => providerEditor.fields.value.map(field => field.path.join('.')).join('|')
+    + providerEditor.metadataFields.value.map(field => field.id).join('|'), resetCaret, { immediate: true })
 
   function clearConfiguration() { props.draft.configId = '' }
   function setUploading(value: boolean) { emit('uploading', value) }
   function captureCaret(event: Event, field: TextField) {
     const element = event.target as HTMLInputElement | HTMLTextAreaElement | null
-    if (element) caret = { field, start: element.selectionStart ?? 0, end: element.selectionEnd ?? 0, element }
+    if (element && typeof element.selectionStart === 'number') caret.value = { field, start: element.selectionStart, end: element.selectionEnd ?? element.selectionStart, element }
+  }
+  /** Native field events preserve selection even when the renderer wraps an Ant Design input. */
+  function captureProviderCaret(event: Event, path: string[]) {
+    const element = event.target as HTMLInputElement | HTMLTextAreaElement | null
+    if (element && typeof element.selectionStart === 'number' && editablePath(path)) {
+      caret.value = { field: 'templateJson', path, start: element.selectionStart, end: element.selectionEnd ?? element.selectionStart, element }
+    }
+  }
+  /** Split title/body views retain their own selections while their adapter writes one real supplier field. */
+  function captureCustomCaret(target: TemplateCustomCaret) {
+    if (!target.editable()) return
+    caret.value = { field: 'templateJson', start: target.start, end: target.end, element: target.element, custom: target }
+  }
+  function activateProviderField(path: string[]) {
+    if (!editablePath(path) || caret.value?.path?.join('.') === path.join('.')) return
+    const length = providerEditor.valueAtPath(path).length
+    caret.value = { field: 'templateJson', path, start: length, end: length }
   }
   async function insertVariable(id: string) {
-    const result = insertTemplateVariable(props.draft[caret.field], id, caret.start, caret.end)
-    props.draft[caret.field] = result.text
-    caret.start = result.caret
-    caret.end = result.caret
+    const target = caret.value
+    if (!canInsertVariable.value || !target) return
+    const text = target.custom ? target.custom.read() : target.path ? providerEditor.valueAtPath(target.path) : props.draft[target.field]
+    const result = insertTemplateVariable(text, id, target.start, target.end)
+    if (target.custom) {
+      if (target.custom.write(result.text) === false) return
+    } else if (target.path) {
+      if (!providerEditor.changePath(target.path, result.text)) return
+    } else props.draft[target.field] = result.text
+    if (!props.draft.variables.some(variable => variable.id === id)) {
+      const available = insertableVariables.value.find(variable => variable.id === id)
+      if (available) {
+        const declaration = cloneNotificationValue(available)
+        delete declaration.defaultValue
+        props.draft.variables.push(declaration)
+      }
+    }
+    target.start = result.caret
+    target.end = result.caret
     await nextTick()
-    caret.element?.focus()
-    caret.element?.setSelectionRange(result.caret, result.caret)
+    if (caret.value !== target) return
+    target.element?.focus()
+    target.element?.setSelectionRange(result.caret, result.caret)
   }
 
-  return { t, emailDraft, insertableVariables, configFailure, configOptions, clearConfiguration, setUploading, captureCaret, insertVariable }
+  return { t, emailDraft, insertableVariables, canInsertVariable, configFailure, configOptions, clearConfiguration, setUploading,
+    captureCaret, captureProviderCaret, captureCustomCaret, activateProviderField, insertVariable, ...providerEditor }
 }

@@ -1,144 +1,239 @@
-import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
+import type { LocationQueryRaw } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { usePermission } from '@jetlinks-web/hooks'
 import { useMediaQuery } from '@vueuse/core'
+import { useMenuStore } from '@jetlinks-web-core/store/menu'
+import type { NoticeChannelConfig } from '../../../../../api/notice-center'
 import {
-  notificationChannels, notificationConfigurationChange, notificationPermissions,
-  normalizeNotificationNavigation, notificationQuery,
+  notificationConfigurationChange, notificationPermissions, notificationQuery,
+  notificationRouteNames, normalizeNotificationNavigation,
 } from '../../shared'
 import { TemplateValidationError } from '../model'
+import { buildTemplateDirectory, flattenTemplateDirectory, templateBusinessKey } from '../templateDirectoryModel'
 import { useTemplateWorkspace } from '../useTemplateWorkspace'
 import { useTemplateBusinessDirectory } from './useTemplateBusinessDirectory'
 
-/** Coordinate routing and browser lifecycle outside the presentational page. */
+const identity = (business?: NoticeChannelConfig) => business?.id || business?.provider || business?.providerId || ''
+const queryText = (value: unknown) => typeof value === 'string' ? value : Array.isArray(value) && typeof value[0] === 'string' ? value[0] : ''
+
+/** 业务决定编辑对象，渠道决定提供商；路由只同步明确身份，不用模板列表首项猜业务。 */
 export function useTemplatePage() {
   const { t } = useI18n()
   const compact = useMediaQuery('(max-width: 768px)')
   const route = useRoute()
   const router = useRouter()
+  const menu = useMenuStore()
   const { hasPerm: canQuery } = usePermission(ref(notificationPermissions.templates.query))
   const { hasPerm: canAdd } = usePermission(ref(notificationPermissions.templates.add))
   const { hasPerm: canUpdate } = usePermission(ref(notificationPermissions.templates.update))
-  const businessDirectory = useTemplateBusinessDirectory(canQuery)
+  const { hasPerm: canConfigure } = usePermission(ref(notificationPermissions.channels.query))
+  const directory = useTemplateBusinessDirectory(canQuery)
   const workspace = useTemplateWorkspace({ query: canQuery, add: canAdd, update: canUpdate })
-  const { channelId, templates, configs, listState, draft, hasDirtyDrafts, saving } = workspace
+  const { channelId, templates, draft, business, channels, detailState, listState, saving } = workspace
   const uploading = ref(false)
   const editing = ref(false)
-  const busy = computed(() => saving.value || uploading.value)
+  const initialized = ref(false)
+  const selectionUnavailable = ref(false)
   const validationMessage = ref('')
   const saved = ref(false)
-  const navigation = computed(() => normalizeNotificationNavigation(route.query))
-  const channelOptions = computed(() => notificationChannels.map(channel => ({ value: channel.id, label: t(channel.labelKey) })))
-  const templateOptions = computed(() => templates.value.map(template => ({ value: template.id, label: `${template.name} (${template.id})` })))
-  const selectedTemplateId = computed(() => workspace.activeKey.value.startsWith('new:') ? undefined : workspace.activeKey.value || undefined)
-  const title = computed(() => draft.value?.name || t(workspace.entry.value?.existing === false ? 'messageNotification.templates.create' : 'messageNotification.templates.title'))
-  const listFailure = computed(() => ['unavailable', 'forbidden', 'error'].includes(listState.value))
-  const detailFailure = computed(() => ['unavailable', 'forbidden', 'error'].includes(workspace.detailState.value))
-  const saveFailure = computed(() => ['unavailable', 'forbidden', 'error'].includes(workspace.saveState.value))
   const confirmation = reactive({ open: false })
-  let confirmResult: ((value: boolean) => void) | undefined
-  let loadedChannel = ''
+  const busy = computed(() => saving.value || uploading.value)
+  const navigation = computed(() => normalizeNotificationNavigation(route.query, channels.value))
+  const directoryNodes = computed(() => flattenTemplateDirectory(buildTemplateDirectory(templates.value, directory.businessTypes.value,
+    { other: t('messageNotification.templates.otherGroup') }, t)))
+  const channelOptions = computed(() => channels.value.map(channel => ({ value: channel.id, label: channel.labelKey ? t(channel.labelKey) : channel.name || channel.id })))
+  const templateOptions = computed(() => directoryNodes.value.filter(node => node.kind === 'business').map(node => ({ value: node.key, label: node.title })))
+  const selectedDirectoryKey = computed(() => business.value ? templateBusinessKey(business.value) : workspace.activeKey.value)
+  const selectedTemplateId = selectedDirectoryKey
+  const title = computed(() => business.value?.name || draft.value?.name || t('messageNotification.templates.title'))
+  const description = computed(() => String(business.value?.description || draft.value?.description || ''))
+  const activeConfig = computed(() => workspace.configs.value.find(config => config.id === draft.value?.configId))
+  const listFailure = computed(() => ['unavailable', 'forbidden', 'error'].includes(workspace.catalogState.value))
+  const detailFailure = computed(() => selectionUnavailable.value || ['unavailable', 'forbidden', 'error'].includes(detailState.value))
+  const feedbackState = computed(() => selectionUnavailable.value ? 'unavailable' : detailState.value)
+  const saveFailure = computed(() => ['unavailable', 'forbidden', 'error'].includes(workspace.saveState.value))
+  const canEdit = computed(() => canQuery.value && !!draft.value && detailState.value === 'ready'
+    && (workspace.entry.value?.existing ? canUpdate.value : canAdd.value))
+  const missingConfiguration = computed(() => !!draft.value && workspace.configState.value === 'empty')
+  let confirmationResult: ((value: boolean) => void) | undefined
+  let revision = 0
+  let catalogRevision = 0
+  let loadedSelection = ''
+  let acceptedQuery: LocationQueryRaw = { ...route.query }
+  let disposed = false
 
-  /** Query and selection are routed; unfinished values remain in per-ID memory. */
-  watch([() => navigation.value.channel, () => navigation.value.templateId, canQuery], async ([id, templateId]) => {
-    validationMessage.value = ''
-    saved.value = false
-    const channel = typeof id === 'string' ? id : 'email:embedded'
-    if (loadedChannel !== channel || listState.value === 'idle' || !canQuery.value || listState.value === 'forbidden') {
-      loadedChannel = channel
-      await workspace.loadChannel(channel, typeof templateId === 'string' ? templateId : '')
-      // 自动预览当前渠道的首条真实记录；显式深链和加载期间的新选择始终优先。
-      if (!templateId && !navigation.value.templateId && channelId.value === channel && !workspace.activeKey.value
-        && listState.value === 'ready' && templates.value[0]) selectTemplate(templates.value[0].id)
-    } else await workspace.selectTemplate(typeof templateId === 'string' ? templateId : '')
+  watch(canQuery, async () => {
+    const current = ++catalogRevision
+    initialized.value = false
+    await workspace.loadCatalog()
+    if (current === catalogRevision) initialized.value = true
   }, { immediate: true })
 
-  // 新建和未保存草稿继续编辑，首次查看已保存模板时只展示预览。
-  watch([workspace.activeKey, workspace.detailState], () => {
-    editing.value = workspace.detailState.value === 'ready' && (!workspace.entry.value?.existing || workspace.dirty.value)
-  })
+  /** 显式旧 templateId 优先解析真实业务绑定；没有显式选择时取树中的首个业务。 */
+  async function synchronizeSelection() {
+    if (!initialized.value || directory.directoryState.value === 'loading') return
+    const current = ++revision
+    const channel = queryText(route.query.channel) || navigation.value.channel || channels.value[0]?.id || ''
+    const requestedBusiness = queryText(route.query.business)
+    const requestedTemplate = navigation.value.templateId || ''
+    const requestedConfig = navigation.value.configId || ''
+    const businesses = directory.businessTypes.value
+    const exact = businesses.find(item => item.id === requestedBusiness)
+      || businesses.find(item => requestedBusiness && identity(item) === requestedBusiness)
+    const bound = requestedTemplate ? businesses.find(item => item.channels?.some(binding => binding.channelConfiguration?.templateId === requestedTemplate)) : undefined
+    const first = directoryNodes.value.find(node => node.kind === 'business')?.business
+    const target = exact || (!requestedBusiness ? bound || (!requestedTemplate ? first : undefined) : undefined)
+    const selection = JSON.stringify([channel, identity(target), target ? '' : requestedTemplate, requestedConfig])
+    if (selection === loadedSelection) return
+    if (loadedSelection && identity(target) !== identity(business.value) && workspace.hasDirtyDrafts.value) {
+      if (!await confirmDiscard()) { if (current === revision) await router.replace({ query: acceptedQuery }); return }
+      if (current !== revision) return
+      if (business.value) workspace.discardBusinessDrafts()
+      else await workspace.discardDraft()
+    }
+    const changedBusiness = identity(target) !== identity(business.value)
+    loadedSelection = selection
+    selectionUnavailable.value = !!requestedBusiness && !target
+    validationMessage.value = ''
+    saved.value = false
+    if (changedBusiness) editing.value = false
+    if (target) await workspace.loadBusiness(target, channel, requestedConfig)
+    else await workspace.loadChannel(channel, requestedTemplate)
+    if (current === revision) acceptedQuery = { ...route.query }
+  }
 
+  watch([initialized, () => route.query.channel, () => route.query.ch, () => route.query.business, () => route.query.templateId, () => route.query.configId,
+    directory.businessTypes, directory.directoryState], synchronizeSelection, { immediate: true })
   watch(notificationConfigurationChange, change => {
     if (change?.channel === channelId.value) void workspace.refreshConfigs()
   })
 
+  function selectionQuery(channel: string, selectedBusiness?: NoticeChannelConfig, templateId?: string): LocationQueryRaw {
+    const query = notificationQuery({ channel, templateId }, route.query, channels.value)
+    if (selectedBusiness) query.business = identity(selectedBusiness)
+    else delete query.business
+    return query
+  }
   function setUploading(value: boolean) { uploading.value = value }
-  function reload() {
+  async function reload() {
     if (busy.value) return
-    void businessDirectory.reloadDirectory()
-    void workspace.loadChannel(channelId.value, workspace.activeKey.value || navigation.value.templateId)
+    if (workspace.hasDirtyDrafts.value && !await confirmDiscard()) return
+    const previousBusiness = business.value
+    if (previousBusiness) workspace.discardBusinessDrafts()
+    else await workspace.discardDraft()
+    loadedSelection = ''
+    initialized.value = false
+    await Promise.all([workspace.reloadCatalog(), directory.reloadDirectory()])
+    if (previousBusiness && workspace.saveOutcomeUnknown.value && directory.directoryState.value === 'ready') {
+      const refreshed = directory.businessTypes.value.find(item => previousBusiness.id && item.id === previousBusiness.id)
+        || directory.businessTypes.value.find(item => item.provider === previousBusiness.provider)
+      if (refreshed) workspace.resetBusinessIdentity(refreshed)
+    }
+    initialized.value = true
   }
   function startEditing() {
-    if (busy.value || !workspace.canSave.value) return
+    if (busy.value || !canEdit.value) return
     saved.value = false
     editing.value = true
   }
   function changeChannel(value: string | number) {
-    if (!busy.value && String(value) !== channelId.value) void router.replace({ query: notificationQuery({ channel: String(value) }, route.query) })
+    const next = String(value)
+    if (!busy.value && next !== channelId.value) void router.replace({ query: selectionQuery(next, business.value) })
   }
-  function selectTemplate(value: unknown) {
-    if (!busy.value) void router.replace({ query: notificationQuery({ ...navigation.value, channel: channelId.value, templateId: String(value) }, route.query) })
+  async function selectTemplate(value: unknown) {
+    if (busy.value) return
+    const key = String(value)
+    const node = directoryNodes.value.find(item => item.key === key)
+    if (node?.kind === 'group' || key === workspace.activeKey.value) return
+    const nextBusiness = node?.kind === 'business' ? node.business : undefined
+    if (nextBusiness && identity(nextBusiness) === identity(business.value)) return
+    if (workspace.hasDirtyDrafts.value && !await confirmDiscard()) return
+    if (business.value) workspace.discardBusinessDrafts()
+    else await workspace.discardDraft()
+    editing.value = false
+    await router.replace({ query: selectionQuery(channelId.value, nextBusiness, nextBusiness ? undefined : key) })
   }
-  async function createTemplate() {
+  function createTemplate() {
     if (busy.value || !canAdd.value || !canQuery.value) return
-    await router.replace({ query: notificationQuery({ channel: channelId.value, configId: navigation.value.configId }, route.query) })
-    await nextTick()
-    const selectedConfig = configs.value.find(config => config.id === navigation.value.configId)
-    workspace.createTemplate(selectedConfig?.id)
+    workspace.createTemplate(navigation.value.configId)
     editing.value = true
     saved.value = false
   }
 
-  /** Failed saves leave the editor intact; only verified success clears its dirty state. */
+  /** 保存成功只回写当前业务的真实身份和绑定，不清空目录或覆盖其他业务。 */
   async function save() {
+    const current = revision
     validationMessage.value = ''
     saved.value = false
     try {
-      if (await workspace.saveTemplate()) {
-        await router.replace({ query: notificationQuery({ channel: channelId.value, templateId: draft.value?.id || undefined, configId: draft.value?.configId || undefined }, route.query) })
-        saved.value = true
-        editing.value = false
+      if (!await workspace.saveTemplate()) return
+      if (disposed || current !== revision) return
+      const selected = business.value
+      if (selected) {
+        const index = directory.businessTypes.value.findIndex(item => item.id === selected.id || item.provider === selected.provider)
+        if (index >= 0) directory.businessTypes.value[index] = selected
       }
+      loadedSelection = JSON.stringify([channelId.value, identity(selected), selected ? '' : draft.value?.id || '', ''])
+      await router.replace({ query: selectionQuery(channelId.value, selected, draft.value?.id || undefined) })
+      acceptedQuery = { ...route.query }
+      saved.value = true
+      editing.value = false
     } catch (error) {
       validationMessage.value = error instanceof TemplateValidationError ? t(error.message) : t('messageNotification.templates.error')
     }
   }
-
+  function restoreDefault() {
+    if (busy.value || !canEdit.value || !workspace.canRestoreDefault.value) return
+    workspace.restoreDefault()
+    editing.value = true
+    saved.value = false
+  }
   function confirmDiscard(): Promise<boolean> {
+    if (confirmation.open) return Promise.resolve(false)
     confirmation.open = true
-    return new Promise(resolve => { confirmResult = resolve })
+    return new Promise(resolve => { confirmationResult = resolve })
   }
   function resolveConfirmation(value: boolean) {
     confirmation.open = false
-    confirmResult?.(value)
-    confirmResult = undefined
+    confirmationResult?.(value)
+    confirmationResult = undefined
   }
-  /** 取消只丢弃当前草稿；没有修改时直接返回预览，其他 ID 的草稿仍保留。 */
   async function requestDiscard() {
-    if (busy.value) return
-    const key = workspace.activeKey.value
-    if (workspace.dirty.value && !await confirmDiscard()) return
-    if (key !== workspace.activeKey.value || busy.value) return
+    if (busy.value || workspace.dirty.value && !await confirmDiscard()) return
     validationMessage.value = ''
     saved.value = false
-    if (workspace.dirty.value || !workspace.entry.value?.existing) await workspace.discardDraft()
+    await workspace.discardDraft()
     editing.value = false
   }
-  onBeforeRouteLeave(async () => !hasDirtyDrafts.value && !uploading.value || await confirmDiscard())
+  async function goConfigure() {
+    if (busy.value || !canConfigure.value || workspace.hasDirtyDrafts.value && !await confirmDiscard()) return
+    const targetChannel = channelId.value
+    const targetConfig = draft.value?.configId || undefined
+    if (business.value) workspace.discardBusinessDrafts()
+    else await workspace.discardDraft()
+    void menu.jumpPage(notificationRouteNames.channels, { query: notificationQuery({ channel: targetChannel, configId: targetConfig }, {}, channels.value) })
+  }
+  onBeforeRouteUpdate(() => !busy.value)
+  onBeforeRouteLeave(async () => !saving.value && (!workspace.hasDirtyDrafts.value && !uploading.value || await confirmDiscard()))
   function beforeUnload(event: BeforeUnloadEvent) {
-    if (hasDirtyDrafts.value || uploading.value) { event.preventDefault(); event.returnValue = '' }
+    if (workspace.hasDirtyDrafts.value || busy.value) { event.preventDefault(); event.returnValue = '' }
   }
   if (typeof window !== 'undefined') window.addEventListener('beforeunload', beforeUnload)
   onBeforeUnmount(() => {
+    disposed = true
+    ++revision
+    ++catalogRevision
     if (typeof window !== 'undefined') window.removeEventListener('beforeunload', beforeUnload)
     resolveConfirmation(false)
   })
 
   return {
-    t, compact, workspace, ...workspace, ...businessDirectory, canQuery, canAdd, busy, uploading, editing, title, startEditing, validationMessage,
-    saved, channelOptions, templateOptions, selectedTemplateId, listFailure, detailFailure,
-    saveFailure, confirmation, setUploading, reload, changeChannel, selectTemplate,
-    createTemplate, save, requestDiscard, resolveConfirmation,
+    t, compact, workspace, ...workspace, ...directory, canQuery, canAdd, canEdit, canConfigure, busy, uploading,
+    editing, title, description, activeConfig, selectedDirectoryKey, selectedTemplateId, templateOptions,
+    validationMessage, saved, channelOptions, listFailure, detailFailure, feedbackState, saveFailure,
+    missingConfiguration, confirmation, setUploading, reload, changeChannel, selectTemplate, createTemplate,
+    startEditing, save, restoreDefault, requestDiscard, goConfigure, resolveConfirmation,
   }
 }
