@@ -7,6 +7,8 @@ export interface NotificationChannel {
   labelKey: string
   group: 'instant' | 'telephone' | 'integration'
   secretFields: readonly string[]
+  /** Missing saved values are valid only for credentials explicitly declared optional. */
+  optionalSecretFields?: readonly string[]
   name?: string
   typeName?: string
   providerName?: string
@@ -19,7 +21,7 @@ export interface NotificationChannel {
 export const notificationChannels: readonly NotificationChannel[] = [
   { id: 'email:embedded', type: 'email', provider: 'embedded', labelKey: 'messageNotification.channel.email', group: 'instant', secretFields: ['password'] },
   { id: 'dingTalk:dingTalkMessage', type: 'dingTalk', provider: 'dingTalkMessage', labelKey: 'messageNotification.channel.dingTalkCorp', group: 'instant', secretFields: ['appSecret'] },
-  { id: 'dingTalk:dingTalkRobotWebHook', type: 'dingTalk', provider: 'dingTalkRobotWebHook', labelKey: 'messageNotification.channel.dingTalkRobot', group: 'instant', secretFields: ['url'], multipleConfigurations: true },
+  { id: 'dingTalk:dingTalkRobotWebHook', type: 'dingTalk', provider: 'dingTalkRobotWebHook', labelKey: 'messageNotification.channel.dingTalkRobot', group: 'instant', secretFields: ['url', 'secret'], optionalSecretFields: ['secret'], multipleConfigurations: true },
   { id: 'weixin:corpMessage', type: 'weixin', provider: 'corpMessage', labelKey: 'messageNotification.channel.wechatCorp', group: 'instant', secretFields: ['corpSecret'] },
   { id: 'voice:aliyun', type: 'voice', provider: 'aliyun', labelKey: 'messageNotification.channel.voice', group: 'telephone', secretFields: ['secret'] },
   { id: 'sms:aliyunSms', type: 'sms', provider: 'aliyunSms', labelKey: 'messageNotification.channel.sms', group: 'telephone', secretFields: ['secret'] },

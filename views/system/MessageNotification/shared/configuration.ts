@@ -3,6 +3,20 @@ import { notificationEnumValue, resolveNotificationChannel } from './catalog'
 
 export const notificationSecretMask = '••••••••'
 
+export interface NotificationSecretPolicy {
+  optionalFields?: readonly string[]
+  /** Explicit UI intent only; this list never becomes part of the API payload. */
+  clearFields?: readonly string[]
+}
+
+function defaultSecretPolicy(draft: NotifierConfigPayload): NotificationSecretPolicy {
+  return { optionalFields: resolveNotificationChannel(draft.type, draft.provider)?.optionalSecretFields }
+}
+
+function explicitlyCleared(key: string, policy: NotificationSecretPolicy): boolean {
+  return !!policy.optionalFields?.includes(key) && !!policy.clearFields?.includes(key)
+}
+
 export class NotificationSecretInputRequiredError extends Error {
   readonly fields: string[]
 
@@ -42,29 +56,36 @@ function retainedSecret(input: unknown, previous: unknown): unknown {
 }
 
 /** Missing/masked saved values cannot be safely merged without verified backend secret preservation. */
-export function notificationSecretsRequiringInput(draft: NotifierConfigPayload, baseline?: NotifierConfig, secretFields = resolveNotificationChannel(draft.type, draft.provider)?.secretFields ?? []): string[] {
-  if (!baseline || baseline.id !== draft.id) return []
+export function notificationSecretsRequiringInput(draft: NotifierConfigPayload, baseline?: NotifierConfig, secretFields = resolveNotificationChannel(draft.type, draft.provider)?.secretFields ?? [], policy = defaultSecretPolicy(draft)): string[] {
+  if (!baseline || baseline.id !== draft.id || notificationEnumValue(baseline.type) !== draft.type || notificationEnumValue(baseline.provider) !== draft.provider) return []
   return secretFields.filter(key => {
+    if (explicitlyCleared(key, policy)) return false
     const original = baseline.configuration?.[key]
-    const unknownOriginal = original === undefined || original === null || isNotificationSecretMask(original)
+    // An absent optional credential is valid; a masked credential still represents an unknown saved value.
+    const unknownOriginal = isNotificationSecretMask(original)
+      || ((original === undefined || original === null) && !policy.optionalFields?.includes(key))
     return unknownOriginal && retainedSecret(draft.configuration[key], undefined) === undefined
   })
 }
 
 /** Preserve known secrets; require re-entry if an update could replace a masked/missing saved secret. */
-export function buildNotificationConfigPayload(draft: NotifierConfigPayload, baseline?: NotifierConfig, secretFields = resolveNotificationChannel(draft.type, draft.provider)?.secretFields ?? []): NotifierConfigPayload {
+export function buildNotificationConfigPayload(draft: NotifierConfigPayload, baseline?: NotifierConfig, secretFields = resolveNotificationChannel(draft.type, draft.provider)?.secretFields ?? [], policy = defaultSecretPolicy(draft)): NotifierConfigPayload {
   // Never merge another record/provider's credentials into a new or navigated draft.
   const previous = baseline?.id === draft.id
     && notificationEnumValue(baseline?.type) === draft.type
     && notificationEnumValue(baseline?.provider) === draft.provider ? baseline : undefined
   // PATCH may replace the nested map; omission is not proof that the server retains a secret.
-  const requiredSecrets = notificationSecretsRequiringInput(draft, previous, secretFields)
+  const requiredSecrets = notificationSecretsRequiringInput(draft, previous, secretFields, policy)
   if (requiredSecrets.length) throw new NotificationSecretInputRequiredError(requiredSecrets)
   const configuration: NotificationObject = {
     ...cloneNotificationValue(previous?.configuration ?? {}),
     ...cloneNotificationValue(draft.configuration),
   }
   for (const key of secretFields) {
+    if (explicitlyCleared(key, policy)) {
+      configuration[key] = ''
+      continue
+    }
     const value = retainedSecret(draft.configuration[key], previous?.configuration?.[key])
     if (value === undefined) delete configuration[key]
     else configuration[key] = value

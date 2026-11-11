@@ -1,5 +1,5 @@
 import type { NotifierConfig, NotifierConfigPayload, NotificationObject, NotificationConfigProperty } from '../shared'
-import { buildNotificationConfigPayload, createNotificationConfigDraft, isNotificationSecretMask, NotificationSecretInputRequiredError, notificationSecretsRequiringInput, notificationEnumValue } from '../shared'
+import { buildNotificationConfigPayload, createNotificationConfigDraft, isNotificationSecretMask, NotificationSecretInputRequiredError, notificationSecretsRequiringInput, notificationEnumValue, resolveNotificationChannel } from '../shared'
 import type { ChannelDefinition } from './configuration/channelMetadata'
 import { aliyunRegionElements } from '../../../notice/channel/hooks/noticeChannelModel'
 
@@ -17,7 +17,7 @@ export interface ChannelField {
 export const channelConfigFields: Record<string, ChannelField[]> = {
   'email:embedded': [{ key: 'host', required: true }, { key: 'port', kind: 'number' }, { key: 'sender' }, { key: 'username' }, { key: 'password', kind: 'secret' }],
   'dingTalk:dingTalkMessage': [{ key: 'appKey', required: true }, { key: 'appSecret', kind: 'secret', required: true }],
-  'dingTalk:dingTalkRobotWebHook': [{ key: 'url', kind: 'secret', required: true }],
+  'dingTalk:dingTalkRobotWebHook': [{ key: 'url', kind: 'secret', required: true }, { key: 'secret', kind: 'secret' }],
   'weixin:corpMessage': [{ key: 'corpId', required: true }, { key: 'corpSecret', kind: 'secret', required: true }],
   'voice:aliyun': [{ key: 'regionId', options: aliyunRegionElements }, { key: 'accessKeyId', required: true }, { key: 'secret', kind: 'secret', required: true }],
   'sms:aliyunSms': [{ key: 'regionId', options: aliyunRegionElements }, { key: 'accessKeyId', required: true }, { key: 'secret', kind: 'secret', required: true }],
@@ -55,11 +55,11 @@ function effectiveHeaderValue(key: string, value: unknown, baseline?: NotifierCo
 }
 
 /** Validate local input before writing; known baseline secrets count as values without exposing them. */
-export function validateChannelDraft(draft: NotifierConfigPayload, baseline?: NotifierConfig, definition?: ChannelDefinition): ChannelValidationIssue[] {
+export function validateChannelDraft(draft: NotifierConfigPayload, baseline?: NotifierConfig, definition?: ChannelDefinition, clearFields: readonly string[] = []): ChannelValidationIssue[] {
   const issues: ChannelValidationIssue[] = []
   if (!draft.id?.trim()) issues.push({ path: 'id', key: 'required' })
   if (!draft.name.trim()) issues.push({ path: 'name', key: 'required' })
-  const requiredSecrets = notificationSecretsRequiringInput(draft, baseline, definition?.secretFields)
+  const requiredSecrets = notificationSecretsRequiringInput(draft, baseline, definition?.secretFields, secretPolicy(draft, definition, clearFields))
   for (const field of definition?.fields ?? channelConfigFields[`${draft.type}:${draft.provider}`] ?? []) {
     if (requiredSecrets.includes(field.key)) {
       issues.push({ path: field.key, key: 'secretRequired' })
@@ -97,8 +97,8 @@ export function validateChannelDraft(draft: NotifierConfigPayload, baseline?: No
 }
 
 /** A safe payload is derived only after validation; extension settings are preserved by the shared mapper. */
-export function channelConfigPayload(draft: NotifierConfigPayload, baseline?: NotifierConfig, definition?: ChannelDefinition): NotifierConfigPayload {
-  const payload = buildNotificationConfigPayload({ ...draft, id: draft.id?.trim(), name: draft.name.trim() }, baseline, definition?.secretFields)
+export function channelConfigPayload(draft: NotifierConfigPayload, baseline?: NotifierConfig, definition?: ChannelDefinition, clearFields: readonly string[] = []): NotifierConfigPayload {
+  const payload = buildNotificationConfigPayload({ ...draft, id: draft.id?.trim(), name: draft.name.trim() }, baseline, definition?.secretFields, secretPolicy(draft, definition, clearFields))
   const headers = draft.configuration.headers
   if (draft.type === 'webhook' && draft.provider === 'http' && Array.isArray(headers)) {
     payload.configuration.headers = headers.map(row => {
@@ -108,6 +108,10 @@ export function channelConfigPayload(draft: NotifierConfigPayload, baseline?: No
     })
   }
   return payload
+}
+
+function secretPolicy(draft: NotifierConfigPayload, definition: ChannelDefinition | undefined, clearFields: readonly string[]) {
+  return { optionalFields: definition ? definition.optionalSecretFields : resolveNotificationChannel(draft.type, draft.provider)?.optionalSecretFields, clearFields }
 }
 
 /** Metadata validation is independent from control rendering, including false/zero and JSON values. */

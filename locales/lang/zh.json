@@ -699,5 +699,10 @@
   "messageNotification.channels.configured": "已配置",
   "messageNotification.channels.more": "更多操作",
   "messageNotification.channels.savedRefreshFailed": "配置已保存，列表刷新失败，请重试读取。",
-  "messageNotification.common.cancel": "取消"
+  "messageNotification.common.cancel": "取消",
+  "messageNotification.channels.robot.secretLabel": "加签密钥（选填）",
+  "messageNotification.channels.robot.secretHint": "仅在钉钉机器人启用“加签”时填写 SEC 开头的密钥。已有密钥留空保留；关闭平台加签请使用“清除加签密钥”。",
+  "messageNotification.channels.robot.clearSecret": "清除加签密钥",
+  "messageNotification.channels.robot.clearSecretTitle": "清除加签密钥？",
+  "messageNotification.channels.robot.clearSecretDescription": "清除后，当前机器人请求将不再加签。如果钉钉机器人仍要求加签，消息会发送失败。Webhook 地址和其他配置保留。"
 }

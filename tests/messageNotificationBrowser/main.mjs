@@ -42,6 +42,12 @@ const writeDelay = Math.min(5000, Math.max(0, Number(flags.get('writeDelay')) ||
 for (const operation of flags.getAll('fail')) failures.add(operation)
 const configs = flags.has('fresh') ? [] : clone(fixtures.configs)
 const templates = clone(fixtures.templates)
+if (flags.has('robotSigning')) {
+  configs.push(...['one', 'two', 'unsigned', 'masked'].map(id => ({
+    id: `robot-${id}`, name: `robot-${id}`, type: 'dingTalk', provider: 'dingTalkRobotWebHook',
+    configuration: { url: `https://fixture.example.test/robot/${id}`, ...(id === 'unsigned' ? {} : { secret: id === 'masked' ? '********' : `SECfixture-${id}` }) },
+  })))
+}
 if (flags.get('directory') === 'tree') templates.push(...clone(templateDirectoryFixture.templates))
 const histories = clone(fixtures.history)
 if (flags.get('history') === 'missing') histories.splice(0, histories.length, { id: 'history-missing', state: 'error' })
@@ -67,7 +73,13 @@ Object.assign(messageNotificationApi, {
   queryTypes: async () => { record('queryTypes', {}); return clone(flags.get('catalog') === 'extended' ? [...channelTypes, extensionType] : channelTypes) },
   queryProviders: async type => { record('queryProviders', type); if (flags.get('providerError') === type) throw new Error('Provider fixture failure'); return clone(type === extensionType.id ? extensionProviders : channelProviders[type] || []) },
   queryAllConfigs: async () => { record('queryAllConfigs', {}); return clone(configs) },
-  getConfigMetadata: async (type, provider) => { record('getConfigMetadata', { type, provider }); if (flags.has('metadataError')) throw new Error('Metadata fixture failure'); return normalizeNotificationConfigMetadata(clone(type === extensionType.id ? extensionMetadata : channelWireMetadata[`${type}:${provider}`])) },
+  getConfigMetadata: async (type, provider) => {
+    record('getConfigMetadata', { type, provider })
+    if (flags.has('metadataError')) throw new Error('Metadata fixture failure')
+    const metadata = clone(type === extensionType.id ? extensionMetadata : channelWireMetadata[`${type}:${provider}`])
+    if (flags.has('legacyRobotMetadata') && type === 'dingTalk' && provider === 'dingTalkRobotWebHook') metadata.properties = metadata.properties.filter(field => field.property !== 'secret')
+    return normalizeNotificationConfigMetadata(metadata)
+  },
   queryConfigs: async query => { record('queryConfigs', query); return { data: clone(queryRows(configs, query)) } },
   getConfig: async id => { record('getConfig', id); return clone(configs.find(row => row.id === id)) },
   createConfig: async payload => { record('createConfig', payload); configs.push(clone(payload)) },

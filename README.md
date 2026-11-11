@@ -7,6 +7,23 @@
 - 接口封装：`api/notice-center.ts`
 - 后端接口：`/notify/channel/**`、`/notifier/config/**`、`/notifier/**`
 
+## 钉钉机器人可选加签
+
+现有通知渠道支持可选加签，保留当前布局、多配置与发送入口。服务端元数据声明 `secret` 后，`Channels/ChannelConfiguration.vue` 通过现有密码编辑组件展示“加签密钥（选填）”；旧后端未声明时不显示该字段或清除操作。新增可不填，已保存密钥留空保留、非空替换。“清除加签密钥”需明确确认，沿用更新权限与 `useChannelWorkspace.saveFields` 链路；成功后更新本地状态，失败保留原值并允许重试。中、英、日文案同步。
+
+`views/system/MessageNotification/shared/configuration.ts` 通过字段策略区分可选密钥和明确清除意图，不硬编码钉钉判断；原本没有可选密钥的配置允许修改，掩码值仍需重填或明确清除。清除使用 `configuration.secret: ""`，前端意图标记不进入 API，配置 ID 间不复用密钥。后端 owning module 为 `modules/jetlinks-components/notify-component/notify-dingtalk`，先升级通知服务再发布前端；不修改 `ui/` 或增加数据库列。
+
+验证（2026-11-11，命令从 `runtime-ui/` 执行）：
+
+- `node --test --test-name-pattern='signing|robot|optional credential|clear intent|SMTP|SMS|secrets|secret|credential' modules/notify-manager-ui/tests/messageNotification{Channels,Contracts}.test.mjs`：22/22 通过，覆盖新增不填、补填、更换、留空、清除、取消 / 失败、掩码值、配置切换及邮件 / 短信凭据保护。
+- `node --test modules/notify-manager-ui/tests/messageNotification{Channels,Contracts,Integration}.test.mjs`：提交前按当前分支 HEAD 分离出仅包含钉钉加签的候选版本，77/77 通过；日志 `/tmp/dingtalk-sign-delivery/frontend-tests.log`。其他渠道的未提交改动保留在原工作区。
+- `SMOKE_PLAYWRIGHT_MODULE="$PWD/../ui/node_modules/playwright" node modules/notify-manager-ui/tests/messageNotificationBrowser/robotSigning.mjs`：使用本工作区已安装的 Playwright 和已有 9200 Vite 服务。隔离内存接口验证 9 组场景，包括字段编辑、失败重试、掩码清除、机器人隔离、旧后端、三语及 390px 确认框；通过，无页面错误或业务网络请求。报告与截图 `/tmp/dingtalk-sign-browser/`。
+- `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`：仍为改动前的 213 条既有错误，按文件 / 错误码 / 消息对比无新增。日志 `/tmp/dingtalk-sign-types-final.log`，全量类型检查尚未通过。
+- 从 `jetlinks-web-core/` 执行 `node --max_old_space_size=16384 ../node_modules/vite/bin/vite.js build --outDir /tmp/dingtalk-sign-build -- --module-name notify-manager-ui`：通过；保留现有 CSS、chunk 大小、构建配置及浏览器映射数据警告。`node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/system/MessageNotification/Channels/ChannelConfiguration.vue` 和变更文件 `git diff --check` 通过。
+
+不发送真实钉钉消息。后端编译 / 测试仍被私服 401 阻断，详见通知组件 README；恢复依赖后先验证并部署通知服务，再发布前端。无密钥历史机器人无需迁移，真实机器人发送另行验收。
+
+
 ## 系统通知模板原型对齐
 
 - 左侧树按设备空间树参考图对齐（局部修正）：保留 `TemplateDirectory.vue` 的 `a-tree`，开启 `showLine` 并复用 core `src/style/components.less` 的 32px 行高、24px 层级缩进、浅灰虚线、左侧加减展开按钮及浅蓝圆角选中态，移除原局部覆盖，补充蓝色节点图标。分组与业务父节点均可展开 / 收起，搜索临时展开、清空恢复、深链展开祖先的规则保持一致；只调整模板目录及其 hook，不改接口、模板绑定或参考设备页，不添加设备数量。验证（2026-11-11）：模板 / 契约 / 装配测试 57/57 通过，增加分组折叠、搜索恢复与深链展开祖先的断言；模块构建通过（26.89 秒），`git diff --check` 通过。类型检查前后同为 213 项既有诊断，忽略行号后无变化；工作区无独立 lint 脚本。9200 实际页面只读核对树样式，隔离夹具实测 32px 行高、24px 缩进、虚线、浅蓝选中态、分组及业务节点展开 / 收起、搜索父链与清除恢复、子模板切换，夹具页面错误日志为空。未改真实数据；完整权限矩阵及长名称截断未重新验证。命令沿用本节，日志前缀 `/tmp/notification-template-tree-style-`，效果截图 `/Users/chris/.codex/visualizations/2026/11/11/01a1c9a2-4dad-76d3-a623-440d663cda60/notification-template-tree-style.jpg`；既有类型诊断修复后重跑类型检查。

@@ -699,5 +699,10 @@
   "messageNotification.channels.configured": "Configured",
   "messageNotification.channels.more": "More actions",
   "messageNotification.channels.savedRefreshFailed": "Configuration saved. Refreshing the list failed; retry loading it.",
-  "messageNotification.common.cancel": "Cancel"
+  "messageNotification.common.cancel": "Cancel",
+  "messageNotification.channels.robot.secretLabel": "Signing secret (optional)",
+  "messageNotification.channels.robot.secretHint": "Enter the SEC-prefixed secret only when signing is enabled for the DingTalk robot. Leave an existing secret blank to keep it; use Clear signing secret to remove it.",
+  "messageNotification.channels.robot.clearSecret": "Clear signing secret",
+  "messageNotification.channels.robot.clearSecretTitle": "Clear signing secret?",
+  "messageNotification.channels.robot.clearSecretDescription": "Requests for this robot will no longer be signed. Sending will fail if the DingTalk robot still requires a signature. The Webhook URL and other settings will be retained."
 }

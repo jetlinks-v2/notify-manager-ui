@@ -28,6 +28,7 @@ export function useChannelCatalog(permitted: Ref<boolean>, api: MessageNotificat
       id, type: type.id, provider: provider.id,
       labelKey: known?.labelKey ?? '', group: known?.group ?? 'integration',
       secretFields: known?.secretFields ?? [],
+      optionalSecretFields: known?.optionalSecretFields,
       multipleConfigurations: known?.multipleConfigurations,
       typeName: type.name || type.id, providerName: provider.name || provider.id,
       name: type.name === provider.name ? type.name || type.id : `${type.name || type.id} · ${provider.name || provider.id}`,

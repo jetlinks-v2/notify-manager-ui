@@ -6,6 +6,7 @@ export interface ChannelDefinition {
   metadata: NotificationConfigMetadata
   fields: ChannelField[]
   secretFields: string[]
+  optionalSecretFields?: readonly string[]
 }
 
 /** Presentation hints never add fields absent from the selected provider's metadata. */
@@ -40,7 +41,11 @@ export function channelDefinition(channel: NotificationChannel, metadata: Notifi
     const order = ['host', 'port', 'properties', 'username', 'password', 'sender']
     fields.sort((left, right) => (order.includes(left.key) ? order.indexOf(left.key) : order.length) - (order.includes(right.key) ? order.indexOf(right.key) : order.length))
   }
-  return { metadata, fields, secretFields: fields.filter(field => field.kind === 'secret').map(field => field.key) }
+  return {
+    metadata, fields, secretFields: fields.filter(field => field.kind === 'secret').map(field => field.key),
+    // Only advertised, optional fields can be cleared; old servers must not appear to support signing.
+    optionalSecretFields: fields.filter(field => field.kind === 'secret' && !field.required && channel.optionalSecretFields?.includes(field.key)).map(field => field.key),
+  }
 }
 
 /** Defaults belong to the draft snapshot so opening an empty form does not make it dirty. */

@@ -699,5 +699,10 @@
   "messageNotification.channels.configured": "設定済み",
   "messageNotification.channels.more": "その他の操作",
   "messageNotification.channels.savedRefreshFailed": "設定は保存されました。一覧の再取得に失敗しました。読み込みを再試行してください。",
-  "messageNotification.common.cancel": "キャンセル"
+  "messageNotification.common.cancel": "キャンセル",
+  "messageNotification.channels.robot.secretLabel": "署名シークレット（任意）",
+  "messageNotification.channels.robot.secretHint": "DingTalk ロボットで署名を有効にした場合のみ、SEC で始まるシークレットを入力します。空欄のままなら既存値を保持します。削除する場合は「署名シークレットを削除」を使用してください。",
+  "messageNotification.channels.robot.clearSecret": "署名シークレットを削除",
+  "messageNotification.channels.robot.clearSecretTitle": "署名シークレットを削除しますか？",
+  "messageNotification.channels.robot.clearSecretDescription": "このロボットへのリクエストに署名しなくなります。DingTalk 側で署名が必須のままだと送信に失敗します。Webhook URL と他の設定は保持されます。"
 }

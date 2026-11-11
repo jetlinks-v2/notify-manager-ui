@@ -343,3 +343,48 @@ test('template business directory reads existing groups and exact channel templa
   response.result = [{ channels: 'invalid' }]
   await assert.rejects(api.queryTemplateDirectory(), NotificationRequestError)
 })
+
+test('optional credential policy supports absent legacy values, replacement, retention and explicit clearing', () => {
+  const baseline = { id: 'custom-one', name: 'Custom', type: 'extension', provider: 'custom', configuration: { token: 'saved-token', extra: 1 } }
+  const fields = ['token']
+  const policy = { optionalFields: fields }
+  const draft = createNotificationConfigDraft(baseline, fields)
+  assert.equal(buildNotificationConfigPayload(draft, baseline, fields, policy).configuration.token, 'saved-token')
+  draft.configuration.token = 'replacement'
+  assert.equal(buildNotificationConfigPayload(draft, baseline, fields, policy).configuration.token, 'replacement')
+  draft.configuration.token = ''
+  const cleared = buildNotificationConfigPayload(draft, baseline, fields, { ...policy, clearFields: fields })
+  assert.deepEqual(cleared.configuration, { token: '', extra: 1 })
+  assert.equal(Object.hasOwn(cleared, 'clearFields'), false)
+  assert.equal(Object.hasOwn(cleared.configuration, 'clearFields'), false)
+  for (const value of [undefined, null, '', '  ']) {
+    baseline.configuration.token = value
+    assert.deepEqual(notificationSecretsRequiringInput(draft, baseline, fields, policy), [])
+    assert.equal(Object.hasOwn(buildNotificationConfigPayload(draft, baseline, fields, policy).configuration, 'token'), false)
+  }
+  baseline.configuration.token = '******'
+  assert.deepEqual(notificationSecretsRequiringInput(draft, baseline, fields, policy), ['token'])
+  assert.throws(() => buildNotificationConfigPayload(draft, baseline, fields, policy), NotificationSecretInputRequiredError)
+  assert.equal(buildNotificationConfigPayload(draft, baseline, fields, { ...policy, clearFields: fields }).configuration.token, '')
+})
+
+test('clear intent cannot remove non-optional SMTP, SMS or Webhook credentials', () => {
+  for (const baseline of [config(), { id: 'sms', name: 'SMS', type: 'sms', provider: 'aliyunSms', configuration: { secret: 'saved-sms' } },
+    { id: 'robot', name: 'Robot', type: 'dingTalk', provider: 'dingTalkRobotWebHook', configuration: { url: 'https://fixture.example.test/hook', secret: 'SECsaved' } }]) {
+    const fields = resolveNotificationChannel(baseline.type, baseline.provider).secretFields
+    const policy = { optionalFields: [], clearFields: fields }
+    const draft = createNotificationConfigDraft(baseline)
+    assert.deepEqual(buildNotificationConfigPayload(draft, baseline, fields, policy).configuration, baseline.configuration)
+  }
+})
+
+test('robot signing keys never merge across record IDs or provider boundaries', () => {
+  const baseline = { id: 'one', name: 'Robot', type: 'dingTalk', provider: 'dingTalkRobotWebHook', configuration: { url: 'https://fixture.example.test/hook', secret: 'SECone' } }
+  const draft = createNotificationConfigDraft(baseline)
+  assert.equal(buildNotificationConfigPayload(draft, baseline).configuration.secret, 'SECone')
+  for (const mismatch of [{ ...draft, id: 'two' }, { ...draft, provider: 'other' }, { ...draft, type: 'other' }]) {
+    const payload = buildNotificationConfigPayload(mismatch, baseline, ['url', 'secret'], { optionalFields: ['secret'] })
+    assert.equal(payload.configuration.secret, undefined)
+    assert.equal(payload.configuration.url, undefined)
+  }
+})

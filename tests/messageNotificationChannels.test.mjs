@@ -414,7 +414,7 @@ const renderer = vue.createRenderer({
 const control = name => vue.defineComponent({ name, props: ['value', 'disabled', 'placeholder'], setup: (_, { slots }) => () => vue.h('control', slots.default?.()) })
 function mount(component, props = {}) {
   const app = renderer.createApp({ setup: () => () => vue.h(component, props) })
-  for (const name of ['a-form', 'a-form-item', 'a-input', 'a-input-password', 'a-input-number', 'a-typography-text', 'Editable', 'a-alert', 'a-button', 'a-select', 'a-collapse', 'a-collapse-panel', 'a-textarea', 'AIcon']) app.component(name, control(name))
+  for (const name of ['a-form', 'a-form-item', 'a-input', 'a-input-password', 'a-input-number', 'a-typography-text', 'Editable', 'a-modal', 'a-alert', 'a-button', 'a-select', 'a-collapse', 'a-collapse-panel', 'a-textarea', 'AIcon']) app.component(name, control(name))
   app.mount({})
   return app
 }
@@ -1002,4 +1002,169 @@ test('only robots allow a second configuration and keep automatic duplicate-name
   await workspace.selectConfig('robot-real')
   assert.equal(workspace.selectedConfigId.value, 'robot-real')
   assert.equal(io.calls.filter(([method]) => method === 'createConfig').length, 1)
+})
+
+const robotChannelId = 'dingTalk:dingTalkRobotWebHook'
+const robotWithSecret = (id, secret) => ({ ...robot(id), configuration: { ...robot(id).configuration, secret, extension: 'keep' } })
+function signingWorkspace(io, perms = permissions()) {
+  return useChannelWorkspace({ api: io.api, permissions: perms,
+    loadDefinition: async channel => channelDefinition(channel, await io.api.getConfigMetadata(channel.type, channel.provider)) })
+}
+function robotEditor(workspace, perms = permissions()) {
+  // The page unmounts its editor while no record is selected; keep the last mounted props in this hook test.
+  let mountedEntry = workspace.entry.value
+  const props = vue.reactive({
+    get entry() { return mountedEntry = workspace.entry.value ?? mountedEntry },
+    get disabled() { return !perms.update.value },
+    get busy() { return workspace.busy.value },
+    submit: workspace.saveFields,
+  })
+  return useChannelConfiguration(props, workspace.changeField)
+}
+
+test('signing input and clear capability require optional secret advertised by backend metadata', async () => {
+  const channel = notificationChannels.find(channel => channel.id === robotChannelId)
+  const definition = channelDefinition(channel, channelMetadata[robotChannelId])
+  assert.equal(definition.fields.find(field => field.key === 'secret').kind, 'secret')
+  assert.equal(definition.fields.find(field => field.key === 'secret').required, false)
+  assert.deepEqual(definition.optionalSecretFields, ['secret'])
+  const io = testApi([robotWithSecret('one', 'SECone')])
+  io.api.getConfigMetadata = async () => ({ properties: channelMetadata[robotChannelId].properties.filter(field => field.id !== 'secret') })
+  const workspace = signingWorkspace(io)
+  await workspace.activate(robotChannelId)
+  const editor = robotEditor(workspace)
+  assert.equal(editor.formGroups.value.flatMap(group => group.fields).some(field => field.key === 'config:secret'), false)
+  assert.equal(editor.canClearSigningSecret.value, false)
+  assert.equal(await workspace.saveFields([{ key: 'secret', value: '', clearSecret: true }], 'secret'), false)
+  assert.equal(io.calls.some(([method]) => method === 'updateConfig'), false)
+  assert.equal(await workspace.saveFields([{ key: 'url', value: 'https://fixture.example.test/changed' }], 'url'), true)
+  assert.equal(io.records.get('one').configuration.secret, 'SECone')
+})
+
+test('new robots can omit the optional signing key and old robots can edit or add one', async () => {
+  const io = testApi([])
+  const workspace = signingWorkspace(io)
+  await workspace.activate(robotChannelId)
+  workspace.changeField('url', 'https://fixture.example.test/new')
+  assert.equal(await workspace.save(), true)
+  const id = workspace.selectedConfigId.value
+  assert.equal(Object.hasOwn(io.records.get(id).configuration, 'secret'), false)
+  assert.equal(await workspace.saveFields([{ key: 'url', value: 'https://fixture.example.test/edited' }], 'url'), true)
+  assert.equal(await workspace.saveFields([{ key: 'secret', value: 'SECadded' }], 'secret'), true)
+  assert.equal(io.records.get(id).configuration.secret, 'SECadded')
+  assert.equal(await workspace.saveFields([{ key: 'secret', value: 'SECreplaced' }], 'secret'), true)
+  assert.equal(io.records.get(id).configuration.secret, 'SECreplaced')
+  assert.equal(await workspace.saveFields([{ key: 'secret', value: '' }], 'secret'), true)
+  assert.equal(io.records.get(id).configuration.secret, 'SECreplaced')
+  assert.equal(await workspace.saveFields([{ key: 'url', value: 'https://fixture.example.test/retained' }], 'url'), true)
+  assert.equal(io.records.get(id).configuration.secret, 'SECreplaced')
+  assert.equal(workspace.entry.value.draft.configuration.secret, '')
+})
+
+test('explicit signing-key clear preserves saved state on failure, unrelated drafts and other robot credentials', async () => {
+  const io = testApi([robotWithSecret('one', 'SECone'), robotWithSecret('two', 'SECtwo')])
+  const workspace = signingWorkspace(io)
+  await workspace.activate(robotChannelId, 'one')
+  workspace.changeField('name', 'unsaved name', true)
+  const snapshot = workspace.entry.value.snapshot
+  const update = io.api.updateConfig
+  io.api.updateConfig = async () => { throw new Error('offline') }
+  const clear = [{ key: 'secret', value: '', clearSecret: true }]
+  assert.equal(await workspace.saveFields(clear, 'secret'), false)
+  assert.equal(workspace.entry.value.baseline.configuration.secret, 'SECone')
+  assert.equal(workspace.entry.value.snapshot, snapshot)
+  assert.equal(io.records.get('one').configuration.secret, 'SECone')
+  io.api.updateConfig = update
+  assert.equal(await workspace.saveFields(clear, 'secret'), true)
+  assert.deepEqual(io.records.get('one').configuration, { url: robot().configuration.url, secret: '', extension: 'keep' })
+  assert.equal(io.records.get('one').name, '群机器人')
+  assert.equal(workspace.entry.value.draft.name, 'unsaved name')
+  assert.equal(workspace.entry.value.baseline.configuration.secret, '')
+  const payload = io.calls.filter(([method]) => method === 'updateConfig').at(-1)[1]
+  assert.equal(JSON.stringify(payload).includes('clearSecret'), false)
+  await workspace.selectConfig('two')
+  assert.equal(workspace.entry.value.draft.configuration.secret, '')
+  assert.equal(await workspace.saveFields([{ key: 'url', value: 'https://fixture.example.test/two' }], 'url'), true)
+  assert.equal(io.records.get('two').configuration.secret, 'SECtwo')
+  assert.equal(io.records.get('one').configuration.secret, '')
+  await workspace.selectConfig('one')
+  assert.equal(robotEditor(workspace).canClearSigningSecret.value, false)
+})
+
+test('masked signing key blocks ordinary updates until replacement or explicit clearing', async () => {
+  for (const mode of ['replace', 'clear']) {
+    const io = testApi([robotWithSecret('one', '********')])
+    const workspace = signingWorkspace(io)
+    await workspace.activate(robotChannelId)
+    assert.equal(await workspace.saveFields([{ key: 'url', value: 'https://fixture.example.test/changed' }], 'url'), false)
+    assert.equal(workspace.entry.value.issues.some(issue => issue.path === 'secret' && issue.key === 'secretRequired'), true)
+    assert.equal(io.calls.some(([method]) => method === 'updateConfig'), false)
+    assert.equal(robotEditor(workspace).canClearSigningSecret.value, true)
+    assert.equal(await workspace.saveFields([{ key: 'secret', value: mode === 'clear' ? '' : 'SECreentered', clearSecret: mode === 'clear' }], 'secret'), true)
+    assert.equal(io.records.get('one').configuration.secret, mode === 'clear' ? '' : 'SECreentered')
+  }
+})
+
+test('signing clear confirmation supports cancel, failure retry, permission guards and configuration switching', async () => {
+  const io = testApi([robotWithSecret('one', 'SECone'), robotWithSecret('two', 'SECtwo')])
+  const perms = permissions()
+  const workspace = signingWorkspace(io, perms)
+  await workspace.activate(robotChannelId, 'one')
+  const editor = robotEditor(workspace, perms)
+  editor.requestClearSigningSecret()
+  assert.equal(editor.clearSecretOpen.value, true)
+  editor.cancelClearSigningSecret()
+  await editor.clearSigningSecret()
+  assert.equal(io.calls.some(([method]) => method === 'updateConfig'), false)
+  editor.requestClearSigningSecret()
+  await workspace.selectConfig('two')
+  await vue.nextTick()
+  assert.equal(editor.clearSecretOpen.value, false)
+  editor.requestClearSigningSecret()
+  perms.update.value = false
+  await vue.nextTick()
+  assert.equal(editor.clearSecretOpen.value, false)
+  editor.requestClearSigningSecret()
+  await editor.clearSigningSecret()
+  assert.equal(io.calls.some(([method]) => method === 'updateConfig'), false)
+  perms.update.value = true
+  await vue.nextTick()
+  const update = io.api.updateConfig
+  io.api.updateConfig = async () => { throw new Error('offline') }
+  editor.requestClearSigningSecret()
+  await editor.clearSigningSecret()
+  assert.equal(editor.clearSecretOpen.value, true)
+  assert.equal(editor.clearSecretError.value, 'messageNotification.state.error')
+  assert.equal(editor.canClearSigningSecret.value, true)
+  io.api.updateConfig = update
+  await editor.clearSigningSecret()
+  assert.equal(editor.clearSecretOpen.value, false)
+  assert.equal(editor.canClearSigningSecret.value, false)
+  assert.equal(io.records.get('one').configuration.secret, 'SECone')
+  assert.equal(io.records.get('two').configuration.secret, '')
+})
+
+test('pending signing clear locks duplicate writes and switching, and updates baseline only after success', async () => {
+  const io = testApi([robotWithSecret('one', 'SECone'), robotWithSecret('two', 'SECtwo')])
+  const workspace = signingWorkspace(io)
+  await workspace.activate(robotChannelId, 'one')
+  const editor = robotEditor(workspace)
+  const update = io.api.updateConfig
+  let release
+  let count = 0
+  io.api.updateConfig = async payload => { count++; await new Promise(resolve => { release = resolve }); return update(payload) }
+  editor.requestClearSigningSecret()
+  const pending = editor.clearSigningSecret()
+  assert.equal(editor.clearSecretPending.value, true)
+  assert.equal(workspace.entry.value.baseline.configuration.secret, 'SECone')
+  editor.cancelClearSigningSecret()
+  assert.equal(editor.clearSecretOpen.value, true)
+  await editor.clearSigningSecret()
+  await workspace.selectConfig('two')
+  assert.equal(workspace.selectedConfigId.value, 'one')
+  assert.equal(count, 1)
+  release()
+  await pending
+  assert.equal(editor.clearSecretPending.value, false)
+  assert.equal(workspace.entry.value.baseline.configuration.secret, '')
 })

@@ -11,6 +11,7 @@ import { emailEncryption, emailEncryptionChanges, emailEncryptionProperties, ema
 export interface ChannelConfigurationProps {
   entry: ChannelDraftEntry
   disabled: boolean
+  busy?: boolean
   submit?: (changes: ChannelFieldChange[], errorPath: string) => Promise<boolean>
 }
 
@@ -39,11 +40,13 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
     return value ? t(`messageNotification.channels.validation.${value.key}`) : undefined
   }
   function label(field: ChannelField): string {
+    if (props.entry.draft.type === 'dingTalk' && props.entry.draft.provider === 'dingTalkRobotWebHook' && field.key === 'secret') return t('messageNotification.channels.robot.secretLabel')
     const known = channelConfigFields[`${props.entry.draft.type}:${props.entry.draft.provider}`]
     const key = `messageNotification.channels.fields.${field.key}`
     return known && (known.some(item => item.key === field.key) || ['properties', 'headers'].includes(field.key)) ? t(key) : field.property?.name || field.key
   }
   function hint(field: ChannelField): string | undefined {
+    if (props.entry.draft.type === 'dingTalk' && props.entry.draft.provider === 'dingTalkRobotWebHook' && field.key === 'secret') return t('messageNotification.channels.robot.secretHint')
     const key = `messageNotification.channels.hints.${props.entry.draft.type}.${field.key}`
     return props.entry.draft.type === 'email' && props.entry.draft.provider === 'embedded' && ['host', 'username', 'password', 'sender'].includes(field.key) ? t(key) : field.property?.description
   }
@@ -97,6 +100,35 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
     return issue(key) || (failure ? t(`messageNotification.state.${failure}`) : undefined)
   }
   function metadataField(key: string) { return fields.value.find(field => `config:${field.key}` === key) }
+  const clearSecretOpen = ref(false)
+  const clearSecretPending = ref(false)
+  const clearSecretError = ref('')
+  const canClearSigningSecret = computed(() => !props.entry.isNew
+    && props.entry.draft.type === 'dingTalk' && props.entry.draft.provider === 'dingTalkRobotWebHook'
+    && !!props.entry.definition?.optionalSecretFields?.includes('secret')
+    && typeof props.entry.baseline?.configuration.secret === 'string' && !!props.entry.baseline.configuration.secret.trim())
+  watch([() => props.entry.key, () => props.disabled], () => { clearSecretOpen.value = false; clearSecretError.value = '' })
+  function requestClearSigningSecret() {
+    if (!canClearSigningSecret.value || props.disabled || props.busy || clearSecretPending.value) return
+    clearSecretError.value = ''
+    clearSecretOpen.value = true
+  }
+  function cancelClearSigningSecret() {
+    if (!clearSecretPending.value) { clearSecretOpen.value = false; clearSecretError.value = '' }
+  }
+  /** Explicit clearing is a field transaction; blank edits continue to retain the saved credential. */
+  async function clearSigningSecret() {
+    if (!clearSecretOpen.value || !canClearSigningSecret.value || props.disabled || props.busy || clearSecretPending.value || !props.submit) return
+    const key = props.entry.key
+    clearSecretPending.value = true
+    clearSecretError.value = ''
+    try {
+      const ok = await props.submit([{ key: 'secret', value: '', clearSecret: true }], 'secret')
+      if (props.entry.key !== key || props.disabled) return
+      if (ok) clearSecretOpen.value = false
+      else clearSecretError.value = fieldError('secret') || t('messageNotification.state.error')
+    } finally { clearSecretPending.value = false }
+  }
   function mappedField(field: ChannelField): InlineEditFieldDefinition {
     const type = fieldType(field)
     const saved = initial.value.configuration[field.key]
@@ -183,5 +215,6 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
     return key === `config:${pairKind.value}` && pairKind.value ? { kind: pairKind.value, value: value as Record<string, string>[] | undefined, disabled, savedKeys: savedHeaderKeys.value } : undefined
   }
   return { t, numberBounds, selectedValue, setSelectedValue, preset, setPreset,
-    formGroups, formMessages, changeValue, cancelValue, submitValue, metadataField, customPairModel }
+    formGroups, formMessages, changeValue, cancelValue, submitValue, metadataField, customPairModel,
+    canClearSigningSecret, clearSecretOpen, clearSecretPending, clearSecretError, requestClearSigningSecret, cancelClearSigningSecret, clearSigningSecret }
 }

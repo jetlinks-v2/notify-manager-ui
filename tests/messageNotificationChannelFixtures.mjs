@@ -16,7 +16,7 @@ export const channelProviders = {
 export const channelMetadata = {
   'email:embedded': { name: '邮件配置', properties: [text('host', 'SMTP 服务器'), { id: 'port', name: '端口', valueType: { type: 'int', min: 0, max: 65536 } }, text('sender', '发件人'), text('username', '用户名'), { id: 'password', name: '密码', valueType: { type: 'password' } }, { id: 'properties', name: '其他配置', valueType: { type: 'array', elementType: { type: 'object' } } }] },
   'dingTalk:dingTalkMessage': { name: '钉钉配置', properties: [text('appKey', 'AppKey', true), text('appSecret', 'AppSecret')] },
-  'dingTalk:dingTalkRobotWebHook': { name: '群机器人配置', properties: [text('url', 'Webhook', true)] },
+  'dingTalk:dingTalkRobotWebHook': { name: '群机器人配置', properties: [text('url', 'Webhook', true), { id: 'secret', name: '加签密钥', valueType: { type: 'password' } }] },
   'weixin:corpMessage': { name: '企业微信配置', properties: [text('corpId', '企业 ID', true), text('corpSecret', '企业应用密钥')] },
   'voice:aliyun': { name: '阿里云语音', properties: [text('regionId', '地域'), text('accessKeyId', 'AccessKey ID'), text('secret', 'AccessKey Secret')] },
   'sms:aliyunSms': { name: '阿里云短信', properties: [text('regionId', '地域'), text('accessKeyId', 'AccessKey ID'), text('secret', 'AccessKey Secret')] },
