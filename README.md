@@ -11,11 +11,13 @@
 
 实现提交：前端 `7eba75d`（本地 `2.20`），后端 `8444cd9ee`；后端评审见 [PR #1717](https://github.com/jetlinks-v2/jetlinks-components/pull/1717)（目标 `2.20`，草稿，待恢复 Maven 私服访问后验证）。
 
-现有通知渠道支持可选加签，保留当前布局、多配置与发送入口。服务端元数据声明 `secret` 后，`Channels/ChannelConfiguration.vue` 通过现有密码编辑组件展示“加签密钥（选填）”；旧后端未声明时不显示该字段或清除操作。新增可不填，已保存密钥留空保留、非空替换。“清除加签密钥”需明确确认，沿用更新权限与 `useChannelWorkspace.saveFields` 链路；成功后更新本地状态，失败保留原值并允许重试。中、英、日文案同步。
+当前暂时屏蔽钉钉机器人的加签密钥输入与清除入口，即使服务端元数据声明 `secret` 也不显示。仅在 `Channels/useChannelConfiguration.ts` 的显示字段中过滤机器人 `secret`；保留已保存密钥、元数据能力与密钥合并逻辑，修改 Webhook 时继续保留原密钥，邮件、短信等渠道不受影响。后续恢复入口时仍以服务端元数据声明为前提。
 
-`views/system/MessageNotification/shared/configuration.ts` 通过字段策略区分可选密钥和明确清除意图，不硬编码钉钉判断；原本没有可选密钥的配置允许修改，掩码值仍需重填或明确清除。清除使用 `configuration.secret: ""`，前端意图标记不进入 API，配置 ID 间不复用密钥。后端 owning module 为 `modules/jetlinks-components/notify-component/notify-dingtalk`，先升级通知服务再发布前端；不修改 `ui/` 或增加数据库列。
+`views/system/MessageNotification/shared/configuration.ts` 通过字段策略区分可选密钥和明确清除意图，不硬编码钉钉判断；原本没有可选密钥的配置允许修改。掩码密钥无法安全回传，当前入口屏蔽期间继续拒绝此类配置的普通更新，避免丢失已存密钥。清除使用 `configuration.secret: ""`，前端意图标记不进入 API，配置 ID 间不复用密钥。后端 owning module 为 `modules/jetlinks-components/notify-component/notify-dingtalk`，先升级通知服务再发布前端；不修改 `ui/` 或增加数据库列。
 
-验证（2026-11-11，命令从 `runtime-ui/` 执行）：
+本次屏蔽验证（2026-11-11）：`node --test tests/messageNotification{Channels,Contracts,Integration}.test.mjs` 在独立提交候选通过 77/77，当前工作区通过 78/78；沿用下述 Playwright 命令验证 6 组场景，有 / 无 secret 元数据、机器人切换与三语均隐藏入口，修改 Webhook 保留密钥，无业务网络请求。沿用下述构建命令通过（20.97 秒），类型检查仍为原有 213 项诊断，无新增或消失；无独立 lint 脚本，`git diff --check` 通过。本轮日志与页面截图位于 `/tmp/dingtalk-secret-hidden/`。
+
+加签能力实现时的验证（2026-11-11，命令从 `runtime-ui/` 执行；下述显示与清除交互为屏蔽前结果）：
 
 - `node --test --test-name-pattern='signing|robot|optional credential|clear intent|SMTP|SMS|secrets|secret|credential' modules/notify-manager-ui/tests/messageNotification{Channels,Contracts}.test.mjs`：22/22 通过，覆盖新增不填、补填、更换、留空、清除、取消 / 失败、掩码值、配置切换及邮件 / 短信凭据保护。
 - `node --test modules/notify-manager-ui/tests/messageNotification{Channels,Contracts,Integration}.test.mjs`：提交前按当前分支 HEAD 分离出仅包含钉钉加签的候选版本，77/77 通过；日志 `/tmp/dingtalk-sign-delivery/frontend-tests.log`。其他渠道的未提交改动保留在原工作区。

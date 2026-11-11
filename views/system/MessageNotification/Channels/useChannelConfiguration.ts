@@ -18,7 +18,12 @@ export interface ChannelConfigurationProps {
 /** Adapt metadata into controls and semantic groups, keeping all draft writes in the workspace. */
 export function useChannelConfiguration(props: ChannelConfigurationProps, change?: (key: string, value: unknown, topLevel?: boolean) => void, editField?: (key: string) => void) {
   const { t } = useI18n()
-  const fields = computed(() => props.entry.definition?.fields ?? channelConfigFields[`${props.entry.draft.type}:${props.entry.draft.provider}`] ?? [])
+  const fields = computed(() => {
+    const configured = props.entry.definition?.fields ?? channelConfigFields[`${props.entry.draft.type}:${props.entry.draft.provider}`] ?? []
+    // Temporarily hide robot signing controls while retaining metadata and saved credentials.
+    return props.entry.draft.type === 'dingTalk' && props.entry.draft.provider === 'dingTalkRobotWebHook'
+      ? configured.filter(field => field.key !== 'secret') : configured
+  })
   const groups = computed(() => [...new Set(fields.value.map(field => field.group || 'configuration'))].map(key => ({
     key, fields: fields.value.filter(field => (field.group || 'configuration') === key),
   })))
@@ -105,6 +110,7 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
   const clearSecretError = ref('')
   const canClearSigningSecret = computed(() => !props.entry.isNew
     && props.entry.draft.type === 'dingTalk' && props.entry.draft.provider === 'dingTalkRobotWebHook'
+    && fields.value.some(field => field.key === 'secret')
     && !!props.entry.definition?.optionalSecretFields?.includes('secret')
     && typeof props.entry.baseline?.configuration.secret === 'string' && !!props.entry.baseline.configuration.secret.trim())
   watch([() => props.entry.key, () => props.disabled], () => { clearSecretOpen.value = false; clearSecretError.value = '' })
