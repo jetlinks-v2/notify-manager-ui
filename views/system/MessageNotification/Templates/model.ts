@@ -4,6 +4,7 @@ import {
   type NotificationTemplatePayload, type NotificationVariable, type NotificationChannel,
 } from '../shared'
 import { getByPath, normalizeTemplateBeforeSubmit } from '../../../notice/template/hooks/noticeTemplateFormModel'
+import { hasEmailBodyContent, toEmailBodyHtml } from './definition/emailTemplateContent'
 
 export interface TemplateDraft {
   builtinKey?: string
@@ -84,7 +85,7 @@ export function attachmentToUploadFile(attachment: NotificationAttachment, index
 function normalizeProviderContent(draft: TemplateDraft, content: NotificationObject): NotificationObject {
   if (!resolveNotificationChannel(draft.type, draft.provider)) return content
   const source = cloneNotificationValue(content)
-  if (isEmailDraft(draft)) source.message = draft.text
+  if (isEmailDraft(draft)) source.message = content.text
   if (draft.type === 'sms' && draft.provider === 'aliyunSms') {
     if (!stringValue(source.code).trim()) throw new TemplateValidationError('smsTemplateRequired')
     if (!stringValue(source.signName).trim()) throw new TemplateValidationError('smsSignRequired')
@@ -116,8 +117,9 @@ export function buildTemplatePayload(draft: TemplateDraft, allowedChannels?: rea
   if (ids.some(id => !id || /[${}\s]/.test(id)) || new Set(ids).size !== ids.length) throw new TemplateValidationError('invalidVariables')
   let content: NotificationObject
   if (isEmailDraft(draft)) {
-    if (!draft.subject.trim() || !draft.text.trim()) throw new TemplateValidationError('contentRequired')
-    if (draft.subject.length > 255 || draft.text.length > 5120) throw new TemplateValidationError('contentLimit')
+    const body = toEmailBodyHtml(draft.text)
+    if (!draft.subject.trim() || !hasEmailBodyContent(body)) throw new TemplateValidationError('contentRequired')
+    if (draft.subject.length > 255 || body.length > 5120) throw new TemplateValidationError('contentLimit')
     // Preserve unchanged stored resources (including server-enabled filesystem paths); only new references need local validation.
     const storedAttachments = Array.isArray(draft.extraTemplate.attachments) ? draft.extraTemplate.attachments : []
     if (draft.attachments.some(item => {
@@ -127,7 +129,8 @@ export function buildTemplatePayload(draft: TemplateDraft, allowedChannels?: rea
     })) throw new TemplateValidationError('invalidAttachment')
     const names = draft.attachments.map(item => item.name.trim())
     if (new Set(names).size !== names.length) throw new TemplateValidationError('duplicateAttachment')
-    content = { ...cloneNotificationValue(draft.extraTemplate), subject: draft.subject, text: draft.text,
+    // The email provider always sends HTML. Convert legacy line breaks only at the save boundary.
+    content = { ...cloneNotificationValue(draft.extraTemplate), subject: draft.subject, text: body,
       sendTo: draft.sendTo.map(value => value.trim()).filter(Boolean), attachments: cloneNotificationValue(draft.attachments) }
   } else content = parseTemplateObject(draft.templateJson)
   return {

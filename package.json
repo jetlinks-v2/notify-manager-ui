@@ -8,6 +8,11 @@
     "dev": "pnpm --filter jetlinks-web-core dev -- --module-name notify-manager-ui",
     "build": "pnpm --filter jetlinks-web-core build -- --module-name notify-manager-ui"
   },
-  "dependencies": {},
-  "peerDependencies": {}
+  "dependencies": {
+    "dompurify": "3.4.17",
+    "quill": "2.0.3"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0"
+  }
 }

@@ -10,6 +10,8 @@ interface EditorProps extends ProviderEditorProps { configState: NotificationLoa
 type TextField = 'subject' | 'text' | 'templateJson'
 interface Caret { field: TextField; path?: string[]; start: number; end: number; element?: HTMLInputElement | HTMLTextAreaElement; custom?: TemplateCustomCaret }
 export interface TemplateCustomCaret {
+  /** Rich-text editors own document positions; never insert into their serialized HTML by string offset. */
+  insert?: (token: string) => boolean
   read: () => string
   write: (value: string) => boolean | void
   editable: () => boolean
@@ -74,7 +76,13 @@ export function useTemplateEditor(props: EditorProps, emit: (event: 'uploading',
     + providerEditor.metadataFields.value.map(field => field.id).join('|'), resetCaret, { immediate: true })
 
   function clearConfiguration() { props.draft.configId = '' }
-  function setUploading(value: boolean) { emit('uploading', value) }
+  const uploadSources = new Set<string>()
+  /** Attachments and inline images can upload together; completion releases only its own source. */
+  function setUploading(value: boolean, source = 'attachments') {
+    if (value) uploadSources.add(source)
+    else uploadSources.delete(source)
+    emit('uploading', uploadSources.size > 0)
+  }
   function captureCaret(event: Event, field: TextField) {
     const element = event.target as HTMLInputElement | HTMLTextAreaElement | null
     if (element && typeof element.selectionStart === 'number') caret.value = { field, start: element.selectionStart, end: element.selectionEnd ?? element.selectionStart, element }
@@ -96,32 +104,43 @@ export function useTemplateEditor(props: EditorProps, emit: (event: 'uploading',
     const length = providerEditor.valueAtPath(path).length
     caret.value = { field: 'templateJson', path, start: length, end: length }
   }
+  /** Attachment and rich-text actions declare only real variables after their content change succeeds. */
+  function registerVariable(id: string): boolean {
+    if (props.disabled) return false
+    if (props.draft.variables.some(variable => variable.id === id)) return true
+    const available = insertableVariables.value.find(variable => variable.id === id)
+    if (!available) return false
+    const declaration = cloneNotificationValue(available)
+    delete declaration.defaultValue
+    props.draft.variables.push(declaration)
+    return true
+  }
   async function insertVariable(id: string) {
     const target = caret.value
     if (!canInsertVariable.value || !target) return
-    const text = target.custom ? target.custom.read() : target.path ? providerEditor.valueAtPath(target.path) : props.draft[target.field]
-    const result = insertTemplateVariable(text, id, target.start, target.end)
-    if (target.custom) {
-      if (target.custom.write(result.text) === false) return
-    } else if (target.path) {
-      if (!providerEditor.changePath(target.path, result.text)) return
-    } else props.draft[target.field] = result.text
-    if (!props.draft.variables.some(variable => variable.id === id)) {
-      const available = insertableVariables.value.find(variable => variable.id === id)
-      if (available) {
-        const declaration = cloneNotificationValue(available)
-        delete declaration.defaultValue
-        props.draft.variables.push(declaration)
-      }
+    let nextCaret: number | undefined
+    if (target.custom?.insert) {
+      if (!target.custom.insert('${' + id + '}')) return
+    } else {
+      const text = target.custom ? target.custom.read() : target.path ? providerEditor.valueAtPath(target.path) : props.draft[target.field]
+      const result = insertTemplateVariable(text, id, target.start, target.end)
+      if (target.custom) {
+        if (target.custom.write(result.text) === false) return
+      } else if (target.path) {
+        if (!providerEditor.changePath(target.path, result.text)) return
+      } else props.draft[target.field] = result.text
+      nextCaret = result.caret
     }
-    target.start = result.caret
-    target.end = result.caret
+    registerVariable(id)
+    if (nextCaret === undefined) return
+    target.start = nextCaret
+    target.end = nextCaret
     await nextTick()
     if (caret.value !== target) return
     target.element?.focus()
-    target.element?.setSelectionRange(result.caret, result.caret)
+    target.element?.setSelectionRange(nextCaret, nextCaret)
   }
 
   return { t, emailDraft, builtinOptions, selectBuiltin, insertableVariables, canInsertVariable, configFailure, configOptions, clearConfiguration, setUploading,
-    captureCaret, captureProviderCaret, captureCustomCaret, activateProviderField, insertVariable, ...providerEditor }
+    captureCaret, captureProviderCaret, captureCustomCaret, activateProviderField, insertVariable, registerVariable, ...providerEditor }
 }

@@ -22,7 +22,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
   const templates = ref<NotificationTemplate[]>([])
   const business = ref<NoticeChannelConfig>()
   const catalog = useTemplateCatalog(access.query, channelId, api)
-  const { channels, catalogState, configs, configState, metadata, metadataState } = catalog
+  const { channels, catalogState, configs, configState, channelConfigurationStates, metadata, metadataState } = catalog
   const listState = ref<NotificationLoadState>('idle')
   const detailState = ref<NotificationLoadState>('idle')
   const saveState = ref<NotificationLoadState>('idle')
@@ -451,7 +451,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
   if (getCurrentScope()) onScopeDispose(() => { ++listRevision; ++detailRevision; ++listEpoch; ++variableRevision; catalog.clear(); variables.clear(); variablePools.clear(); variablesRequests.clear() })
 
   return { channelId, currentChannel, channels, catalogState, metadata, metadataState, business, templates,
-    configs, listState, configState, detailState, saveState, activeKey, draft, dirty, hasDirtyDrafts, saving,
+    configs, listState, configState, channelConfigurationStates, detailState, saveState, activeKey, draft, dirty, hasDirtyDrafts, saving,
     canSave, entry, isDefault, hasContent, availableVariables, canRestoreDefault, saveOutcomeUnknown, loadCatalog, reloadCatalog, loadBusiness, loadChannel,
     selectTemplate, refreshConfigs, createTemplate, saveTemplate, discardDraft, discardBusinessDrafts,
     restoreDefault, resetBusinessIdentity, channelEnabled, importTemplate }

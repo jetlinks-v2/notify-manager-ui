@@ -88,6 +88,11 @@ if (flags.has('wechat')) {
 }
 const businessTypes = clone(flags.get('directory') === 'tree' ? templateDirectoryFixture.businessTypes : [])
 if (flags.get('directory') === 'tree') templates.push(...clone(templateDirectoryFixture.templates))
+const emailImageFixture = new URL('./email-image.png', import.meta.url).href
+if (flags.has('emailImages')) {
+  const email = templates.find(item => item.id === 'template-relieve')
+  if (email) email.variableDefinitions = [...(email.variableDefinitions || []), { id: 'imageUrl', name: '图片地址', type: 'string', defaultValue: emailImageFixture }]
+}
 const businessWorkspace = flags.has('templateWorkspace')
 if (businessWorkspace) {
   if (!businessTypes.length) businessTypes.push(...clone(templateDirectoryFixture.businessTypes))
@@ -148,6 +153,14 @@ notificationRequest.get = async path => {
   throw new Error(`Unexpected request in isolated fixture: ${path}`)
 }
 for (const method of ['post', 'put', 'patch', 'remove']) notificationRequest[method] = async path => { throw new Error(`Unexpected ${method} in isolated fixture: ${path}`) }
+if (flags.has('emailImages')) notificationRequest.post = async (path, data) => {
+  if (!path.startsWith('/file/upload')) throw new Error(`Unexpected post in image fixture: ${path}`)
+  const file = data.get('file')
+  record('uploadImage', { path, name: file?.name, size: file?.size })
+  if (writeDelay) await new Promise(resolve => setTimeout(resolve, writeDelay))
+  return { success: true, result: { id: 'email-image-fixture', accessUrl: emailImageFixture } }
+}
+
 
 function persistBusinessTemplate(providerId, item) {
   const business = businessTypes.find(row => row.id === providerId)
@@ -199,6 +212,7 @@ Object.assign(messageNotificationApi, {
     { id: 'detail.targetName', name: '设备名称', type: 'string' }, { id: 'detail.alarmConfigName', name: '告警名称', type: 'string' },
     { id: 'detail.alarmTime', name: '告警时间', type: 'date', format: 'yyyy-MM-dd HH:mm:ss' }, { id: 'detail.relieveTime', name: '解除时间', type: 'date' },
     { id: 'detail.level', name: '告警级别', type: 'int' }, { id: 'detail.sceneName', name: '场景名称', type: 'string' },
+    ...(flags.has('emailImages') ? [{ id: 'imageUrl', name: '图片地址', type: 'string' }] : []),
   ] },
   getBusinessTemplate: async (providerId, channelProvider) => { record('getBusinessTemplate', { providerId, channelProvider });
     const business = businessTypes.find(row => row.id === providerId)
