@@ -51,7 +51,7 @@
   </JPageContainer>
 </template>
 
-<script setup lang="ts" name="NoticeCenterTemplate">
+<script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import TemplateDetail from './components/TemplateDetail.vue'
@@ -60,6 +60,8 @@ import { useNoticeTemplateCenter } from './hooks/useNoticeTemplateCenter'
 import { notifyVisualAlarmTemplateSaved, parseVisualAlarmTemplateContext } from './hooks/visualAlarmTemplateBridge'
 import type { NoticeTemplateEditorPayload } from './hooks/useNoticeTemplateCenter'
 import PageHeader from '@jetlinks-web-core/components/PageHeader'
+
+defineOptions({ name: 'NoticeCenterTemplate' })
 
 const route = useRoute()
 const requestedType = typeof route.query.aiAlarmType === 'string' ? route.query.aiAlarmType : ''

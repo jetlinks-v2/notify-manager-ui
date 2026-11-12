@@ -74,7 +74,7 @@
   </JPageContainer>
 </template>
 
-<script setup lang="ts" name="NoticeCenterChannel">
+<script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import PageHeader from '@jetlinks-web-core/components/PageHeader'
 import ChannelDetailHeader from './components/ChannelDetailHeader.vue'
@@ -82,6 +82,8 @@ import ChannelCredentialForm from './components/ChannelCredentialForm.vue'
 import ChannelList from './components/ChannelList.vue'
 // import ChannelTestPanel from './components/ChannelTestPanel.vue'
 import { useNoticeChannelCenter } from './hooks/useNoticeChannelCenter'
+
+defineOptions({ name: 'NoticeCenterChannel' })
 
 const {
   loading,
