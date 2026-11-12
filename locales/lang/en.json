@@ -394,6 +394,7 @@
   "messageNotification.common.retry": "Reload",
   "messageNotification.common.delete": "Delete",
   "messageNotification.common.reset": "Discard changes",
+  "messageNotification.common.edit": "Edit",
   "messageNotification.common.save": "Save",
   "messageNotification.state.unavailable": "Notifications are currently unavailable",
   "messageNotification.state.forbidden": "You do not have permission. Contact your administrator.",

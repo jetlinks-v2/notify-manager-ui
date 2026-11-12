@@ -394,6 +394,7 @@
   "messageNotification.common.retry": "重新加载",
   "messageNotification.common.delete": "删除",
   "messageNotification.common.reset": "撤销修改",
+  "messageNotification.common.edit": "编辑",
   "messageNotification.common.save": "保存",
   "messageNotification.state.unavailable": "当前通知能力暂不可用",
   "messageNotification.state.forbidden": "没有访问或操作权限，请联系管理员",

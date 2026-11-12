@@ -1,4 +1,4 @@
-import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import type { TreeProps } from 'ant-design-vue'
@@ -26,7 +26,6 @@ export function useChannelsPage() {
   const route = useRoute()
   const router = useRouter()
   const system = useSystemStore()
-  const configurationPanel = ref<{ editField: (key: string) => void }>()
   const { width } = useWindowSize()
   const isNarrow = computed(() => width.value < 768)
   const auth = useAuthStore()
@@ -79,7 +78,7 @@ export function useChannelsPage() {
     loadDefinition: catalog.loadDefinition, channelName: channelTitle,
     onMutationError: error => onlyMessage(notificationFailureMessage(error) || t(`messageNotification.state.${classifyNotificationFailure(error)}`), 'error'),
   })
-  const { channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId, busy, dirty, hasUnsavedChanges, canEdit } = workspace
+  const { channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId, busy, dirty, hasUnsavedChanges, canEdit, editing } = workspace
   const operationBusy = computed(() => busy.value || externalBusy.value)
   const deleteOpen = ref(false)
   const clearChannelName = computed(() => {
@@ -212,15 +211,14 @@ export function useChannelsPage() {
     pendingTestField.value = { configId: selectedConfigId.value || '', key }
     trial.close()
   }
-  /** Wait for modal focus restoration before opening an inline editor, which otherwise blurs and closes. */
-  async function afterTestClosed() {
+  /** Open the complete draft after the test dialog closes; fixing a test setting never writes on blur. */
+  function afterTestClosed() {
     const target = pendingTestField.value
     pendingTestField.value = undefined
     if (!target || target.configId !== selectedConfigId.value || !canEdit.value || operationBusy.value) return
     helpChoices.set(channelId.value, true)
     focusedField.value = target.key
-    await nextTick()
-    configurationPanel.value?.editField(`config:${target.key}`)
+    workspace.startEditing()
   }
   // External navigation can change the target while the workspace is locked by a pending send.
   watch([() => route.query.channel, () => route.query.ch, () => route.query.configId], () => trial.close(true))
@@ -246,7 +244,7 @@ export function useChannelsPage() {
     webhookPreviewModel,
     t, notificationPermissions, isNarrow, channelOptions, channelSearch, filteredChannelTree, openChannelKeys, selectChannel, configurationOptions,
     canQuery, channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId,
-    busy, dirty, canEdit, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave, configurationPanel,
+    busy, dirty, canEdit, editing, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave,
     sending, workspace, trial, testModel: trial.model, fixTestConfiguration, afterTestClosed, refresh, save, remove, showSend, configurationVisible,
     catalog, directoryState, providerFeedback, channelTitle, help, helpOpen, toggleHelp, saveFields, focusField, activeHelpStep, deleteOpen, clearChannelName, clearMessage, requestRemove,
     members, memberDrawer, canSyncMembers, showMembers, closeMembers, reloadMembers, memberDiscardOpen, decideMemberDiscard, updateMemberDepartment, updateMemberSearch, updateMemberStatus, resetMemberFilters,

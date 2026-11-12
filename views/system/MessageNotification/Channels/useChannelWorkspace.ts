@@ -23,6 +23,7 @@ export interface ChannelDraftEntry {
   draft: NotifierConfigPayload
   baseline?: NotifierConfig
   isNew: boolean
+  editing?: boolean
   snapshot: string
   issues: ChannelValidationIssue[]
   definition?: ChannelDefinition
@@ -66,6 +67,19 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
   const dirty = computed(() => !!entry.value && JSON.stringify(entry.value.draft) !== entry.value.snapshot)
   const hasUnsavedChanges = computed(() => [...drafts.values()].some(item => JSON.stringify(item.draft) !== item.snapshot))
   const canEdit = computed(() => !!options.permissions.query.value && !!entry.value && (entry.value.isNew ? options.permissions.add.value : options.permissions.update.value))
+  const editing = computed(() => !!entry.value && (entry.value.isNew || !!entry.value.editing))
+
+  /** Editing belongs to the cached configuration, so channel switches preserve its draft and mode. */
+  function startEditing() {
+    if (!canEdit.value || busy.value || options.blocked?.value || !entry.value || detailState.value !== 'ready') return
+    entry.value.editing = true
+  }
+
+  function cancelEditing() {
+    if (!entry.value || entry.value.isNew || busy.value || options.blocked?.value) return
+    resetDraft()
+    entry.value.editing = false
+  }
 
   /** Keep query state shareable while excluding ephemeral draft IDs and credentials. */
   function syncNavigation() {
@@ -258,6 +272,7 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
       const previousKey = current.key
       current.key = `${channelId.value}\0record:${id}`
       current.isNew = false
+      current.editing = false
       current.baseline = saved
       current.draft = createChannelConfigDraft(saved, current.definition)
       current.snapshot = JSON.stringify(current.draft)
@@ -305,6 +320,7 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
     if (!entry.value || busy.value || options.blocked?.value) return
     entry.value.draft = JSON.parse(entry.value.snapshot) as NotifierConfigPayload
     entry.value.issues = []
+    entry.value.fieldFailures = {}
   }
 
   /** Permission loss invalidates pending reads and releases all credential-bearing page memory. */
@@ -314,5 +330,5 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
     drafts.clear(); remembered.clear(); state.value = 'forbidden'; detailState.value = 'idle'
   }
 
-  return { channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId, busy, dirty, hasUnsavedChanges, canEdit, activate, selectConfig, createConfig, changeField, save, saveFields, refreshSaved, deleteConfig, resetDraft, clear }
+  return { channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId, busy, dirty, hasUnsavedChanges, canEdit, editing, startEditing, cancelEditing, activate, selectConfig, createConfig, changeField, save, saveFields, refreshSaved, deleteConfig, resetDraft, clear }
 }

@@ -1,7 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { notificationSecretMask, cloneNotificationValue, type NotifierConfigPayload } from '../shared'
-import type { InlineEditFieldDefinition, InlineEditGroup, InlineEditMessages, InlineEditResult } from '@jetlinks-web-core/components/InlineEditForm'
+import { notificationSecretMask, type NotifierConfigPayload } from '../shared'
+import type { InlineEditFieldDefinition, InlineEditGroup, InlineEditMessages } from '@jetlinks-web-core/components/InlineEditForm'
 import { channelConfigFields, type ChannelField } from './channelSchema'
 import type { ChannelDraftEntry, ChannelFieldChange } from './useChannelWorkspace'
 import type { ConfigurationPairsModel } from './useConfigurationPairs'
@@ -17,8 +17,9 @@ export interface ChannelConfigurationProps {
 }
 
 /** Adapt metadata into controls and semantic groups, keeping all draft writes in the workspace. */
-export function useChannelConfiguration(props: ChannelConfigurationProps, change?: (key: string, value: unknown, topLevel?: boolean) => void, editField?: (key: string) => void) {
+export function useChannelConfiguration(props: ChannelConfigurationProps, change?: (key: string, value: unknown, topLevel?: boolean) => void) {
   const { t } = useI18n()
+  const editing = computed(() => props.entry.isNew || !!props.entry.editing)
   const isAliyunVoice = computed(() => props.entry.draft.type === 'voice' && props.entry.draft.provider === 'aliyun')
   const fields = computed(() => {
     const configured = props.entry.definition?.fields ?? channelConfigFields[`${props.entry.draft.type}:${props.entry.draft.provider}`] ?? []
@@ -37,7 +38,7 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
   const emailOptionsVisible = computed(() => props.entry.draft.type === 'email' && props.entry.draft.provider === 'embedded' && ['host', 'port', 'properties'].every(key => fields.value.some(field => field.key === key)))
   const encryption = computed(() => emailEncryption(props.entry.draft.configuration))
   const customPreset = ref(false)
-  watch(() => props.entry.key, () => { customPreset.value = false })
+  watch([() => props.entry.key, editing], () => { customPreset.value = false })
   const preset = computed(() => customPreset.value ? 'other' : emailPresets.find(item => item.host === props.entry.draft.configuration.host)?.id || 'other')
   const presetOptions = computed(() => [...emailPresets.map(item => ({ value: item.id, label: t(`messageNotification.channels.email.presets.${item.id}`) })), { value: 'other', label: t('messageNotification.channels.email.presets.other') }])
   const encryptionOptions = computed(() => ['ssl', 'starttls', 'none'].map(value => ({ value, label: t(`messageNotification.channels.email.encryption.${value}`) })))
@@ -113,6 +114,9 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
     const failure = props.entry.fieldFailures?.[key]
     return issue(key) || (failure ? t(`messageNotification.state.${failure}`) : undefined)
   }
+  // Whole-form validation can reject preserved credentials whose controls are intentionally hidden.
+  const hiddenErrors = computed(() => props.entry.issues.filter(item => !fields.value.some(field => field.key === item.path))
+    .map(item => `${label(props.entry.definition?.fields.find(field => field.key === item.path) || { key: item.path })}: ${issue(item.path)}`))
   function metadataField(key: string) { return fields.value.find(field => `config:${field.key}` === key) }
   const clearSecretOpen = ref(false)
   const clearSecretPending = ref(false)
@@ -191,7 +195,8 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
         ? 'messageNotification.channels.webhook.receiver' : `messageNotification.channels.groups.${group.key}`
       return { key: group.key, title: t(titleKey), fields: mapped }
     })
-    return result
+    // View mode uses actual readonly fields, preventing click and keyboard entry into inline editing.
+    return editing.value ? result : result.map(group => ({ ...group, fields: group.fields.map(field => ({ ...field, readonly: true })) }))
   })
 
   /** Translate the public form's field keys into business-owned drafts; option indices never reach the API. */
@@ -205,44 +210,10 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
       else change?.(field.key, value)
     }
   }
-  /** Restore the entire coupled email choice on cancellation, including custom transport settings. */
-  function cancelValue(key: string) {
-    if (key === 'email:preset') customPreset.value = false
-    const keys = key === 'email:preset' ? ['host', 'port', 'properties'] : key === 'email:encryption' ? ['port', 'properties'] : []
-    for (const path of keys) change?.(path, initial.value.configuration[path] === undefined ? undefined : cloneNotificationValue(initial.value.configuration[path]))
-    if (props.entry.fieldFailures) delete props.entry.fieldFailures[key.startsWith('config:') ? key.slice(7) : key]
-  }
-  /** Submit one logical operation; presets and encryption intentionally couple multiple backend fields. */
-  async function submitValue(key: string, value: unknown): Promise<InlineEditResult> {
-    if (!props.submit) return { ok: false }
-    let changes: ChannelFieldChange[]
-    let errorPath = key
-    if (key === 'email:preset') {
-      const selected = emailPresets.find(item => item.id === value)
-      // "Other" selects manual entry; it cannot change the saved provider without a new host.
-      if (!selected) {
-        customPreset.value = false
-        editField?.('config:host')
-        return { ok: true }
-      }
-      changes = Object.entries({ host: selected.host, port: selected.port, properties: emailEncryptionProperties(initial.value.configuration, selected.encryption) }).map(([key, value]) => ({ key, value }))
-    } else if (key === 'email:encryption') {
-      if (!['ssl', 'starttls', 'none'].includes(String(value))) return { ok: false, error: t('messageNotification.channels.validation.required') }
-      changes = Object.entries(emailEncryptionChanges(initial.value.configuration, value as EmailEncryption)).map(([key, value]) => ({ key, value }))
-    } else {
-      const field = metadataField(key)
-      if (!field) return { ok: false }
-      errorPath = field.key
-      changes = [{ key: field.key, value: ['boolean', 'enum'].includes(fieldType(field)) && typeof value === 'number' ? rawSelectOptions(field)[value]?.value : value }]
-    }
-    const ok = await props.submit(changes, errorPath)
-    const validation = props.entry.issues[0]
-    return { ok, error: ok ? undefined : fieldError(errorPath) || (validation ? `${label(fields.value.find(field => field.key === validation.path) || { key: validation.path })}: ${issue(validation.path)}` : t('messageNotification.state.error')) }
-  }
   function customPairModel(key: string, value: unknown, disabled: boolean): ConfigurationPairsModel | undefined {
     return key === `config:${pairKind.value}` && pairKind.value ? { kind: pairKind.value, value: value as Record<string, string>[] | undefined, disabled, savedKeys: savedHeaderKeys.value } : undefined
   }
-  return { t, numberBounds, selectedValue, setSelectedValue, preset, setPreset,
-    formGroups, formMessages, changeValue, cancelValue, submitValue, metadataField, customPairModel,
+  return { t, editing, hiddenErrors, numberBounds, selectedValue, setSelectedValue, preset, setPreset,
+    formGroups, formMessages, changeValue, metadataField, customPairModel,
     canClearSigningSecret, clearSecretOpen, clearSecretPending, clearSecretError, requestClearSigningSecret, cancelClearSigningSecret, clearSigningSecret }
 }

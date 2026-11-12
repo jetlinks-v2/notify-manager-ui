@@ -46,11 +46,12 @@
                 <p>{{ help.description }}</p>
               </div>
               <div v-if="entry" class="notification-page__actions">
-                <j-permission-button v-if="configurationVisible && trialSupported" :has-permission="[notificationPermissions.channels.action]" :disabled="!canTrial || operationBusy" @click="showSend">{{ t('messageNotification.channels.test') }}</j-permission-button>
+                <j-permission-button v-if="configurationVisible && trialSupported" :has-permission="[notificationPermissions.channels.action]" :disabled="!canTrial || operationBusy" @click="showSend"><template #icon><SendOutlined aria-hidden="true" /></template>{{ t('messageNotification.channels.test') }}</j-permission-button>
                 <a-button :type="helpOpen ? 'primary' : 'default'" :ghost="helpOpen" :aria-expanded="helpOpen" aria-controls="notification-channel-help" @click="toggleHelp()"><template #icon><AIcon type="ReadOutlined" /></template>{{ t('messageNotification.channels.helpTitle') }}</a-button>
                 <a-dropdown v-if="configurationVisible && !entry.isNew" :trigger="['click']" :disabled="operationBusy">
                   <a-button :aria-label="t('messageNotification.channels.more')"><AIcon type="MoreOutlined" /></a-button>
                   <template #overlay><a-menu>
+                    <a-menu-item key="edit"><j-permission-button type="link" :has-permission="[notificationPermissions.channels.update]" :disabled="editing || !canEdit || operationBusy" @click="workspace.startEditing">{{ t('messageNotification.common.edit') }}</j-permission-button></a-menu-item>
                     <a-menu-item key="delete"><j-permission-button type="link" danger :has-permission="[notificationPermissions.channels.delete]" :disabled="operationBusy" @click="requestRemove">{{ t('messageNotification.channels.clear') }}</j-permission-button></a-menu-item>
                   </a-menu></template>
                 </a-dropdown>
@@ -70,7 +71,7 @@
                 <a-alert v-if="entry.refreshFailure" type="warning" show-icon :message="t('messageNotification.channels.savedRefreshFailed')" class="notification-channels__alert"><template #action><a-button :disabled="operationBusy" @click="workspace.refreshSaved()">{{ t('messageNotification.common.retry') }}</a-button></template></a-alert>
                 <div class="notification-channels__content" :class="{ 'notification-channels__content--help': helpOpen }">
                   <div>
-                    <ChannelConfiguration ref="configurationPanel" :entry="entry" :disabled="!canEdit || sending" :busy="busy" :submit="saveFields" @field="workspace.changeField" @focus="focusField" />
+                    <ChannelConfiguration :entry="entry" :disabled="!canEdit || !editing || sending" :busy="busy" :submit="saveFields" @field="workspace.changeField" @focus="focusField" />
                     <WebhookRequestPreview v-if="channelId === 'webhook:http'" :model="webhookPreviewModel" />
                     <section v-if="channelId === 'weixin:corpMessage'" class="notification-channels__members" :aria-label="t('messageNotification.members.section')">
                       <h3>{{ t('messageNotification.members.section') }}</h3>
@@ -87,7 +88,8 @@
                   <ChannelHelp v-if="helpOpen" :model="help" :active-step="activeHelpStep" @close="toggleHelp(false)" />
                 </div>
               </div>
-              <StickyActionBar v-if="entry.isNew" position="inline" class="notification-page__footer notification-channels__footer">
+              <StickyActionBar v-if="editing" position="inline" class="notification-page__footer notification-channels__footer">
+                <a-button v-if="!entry.isNew" :disabled="operationBusy" @click="workspace.cancelEditing">{{ t('messageNotification.common.cancel') }}</a-button>
                 <j-permission-button type="primary" :has-permission="[entry.isNew ? notificationPermissions.channels.add : notificationPermissions.channels.update]" :loading="busy" :disabled="(!entry.isNew && !dirty) || !canEdit || operationBusy" @click="save">{{ t('messageNotification.common.save') }}</j-permission-button>
               </StickyActionBar>
             </template>
@@ -107,6 +109,7 @@
 </template>
 
 <script setup lang="ts">
+import { SendOutlined } from '@ant-design/icons-vue'
 import { DingTalk, Email, Sms, Voice, Webhook, WeixinCorp } from '@jetlinks-web-core/assets/notice'
 import AutoTree from '@jetlinks-web-core/components/AutoTree'
 import { useChannelsPage } from './useChannelsPage'
@@ -123,7 +126,7 @@ const {
   webhookPreviewModel,
   t, notificationPermissions, isNarrow, channelOptions, channelSearch, filteredChannelTree, openChannelKeys, selectChannel, configurationOptions,
   canQuery, channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId,
-  busy, dirty, canEdit, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave, configurationPanel,
+  busy, dirty, canEdit, editing, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave,
   workspace, trial, testModel, fixTestConfiguration, afterTestClosed, refresh, save, remove, showSend, configurationVisible,
   catalog, directoryState, providerFeedback, channelTitle, help, helpOpen, toggleHelp, saveFields, focusField, activeHelpStep, sending, deleteOpen, clearChannelName, clearMessage, requestRemove,
   members, memberDrawer, canSyncMembers, showMembers, closeMembers, reloadMembers, memberDiscardOpen, decideMemberDiscard, updateMemberDepartment, updateMemberSearch, updateMemberStatus, resetMemberFilters,

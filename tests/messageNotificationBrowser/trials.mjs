@@ -1,3 +1,4 @@
+import { beginChannelEdit, saveChannelDraft, cancelChannelEdit } from './channelEditing.mjs'
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -60,6 +61,11 @@ try {
     const page = await open()
     for (const record of trialRecords.filter(item => !['officialMessage', 'aliyun'].includes(item.provider))) {
       await choose(page, record)
+      await beginChannelEdit(page)
+      assert.equal(await page.locator('.inline-edit-field__trigger').count(), 0)
+      assert.ok(await page.locator('.inline-edit-field__editor').count() > 0)
+      await cancelChannelEdit(page)
+      assert.equal(await page.evaluate(() => window.__notificationSmoke.calls.filter(([method]) => method === 'updateConfig').length), 0)
       await page.getByRole('button', { name: '更多操作' }).click()
       assert.doesNotMatch(await page.locator('.ant-dropdown:visible').innerText(), /管理模[板版]/)
       await page.locator('.notification-channels__heading h2').click()
@@ -150,6 +156,9 @@ try {
   const voicePage = await open('', trialRecords[5])
   for (const language of ['zh', 'en', 'ja']) {
     await voicePage.evaluate(language => { window.__notificationSmoke.i18n.global.locale.value = language }, language)
+    await beginChannelEdit(voicePage)
+    assert.equal(await voicePage.locator('.inline-edit-field__value').count(), 1, 'provider remains readonly')
+    await cancelChannelEdit(voicePage)
     const labels = await voicePage.evaluate(() => ['messageNotification.channels.test', 'messageNotification.channels.groups.test', 'messageNotification.channelTest.fields.parameters'].map(key => window.__notificationSmoke.i18n.global.t(key)))
     assert.equal(await button(voicePage, labels[0]).count(), 0)
     assert.equal(await voicePage.getByText(labels[1], { exact: true }).count(), 0)
@@ -169,6 +178,8 @@ try {
   if (!await officialPage.locator('.channel-help').count()) await button(officialPage, '配置说明').click()
   for (const language of ['zh', 'en', 'ja']) {
     await officialPage.evaluate(language => { window.__notificationSmoke.i18n.global.locale.value = language }, language)
+    await beginChannelEdit(officialPage)
+    await cancelChannelEdit(officialPage)
     const labels = await officialPage.evaluate(() => ['messageNotification.channels.test', 'messageNotification.channels.groups.test', 'messageNotification.channelTest.fields.parameters'].map(key => window.__notificationSmoke.i18n.global.t(key)))
     assert.equal(await button(officialPage, labels[0]).count(), 0)
     assert.equal(await officialPage.getByText(labels[1], { exact: true }).count(), 0)
@@ -200,11 +211,14 @@ try {
   await editor.getByRole('textbox', { name: '测试值', exact: true }).fill('654321')
   await settingsPage.evaluate(() => window.__notificationSmoke.failures.add('updateConfig'))
   await settingsPage.locator('.notification-channels__heading h2').click()
-  await settingsPage.locator('.channel-configuration .ant-alert-error').waitFor()
+  assert.equal(await settingsPage.evaluate(() => window.__notificationSmoke.calls.filter(([method]) => method === 'updateConfig').length), 0)
+  await saveChannelDraft(settingsPage)
+  await settingsPage.locator('.ant-message-error').waitFor()
   assert.equal(await editor.getByRole('textbox', { name: '短信模板编号', exact: true }).inputValue(), 'SMS_BROWSER')
   assert.equal(await settingsPage.evaluate(() => window.__notificationSmoke.configs.find(row => row.id === 'trial-aliyunSms').configuration.testTemplate), undefined)
   await editor.getByRole('textbox', { name: '测试值', exact: true }).focus()
   await settingsPage.locator('.notification-channels__heading h2').click()
+  await saveChannelDraft(settingsPage)
   await editor.waitFor({ state: 'hidden' })
   await eventually(async () => assert.equal(await settingsPage.evaluate(() => window.__notificationSmoke.configs.find(row => row.id === 'trial-aliyunSms').configuration.testTemplate.code), 'SMS_BROWSER'))
   const savedDialog = await show(settingsPage)
@@ -224,6 +238,7 @@ try {
     const control = settingsPage.getByRole('textbox', { name: label, exact: true })
     await control.fill(value)
     await settingsPage.locator('.notification-channels__heading h2').click()
+    await saveChannelDraft(settingsPage)
     await control.waitFor({ state: 'hidden' })
     const trial = await show(settingsPage)
     await eventually(async () => assert.equal(await button(trial, '发送').isEnabled(), true))

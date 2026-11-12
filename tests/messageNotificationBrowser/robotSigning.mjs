@@ -1,3 +1,4 @@
+import { beginChannelEdit, saveChannelDraft, cancelChannelEdit } from './channelEditing.mjs'
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -50,13 +51,14 @@ async function choose(page, id) {
   await page.locator('.ant-select-dropdown:visible').waitFor({ state: 'hidden' })
 }
 async function edit(page, label, value) {
-  await page.getByRole('button', { name: label, exact: true }).click()
+  await beginChannelEdit(page)
   const input = page.getByRole('textbox', { name: label, exact: true })
   // Password inputs have no implicit textbox role.
   const control = await input.count() ? input : page.locator('input').filter({ visible: true }).and(page.getByLabel(label, { exact: true }))
   await control.fill(value)
   await control.press('Enter')
-  await page.getByRole('button', { name: label, exact: true }).waitFor()
+  await saveChannelDraft(page)
+  await page.locator('.notification-channels__footer').waitFor({ state: 'hidden' })
 }
 async function snapshot(page, name) {
   const target = path.join(output, `${name}.png`)
@@ -91,13 +93,14 @@ try {
   await choose(page, 'robot-masked')
   await assertHidden(page)
   const beforeMasked = await updates(page)
-  await page.getByRole('button', { name: urlLabel, exact: true }).click()
+  await beginChannelEdit(page)
   await page.getByLabel(urlLabel, { exact: true }).fill('https://fixture.example.test/blocked')
   await page.getByLabel(urlLabel, { exact: true }).press('Enter')
-  await page.locator('.inline-edit-field__editor .ant-input-affix-wrapper-status-error').first().waitFor()
+  await saveChannelDraft(page)
+  await page.locator('.channel-configuration__error').waitFor()
   assert.equal(await updates(page), beforeMasked)
   assert.equal((await config(page, 'robot-masked')).configuration.secret, '********')
-  await page.getByLabel(urlLabel, { exact: true }).press('Escape')
+  await cancelChannelEdit(page)
   pass('masked signing keys remain protected from unsafe updates while controls are hidden')
   await choose(page, 'robot-one')
   for (const language of ['en', 'ja', 'zh']) {

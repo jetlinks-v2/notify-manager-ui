@@ -1,13 +1,13 @@
 <template>
   <div class="channel-configuration">
-    <InlineEditForm :key="entry.key" ref="form" :groups="formGroups" :mode="entry.isNew ? 'form' : 'detail'" :disabled="disabled" :busy="busy" :messages="formMessages" :submit="submitValue" @change="changeValue" @cancel="cancelValue" @focus="emit('focus', $event)">
-      <template #editor="{ field, value, update, commit, blur, disabled: fieldDisabled }">
-        <div v-if="field.key === 'config:testTemplate'" @focusout="blur">
+    <a-alert v-if="editing && hiddenErrors.length" type="error" show-icon :message="hiddenErrors.join('；')" class="channel-configuration__error" />
+    <InlineEditForm :key="`${entry.key}:${editing}`" :groups="formGroups" :mode="editing ? 'form' : 'detail'" :disabled="disabled || !editing" :busy="busy" :messages="formMessages" @change="changeValue" @focus="emit('focus', $event)">
+      <template #editor="{ field, value, update, disabled: fieldDisabled }">
+        <div v-if="field.key === 'config:testTemplate'">
           <ChannelTestSettings :channel-id="`${entry.draft.type}:${entry.draft.provider}`" :value="value" :disabled="fieldDisabled" @change="update" />
-          <a-alert v-if="field.error && !entry.isNew" type="error" show-icon :message="field.error" />
         </div>
-        <div v-else-if="customPairModel(field.key, value, fieldDisabled)" @focusout="blur"><ConfigurationPairs :model="customPairModel(field.key, value, fieldDisabled)!" @change="update" /></div>
-        <MetadataValueItem v-else :key="`${entry.key}-${field.key}`" :item="metadataField(field.key)?.property" :model-value="value" :aria-label="field.label" :disabled="fieldDisabled" @update:model-value="!fieldDisabled && update($event)" @change="commit" />
+        <div v-else-if="customPairModel(field.key, value, fieldDisabled)"><ConfigurationPairs :model="customPairModel(field.key, value, fieldDisabled)!" @change="update" /></div>
+        <MetadataValueItem v-else :key="`${entry.key}-${field.key}`" :item="metadataField(field.key)?.property" :model-value="value" :aria-label="field.label" :disabled="fieldDisabled" @update:model-value="!fieldDisabled && update($event)" />
       </template>
     </InlineEditForm>
     <a-button v-if="canClearSigningSecret" type="link" danger :disabled="disabled || busy || clearSecretPending" @click="requestClearSigningSecret">{{ t('messageNotification.channels.robot.clearSecret') }}</a-button>
@@ -19,7 +19,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, type PropType } from 'vue'
+import type { PropType } from 'vue'
 import { InlineEditForm } from '@jetlinks-web-core/components/InlineEditForm'
 import type { ChannelDraftEntry, ChannelFieldChange } from './useChannelWorkspace'
 import { useChannelConfiguration } from './useChannelConfiguration'
@@ -32,14 +32,13 @@ const props = defineProps({
   submit: { type: Function as PropType<(changes: ChannelFieldChange[], errorPath: string) => Promise<boolean>>, default: undefined },
 })
 const emit = defineEmits<{ (event: 'field', key: string, value: unknown, topLevel?: boolean): void; (event: 'focus', key: string): void }>()
-const form = ref<InstanceType<typeof InlineEditForm>>()
-defineExpose({ editField: (key: string) => form.value?.editField(key) })
 const {
-  t, formGroups, formMessages, changeValue, cancelValue, submitValue, metadataField, customPairModel,
+  t, editing, hiddenErrors, formGroups, formMessages, changeValue, metadataField, customPairModel,
   canClearSigningSecret, clearSecretOpen, clearSecretPending, clearSecretError, requestClearSigningSecret, cancelClearSigningSecret, clearSigningSecret,
-} = useChannelConfiguration(props, (key, value, topLevel) => emit('field', key, value, topLevel), key => form.value?.editField(key))
+} = useChannelConfiguration(props, (key, value, topLevel) => emit('field', key, value, topLevel))
 </script>
 
 <style scoped>
 .channel-configuration { min-width: 0; width: 100%; max-width: 55rem; }
+.channel-configuration__error { margin-bottom: var(--space-4); }
 </style>

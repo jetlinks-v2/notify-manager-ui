@@ -94,6 +94,107 @@ function testApi(initial = [email()]) {
   return { api, calls, records }
 }
 
+// Real pages unmount the form during activation; hook-only tests retain its last mounted entry.
+function configurationProps(workspace) {
+  let mountedEntry = workspace.entry.value
+  return { get entry() { return mountedEntry = workspace.entry.value ?? mountedEntry }, disabled: false }
+}
+
+test('saved channels are readonly until editing and save all fields in a single write', async () => {
+  const io = testApi()
+  const workspace = useChannelWorkspace({ api: io.api, permissions: permissions() })
+  await workspace.activate('email:embedded')
+  const editor = useChannelConfiguration(configurationProps(workspace), workspace.changeField)
+  assert.equal(workspace.editing.value, false)
+  assert.ok(editor.formGroups.value.flatMap(group => group.fields).every(field => field.readonly))
+  const app = mount(ChannelConfiguration, { entry: workspace.entry.value, disabled: false })
+  assert.equal([...walk(app._instance.subTree)].some(node => node.props?.class === 'inline-edit-field__trigger'), false)
+  app.unmount()
+  workspace.startEditing()
+  assert.equal(editor.editing.value, true)
+  assert.ok(editor.formGroups.value.flatMap(group => group.fields).every(field => !field.readonly))
+  assert.equal(await workspace.save(), false, 'an unchanged draft does not write')
+  editor.changeValue('config:host', 'batch.example.test')
+  editor.changeValue('config:port', 2525)
+  assert.equal(io.calls.some(([method]) => method === 'updateConfig'), false)
+  assert.equal(await workspace.save(), true)
+  assert.equal(workspace.editing.value, false)
+  assert.equal(workspace.dirty.value, false)
+  const writes = io.calls.filter(([method]) => method === 'updateConfig')
+  assert.equal(writes.length, 1)
+  assert.equal(writes[0][1].configuration.host, 'batch.example.test')
+  assert.equal(writes[0][1].configuration.port, 2525)
+  assert.equal(writes[0][1].configuration.password, 'saved-password')
+  assert.deepEqual(writes[0][1].configuration.preservedExtension, { value: 1 })
+})
+
+test('cancel restores nested values and errors only for the current cached configuration', async () => {
+  const io = testApi([email(), sms()])
+  const workspace = useChannelWorkspace({ api: io.api, permissions: permissions() })
+  await workspace.activate('email:embedded')
+  workspace.startEditing()
+  workspace.changeField('host', 'email-draft.example.test')
+  await workspace.activate('sms:aliyunSms')
+  assert.equal(workspace.editing.value, false)
+  workspace.startEditing()
+  const snapshot = workspace.entry.value.snapshot
+  workspace.changeField('secret', 'replacement')
+  workspace.changeField('testTemplate', { code: 'SMS_DRAFT', signName: 'Draft', parameters: [{ name: 'code', value: '123' }] })
+  workspace.entry.value.issues = [{ path: 'secret', key: 'secretRequired' }]
+  workspace.entry.value.fieldFailures = { secret: 'error' }
+  await workspace.activate('email:embedded')
+  assert.equal(workspace.editing.value, true)
+  assert.equal(workspace.entry.value.draft.configuration.host, 'email-draft.example.test')
+  await workspace.activate('sms:aliyunSms')
+  assert.equal(workspace.editing.value, true)
+  workspace.cancelEditing()
+  assert.deepEqual(workspace.entry.value.draft, JSON.parse(snapshot))
+  assert.equal(workspace.entry.value.draft.configuration.secret, '')
+  assert.deepEqual(workspace.entry.value.issues, [])
+  assert.deepEqual(workspace.entry.value.fieldFailures, {})
+  assert.equal(workspace.editing.value, false)
+  assert.equal(workspace.hasUnsavedChanges.value, true, 'other channel drafts remain')
+  assert.equal(io.calls.some(([method]) => method === 'updateConfig'), false)
+})
+
+test('whole-form editing obeys permissions and pending locks and preserves failed drafts', async () => {
+  const io = testApi()
+  const perms = permissions()
+  const blocked = vue.ref(false)
+  const workspace = useChannelWorkspace({ api: io.api, permissions: perms, blocked })
+  await workspace.activate('email:embedded')
+  perms.update.value = false
+  workspace.startEditing()
+  assert.equal(workspace.editing.value, false)
+  perms.update.value = true
+  blocked.value = true
+  workspace.startEditing()
+  assert.equal(workspace.editing.value, false)
+  blocked.value = false
+  workspace.startEditing()
+  workspace.changeField('host', '')
+  assert.equal(await workspace.save(), false)
+  assert.equal(workspace.editing.value, true)
+  assert.ok(workspace.entry.value.issues.length)
+  workspace.changeField('host', 'retry.example.test')
+  const update = io.api.updateConfig
+  io.api.updateConfig = async () => { throw new Error('offline') }
+  assert.equal(await workspace.save(), false)
+  assert.equal(workspace.editing.value, true)
+  assert.equal(workspace.entry.value.draft.configuration.host, 'retry.example.test')
+  let release
+  io.api.updateConfig = payload => new Promise(resolve => { release = async () => { await update(payload); resolve() } })
+  const pending = workspace.save()
+  workspace.cancelEditing()
+  assert.equal(workspace.editing.value, true)
+  assert.equal(workspace.entry.value.draft.configuration.host, 'retry.example.test')
+  assert.equal(await workspace.save(), false)
+  await release()
+  assert.equal(await pending, true)
+  assert.equal(workspace.editing.value, false)
+  assert.equal(io.calls.filter(([method]) => method === 'updateConfig').length, 1)
+})
+
 test('legacy configuration IDs remain addressable without rewriting existing data', async () => {
   const io = testApi([email('one'), email('two'), sms()])
   const navigations = []
@@ -350,12 +451,11 @@ test('saved configuration renders masked details, with empty password input only
   const app = mount(ChannelConfiguration, { entry, disabled: true })
   const nodes = [...walk(app._instance.subTree)]
   assert.equal(nodes.some(node => node.type?.name === 'a-input-password'), false)
-  const passwordTrigger = nodes.find(node => node.type === 'button' && node.props?.['aria-label'] === 'messageNotification.channels.fields.password')
-  assert.equal(passwordTrigger.props.disabled, true)
+  assert.equal(nodes.some(node => node.type === 'button' && node.props?.['aria-label'] === 'messageNotification.channels.fields.password'), false)
+  assert.ok(nodes.some(node => node.children === '••••••••'))
   app.unmount()
+  entry.editing = true
   const editable = mount(ChannelConfiguration, { entry })
-  const trigger = [...walk(editable._instance.subTree)].find(node => node.type === 'button' && node.props?.['aria-label'] === 'messageNotification.channels.fields.password')
-  trigger.props.onClick()
   await vue.nextTick()
   const password = [...walk(editable._instance.subTree)].find(node => node.type?.name === 'a-input-password')
   assert.equal(password.props.value, '')
@@ -452,13 +552,13 @@ test('extracted page orchestration preserves route filters, send-only trial perm
     await vue.nextTick()
     page.showSend()
     assert.equal(io.calls.some(([method]) => method === 'queryTemplates'), false)
-    const openedFields = []
-    page.configurationPanel.value = { editField: key => openedFields.push(key) }
+    assert.equal(page.editing.value, false)
     page.fixTestConfiguration()
     assert.equal(page.trial.open.value, false)
-    assert.deepEqual(openedFields, [], 'field waits for modal focus restoration')
+    assert.equal(page.editing.value, false, 'editing waits for the test dialog to close')
     await page.afterTestClosed()
-    assert.deepEqual(openedFields, ['config:host'])
+    assert.equal(page.editing.value, true)
+    assert.equal(page.helpOpen.value, true)
     page.toggleHelp(false)
     page.workspace.changeField('password', 'replacement-secret')
     page.workspace.changeField('host', 'smtp.updated.example.org')
@@ -838,40 +938,35 @@ test('inline pending writes lock selection and duplicates, and permission loss p
   assert.equal(workspace.state.value, 'forbidden')
 })
 
-test('metadata form submits email preset/encryption as one operation and keeps custom ports and extra SMTP properties', async () => {
+test('whole-form email edits keep coupled draft values, custom ports and extra SMTP properties until save or cancel', async () => {
   const record = email()
   record.configuration.port = 465
   record.configuration.properties.push({ name: 'mail.smtp.ssl.enable', value: 'true' }, { name: 'mail.smtp.timeout', value: '9000' })
   const io = testApi([record])
   const workspace = useChannelWorkspace({ api: io.api, permissions: permissions(), loadDefinition: async channel => channelDefinition(channel, channelMetadata[channel.id]) })
   await workspace.activate('email:embedded')
-  const props = { get entry() { return workspace.entry.value }, disabled: false, submit: workspace.saveFields }
-  const openedFields = []
-  const model = useChannelConfiguration(props, workspace.changeField, key => openedFields.push(key))
+  workspace.startEditing()
+  const props = configurationProps(workspace)
+  const model = useChannelConfiguration(props, workspace.changeField)
   model.changeValue('email:encryption', 'starttls')
-  assert.equal((await model.submitValue('email:encryption', 'starttls')).ok, true)
-  assert.equal(io.records.get(record.id).configuration.port, 587)
-  assert.equal(io.records.get(record.id).configuration.properties.find(item => item.name === 'mail.smtp.timeout').value, '9000')
-  assert.equal(io.calls.filter(([method]) => method === 'updateConfig').length, 1)
+  assert.equal(workspace.entry.value.draft.configuration.port, 587)
   workspace.changeField('port', 2525)
-  await workspace.saveFields([{ key: 'port', value: 2525 }], 'port')
   model.changeValue('email:encryption', 'ssl')
-  await model.submitValue('email:encryption', 'ssl')
+  assert.equal(workspace.entry.value.draft.configuration.port, 2525)
+  assert.equal(io.calls.filter(([method]) => method === 'updateConfig').length, 0)
+  assert.equal(await workspace.save(), true)
   assert.equal(io.records.get(record.id).configuration.port, 2525)
+  assert.equal(io.records.get(record.id).configuration.properties.find(item => item.name === 'mail.smtp.timeout').value, '9000')
+  workspace.startEditing()
   model.changeValue('email:preset', 'exchange')
-  await model.submitValue('email:preset', 'exchange')
-  assert.equal(io.records.get(record.id).configuration.host, 'smtp.office365.com')
-  assert.equal(io.records.get(record.id).configuration.port, 587)
-  assert.equal(emailEncryption(io.records.get(record.id).configuration), 'starttls')
-  assert.equal(io.calls.filter(([method]) => method === 'updateConfig').length, 4)
-  model.changeValue('email:preset', 'tencent')
-  model.cancelValue('email:preset')
+  assert.equal(workspace.entry.value.draft.configuration.host, 'smtp.office365.com')
+  assert.equal(workspace.entry.value.draft.configuration.port, 587)
+  assert.equal(emailEncryption(workspace.entry.value.draft.configuration), 'starttls')
+  workspace.cancelEditing()
+  assert.equal(workspace.entry.value.draft.configuration.host, 'smtp.example.org')
+  assert.equal(workspace.entry.value.draft.configuration.port, 2525)
   assert.equal(workspace.dirty.value, false)
-  model.changeValue('email:preset', 'other')
-  assert.equal((await model.submitValue('email:preset', 'other')).ok, true)
-  assert.deepEqual(openedFields, ['config:host'])
-  assert.equal(io.calls.filter(([method]) => method === 'updateConfig').length, 4)
-  assert.equal(workspace.dirty.value, false)
+  assert.equal(io.calls.filter(([method]) => method === 'updateConfig').length, 1)
 })
 
 test('creation and deletion responses do not restore workspace data after permission loss', async () => {
@@ -911,12 +1006,14 @@ test('inline password updates keep blank input and unknown metadata false/zero v
   const customIO = testApi([custom])
   const extension = useChannelWorkspace({ api: customIO.api, permissions: permissions(), channels: vue.ref([customChannel]), loadDefinition: async () => customDefinition() })
   await extension.activate(customChannel.id)
-  const props = { get entry() { return extension.entry.value }, disabled: false, submit: extension.saveFields }
+  extension.startEditing()
+  const props = configurationProps(extension)
   const model = useChannelConfiguration(props, extension.changeField)
   for (const [key, value] of [['config:enabled', 1], ['config:priority', 0]]) {
     model.changeValue(key, value)
-    assert.equal((await model.submitValue(key, value)).ok, true)
   }
+  assert.equal(await extension.save(), true)
+  assert.equal(customIO.calls.filter(([method]) => method === 'updateConfig').length, 1)
   assert.equal(customIO.records.get('custom').configuration.enabled, false)
   assert.equal(customIO.records.get('custom').configuration.priority, 0)
   assert.equal(customIO.records.get('custom').configuration.token, 'saved-token')
@@ -1015,13 +1112,16 @@ test('robot signing controls stay hidden with both current and legacy backend me
     const editor = robotEditor(workspace)
     assert.equal(editor.formGroups.value.flatMap(group => group.fields).some(field => field.key === 'config:secret'), false)
     assert.equal(editor.canClearSigningSecret.value, false)
+    const hiddenSecret = workspace.entry.value.draft.configuration.secret
     editor.changeValue('config:secret', 'replacement')
-    assert.equal((await editor.submitValue('config:secret', 'replacement')).ok, false)
+    assert.equal(workspace.entry.value.draft.configuration.secret, hiddenSecret)
     editor.requestClearSigningSecret()
     await editor.clearSigningSecret()
     assert.equal(editor.clearSecretOpen.value, false)
     assert.equal(io.calls.some(([method]) => method === 'updateConfig'), false)
-    assert.equal((await editor.submitValue('config:url', 'https://fixture.example.test/changed')).ok, true)
+    workspace.startEditing()
+    editor.changeValue('config:url', 'https://fixture.example.test/changed')
+    assert.equal(await workspace.save(), true)
     assert.equal(io.records.get('one').configuration.secret, 'SECone')
   }
 })

@@ -1,3 +1,4 @@
+import { beginChannelEdit, saveChannelDraft } from './channelEditing.mjs'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { mkdir, writeFile } from 'node:fs/promises'
@@ -57,10 +58,12 @@ try {
   report.checks.push('example visible without saved templates or template/directory reads; masked copy')
   await screenshot(page, 'webhook-desktop')
 
-  await page.getByRole('button', { name: '地址', exact: true }).click()
+  await beginChannelEdit(page)
   await page.getByRole('textbox', { name: '地址', exact: true }).fill('https://receiver.example.test/updated')
   assert.equal(await page.locator('.webhook-preview .cb-body').innerText(), initial)
   await page.getByRole('textbox', { name: '地址', exact: true }).press('Enter')
+  assert.equal(await page.locator('.webhook-preview .cb-body').innerText(), initial)
+  await saveChannelDraft(page)
   await page.waitForFunction(() => document.querySelector('.webhook-preview .cb-body')?.textContent?.startsWith('POST https://receiver.example.test/updated'))
   assert.equal(await page.evaluate(() => window.__notificationSmoke.calls.some(([method]) => ['queryTemplates', 'getTemplate', 'queryTemplateDirectory'].includes(method))), false)
   report.checks.push('address follows saved configuration without querying templates')

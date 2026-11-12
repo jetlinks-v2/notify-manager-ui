@@ -394,6 +394,7 @@
   "messageNotification.common.retry": "再読み込み",
   "messageNotification.common.delete": "削除",
   "messageNotification.common.reset": "変更を破棄",
+  "messageNotification.common.edit": "編集",
   "messageNotification.common.save": "保存",
   "messageNotification.state.unavailable": "現在通知機能を利用できません",
   "messageNotification.state.forbidden": "アクセスまたは操作の権限がありません。管理者にお問い合わせください。",
