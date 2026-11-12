@@ -50,10 +50,6 @@
               :placeholder="t('messageNotification.templates.selectTemplate')" show-search option-filter-prop="label" @change="selectTemplate" />
             <a-alert v-if="canQuery" type="info" show-icon :message="t('messageNotification.templates.businessForbidden')" />
           </div>
-          <a-space v-if="business" wrap>
-            <a-tag>{{ t(businessEnabled ? 'messageNotification.templates.businessEnabled' : 'messageNotification.templates.businessDisabled') }}</a-tag>
-            <a-button :disabled="!canManage || busy" :loading="changingBusiness" @click="toggleBusiness">{{ t(businessEnabled ? 'messageNotification.templates.disableBusiness' : 'messageNotification.templates.enableBusiness') }}</a-button>
-          </a-space>
           <a-alert v-if="['error', 'forbidden', 'unavailable'].includes(businessActionState)" type="error" show-icon :message="t(`messageNotification.templates.${businessActionState}`)" />
           <div class="message-templates__channels">
             <TemplateChannelNavigation :value="channelId" :channels="channels" :disabled="busy" @change="changeChannel" />
@@ -67,11 +63,11 @@
               <template #action><a-button size="small" :disabled="busy" @click="reload">{{ t('messageNotification.templates.reload') }}</a-button></template>
             </a-alert>
             <template v-else-if="draft && detailState === 'ready'">
-              <a-space v-if="business" wrap>
-                <span>{{ t('messageNotification.templates.channelEnabled') }}</span>
-                <a-switch v-model:checked="channelEnabled" :disabled="!editing || !canSave || busy" />
-                <a-select v-if="editing" :value="undefined" :options="importOptions" :disabled="!canSave || busy" :placeholder="t('messageNotification.templates.importTemplate')" show-search option-filter-prop="label" class="message-templates__source" @change="importTemplate" />
-              </a-space>
+<!--              <a-space v-if="business" wrap>-->
+<!--                <span>{{ t('messageNotification.templates.channelEnabled') }}</span>-->
+<!--                <a-switch v-model:checked="channelEnabled" :disabled="!editing || !canSave || busy" />-->
+<!--                <a-select v-if="editing" :value="undefined" :options="importOptions" :disabled="!canSave || busy" :placeholder="t('messageNotification.templates.importTemplate')" show-search option-filter-prop="label" class="message-templates__source" @change="importTemplate" />-->
+<!--              </a-space>-->
               <a-alert v-if="missingConfiguration" type="warning" show-icon :message="t('messageNotification.templates.missingConfiguration')">
                 <template #action><a-button type="link" size="small" :disabled="busy || !canConfigure" @click="goConfigure">{{ t('messageNotification.templates.configure') }}</a-button></template>
               </a-alert>

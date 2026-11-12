@@ -49,7 +49,8 @@
                 <j-permission-button v-if="configurationVisible && trialSupported" :has-permission="[notificationPermissions.channels.action]" :disabled="!canTrial || operationBusy" @click="showSend"><template #icon><SendOutlined aria-hidden="true" /></template>{{ t('messageNotification.channels.test') }}</j-permission-button>
                 <a-button :type="helpOpen ? 'primary' : 'default'" :ghost="helpOpen" :aria-expanded="helpOpen" aria-controls="notification-channel-help" @click="toggleHelp()"><template #icon><AIcon type="ReadOutlined" /></template>{{ t('messageNotification.channels.helpTitle') }}</a-button>
                 <a-dropdown v-if="configurationVisible && !entry.isNew" :trigger="['click']" :disabled="operationBusy">
-                  <a-button :aria-label="t('messageNotification.channels.more')"><AIcon type="MoreOutlined" /></a-button>
+                  <a-button style="padding: 0 0.5rem"
+                      :aria-label="t('messageNotification.channels.more')"><AIcon type="MoreOutlined" /></a-button>
                   <template #overlay><a-menu class="notification-channels__menu">
                     <a-menu-item key="edit"><j-permission-button type="link" block class="notification-channels__menu-action" :has-permission="[notificationPermissions.channels.update]" :disabled="editing || !canEdit || operationBusy" @click="workspace.startEditing"><template #icon><EditOutlined aria-hidden="true" /></template>{{ t('messageNotification.common.edit') }}</j-permission-button></a-menu-item>
                     <a-menu-item key="delete"><j-permission-button type="link" block class="notification-channels__menu-action" danger :has-permission="[notificationPermissions.channels.delete]" :disabled="operationBusy" @click="requestRemove"><template #icon><DeleteOutlined aria-hidden="true" /></template>{{ t('messageNotification.channels.clear') }}</j-permission-button></a-menu-item>
@@ -155,7 +156,7 @@ const {
 .notification-channels__selector { flex: 1 1 15rem; min-width: 0; max-width: 28rem; }
 .notification-channels__menu :deep(.ant-dropdown-menu-item) { padding: 0; }
 .notification-channels__menu-action { text-align: left; }
-.notification-channels__body { padding-right: var(--space-2); }
+.notification-channels__body { }
 .notification-channels__members { margin-top: var(--space-6); padding-top: var(--space-4); border-top: 1px solid var(--line); }
 .notification-channels__members h3 { margin: 0 0 var(--space-2); font-size: var(--fs-14); font-weight: 500; }
 .notification-channels__members p { margin: 0 0 var(--space-3); color: var(--text-color-secondary); font-size: var(--fs-12); }
