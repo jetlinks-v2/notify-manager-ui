@@ -1,9 +1,10 @@
 import { computed, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { NotificationLoadState, NotifierConfig } from '../../shared'
-import { insertTemplateVariable, isEmailDraft, type TemplateDraft } from '../model'
+import { createTemplateDraft, insertTemplateVariable, isEmailDraft, type TemplateDraft } from '../model'
+import { builtinEmailTemplates } from '../../shared/builtinEmailTemplates'
 
-interface EditorProps { draft: TemplateDraft; configs: NotifierConfig[]; configState: NotificationLoadState }
+interface EditorProps { draft: TemplateDraft; configs: NotifierConfig[]; configState: NotificationLoadState; existing?: boolean; disabled?: boolean }
 type TextField = 'subject' | 'text' | 'templateJson'
 interface Caret { field: TextField; start: number; end: number; element?: HTMLInputElement | HTMLTextAreaElement }
 
@@ -11,6 +12,16 @@ interface Caret { field: TextField; start: number; end: number; element?: HTMLIn
 export function useTemplateEditor(props: EditorProps, emit: (event: 'uploading', value: boolean) => void) {
   const { t } = useI18n()
   const emailDraft = computed(() => isEmailDraft(props.draft))
+  const builtins = computed(() => builtinEmailTemplates(t))
+  const builtinOptions = computed(() => builtins.value.map(item => ({ value: item.key, label: item.label })))
+  /** Choosing a built-in only fills a new local draft; IDs, configuration and recipients stay user-owned. */
+  function selectBuiltin(key: string) {
+    const definition = builtins.value.find(item => item.key === key)
+    if (!definition || !emailDraft.value || props.existing || props.disabled) return
+    const draft = props.draft
+    Object.assign(draft, createTemplateDraft({ ...definition.payload, id: draft.id, configId: draft.configId,
+      template: { ...definition.payload.template, sendTo: draft.sendTo } }), { builtinKey: key })
+  }
   const insertableVariables = computed(() => props.draft.variables.filter(item => item.id))
   const configFailure = computed(() => ['forbidden', 'unavailable', 'error'].includes(props.configState))
   const configOptions = computed(() => {
@@ -39,5 +50,5 @@ export function useTemplateEditor(props: EditorProps, emit: (event: 'uploading',
     caret.element?.setSelectionRange(result.caret, result.caret)
   }
 
-  return { t, emailDraft, insertableVariables, configFailure, configOptions, clearConfiguration, setUploading, captureCaret, insertVariable }
+  return { t, emailDraft, builtinOptions, selectBuiltin, insertableVariables, configFailure, configOptions, clearConfiguration, setUploading, captureCaret, insertVariable }
 }

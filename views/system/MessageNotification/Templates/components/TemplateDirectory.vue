@@ -46,10 +46,11 @@ const props = defineProps({
   businessTypes: { type: Array as PropType<NoticeChannelConfig[]>, default: () => [] },
   directoryState: { type: String as PropType<NotificationLoadState>, default: 'idle' },
   selectedId: { type: String, default: '' },
+  selectedBusiness: { type: String, default: '' },
   state: { type: String as PropType<NotificationLoadState>, required: true },
   disabled: { type: Boolean, default: false },
 })
-const emit = defineEmits<{ (event: 'select', id: string): void; (event: 'reload'): void }>()
+const emit = defineEmits<{ (event: 'select', id: string): void; (event: 'business', id: string): void; (event: 'reload'): void }>()
 const { t, search, failure, directoryFailure, visibleTemplates, expandedKeys, selectedKeys, expand, select, reload } = useTemplateDirectory(props, emit)
 </script>
 

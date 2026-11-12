@@ -1,5 +1,6 @@
 import type { NoticeChannelConfig } from '../../../../api/notice-center'
 import type { NotificationTemplate } from '../shared'
+import { businessIdentity } from './businessTemplateModel'
 
 export interface TemplateDirectoryNode {
   key: string
@@ -7,6 +8,7 @@ export interface TemplateDirectoryNode {
   kind: 'group' | 'business' | 'template'
   class?: string
   templateId?: string
+  businessId?: string
   searchText: string
   selectable: boolean
   children?: TemplateDirectoryNode[]
@@ -33,10 +35,10 @@ export function buildTemplateDirectory(
     const ids = [...new Set((item.channels || []).map(channel => channel.channelConfiguration?.templateId)
       .filter((id): id is string => Boolean(id && templateMap.has(id))))]
     const node: TemplateDirectoryNode = {
-      key, title, kind: 'business', templateId: ids.length === 1 ? ids[0] : undefined,
+      key, title: `${title}${businessTypes.filter(row => row.provider === item.provider).length > 1 ? ` (${businessIdentity(item)})` : ''}`, kind: 'business', businessId: businessIdentity(item), templateId: ids.length === 1 ? ids[0] : undefined,
       searchText: [title, provider, ...ids.map(id => `${templateMap.get(id)!.name} ${id}`)].join(' '),
-      selectable: ids.length === 1,
-      children: ids.length > 1 ? ids.map(id => templateNode(templateMap.get(id)!, JSON.stringify([key, id]))) : undefined,
+      selectable: !!businessIdentity(item),
+      children: ids.length > 1 ? ids.map(id => ({ ...templateNode(templateMap.get(id)!, JSON.stringify([key, id])), businessId: businessIdentity(item) })) : undefined,
     }
     const group = groups.get(groupId) || {
       key: JSON.stringify(['group', groupId]), title: item.type?.name || labels.other,

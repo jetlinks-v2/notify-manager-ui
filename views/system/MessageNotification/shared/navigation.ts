@@ -13,6 +13,7 @@ export interface NotificationNavigation {
   channel?: string
   configId?: string
   templateId?: string
+  businessSelection?: 'first-alarm'
   state?: NotifyState
 }
 
@@ -38,6 +39,7 @@ export function normalizeNotificationNavigation(query: LocationQuery, channels: 
     ...(channel ? { channel } : {}),
     ...(queryString(query.configId) ? { configId: queryString(query.configId) } : {}),
     ...(queryString(query.templateId) ? { templateId: queryString(query.templateId) } : {}),
+    ...(queryString(query.businessSelection) === 'first-alarm' ? { businessSelection: 'first-alarm' as const } : {}),
     ...(notificationStates.includes(state as NotifyState) ? { state: state as NotifyState } : {}),
   }
 }
@@ -45,10 +47,11 @@ export function normalizeNotificationNavigation(query: LocationQuery, channels: 
 /** Preserve ConditionFilter and host-owned query keys while replacing this feature's selection. */
 export function notificationQuery(navigation: NotificationNavigation, existing: LocationQueryRaw = {}, channels: readonly NotificationChannel[] = notificationChannels): LocationQueryRaw {
   const query = { ...existing }
-  for (const key of ['channel', 'configId', 'templateId', 'state', 'ch', 'status', 'sub', 'sec', 'tab']) delete query[key]
+  for (const key of ['channel', 'configId', 'templateId', 'businessSelection', 'state', 'ch', 'status', 'sub', 'sec', 'tab']) delete query[key]
   if (findNotificationChannel(navigation.channel, channels)) query.channel = navigation.channel
   if (navigation.configId) query.configId = navigation.configId
   if (navigation.templateId) query.templateId = navigation.templateId
+  if (navigation.businessSelection) query.businessSelection = navigation.businessSelection
   if (navigation.state && notificationStates.includes(navigation.state)) query.state = navigation.state
   return query
 }

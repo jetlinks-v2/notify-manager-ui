@@ -13,8 +13,8 @@ import { normalizeTemplateBeforeSubmit } from './noticeTemplateFormModel'
 import { buildNoticeTemplateChannelVariables } from './noticeTemplateChannelVariables'
 
 export const buildChannelPayload = (
-  alarm: NoticeTemplateGroup['alarms'][number],
-  channel: NoticeTemplateChannelNode,
+  alarm: Pick<NoticeTemplateGroup['alarms'][number], 'detailProviderId'>,
+  channel: Pick<NoticeTemplateChannelNode, 'channel' | 'channelName' | 'channelProvider'>,
   configId?: string,
   variableDefinitions: NoticeTemplateVariable[] = [],
 ): NoticeChannelConfig => {

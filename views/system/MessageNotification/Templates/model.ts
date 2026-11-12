@@ -5,6 +5,7 @@ import {
 } from '../shared'
 
 export interface TemplateDraft {
+  builtinKey?: string
   id: string
   name: string
   configId: string

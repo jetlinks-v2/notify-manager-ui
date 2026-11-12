@@ -27,6 +27,7 @@ import FileUpload from '@jetlinks-web-core/components/Upload/File/index.vue'
 import Records from '../../views/system/MessageNotification/Records/index.vue'
 import { notificationHistoryAdapterKey } from '../../views/system/MessageNotification/Records/recordQuery'
 import { messageNotificationApi } from '../../api/notice/messageNotification'
+import { wechatMemberApi } from '../../api/notice/wechatMembers'
 import fixtures from './fixtures.mjs'
 import templateDirectoryFixture from '../messageNotificationTemplateDirectoryFixture.mjs'
 import { channelTypes, channelProviders, channelWireMetadata, extensionType, extensionProviders, extensionMetadata } from '../messageNotificationChannelFixtures.mjs'
@@ -57,6 +58,33 @@ if (flags.has('robotSigning')) {
     configuration: { url: `https://fixture.example.test/robot/${id}`, ...(id === 'unsigned' ? {} : { secret: id === 'masked' ? '********' : `SECfixture-${id}` }) },
   })))
 }
+// Isolated saved records for checking each channel's clear-confirmation copy.
+if (flags.has('clearMessages')) {
+  configs.splice(0, configs.length, ...Object.keys(channelWireMetadata).map(id => {
+    const [type, provider] = id.split(':')
+    return { id: `clear-${type}-${provider}`, name: id, type, provider, configuration: {} }
+  }))
+}
+
+const memberBindings = [{ id: 'binding-existing', userId: 'platform-existing', thirdPartyUserId: 'corp-existing', providerName: '已有对应成员' }]
+const platformMembers = [
+  { id: 'platform-existing', name: '已对应账号', username: 'existing' },
+  { id: 'platform-phone', name: '手机号对应账号', username: 'phone', telephone: '13800138000' },
+  { id: 'platform-email', name: '邮箱对应账号', username: 'email', email: 'member@example.test' },
+  { id: 'platform-manual', name: '手动对应账号', username: 'manual' },
+  { id: 'platform-other', name: '其他平台账号', username: 'other' },
+]
+const corporateMembers = [
+  { id: 'corp-existing', name: '已有对应成员', department: ['team'] },
+  { id: 'corp-phone', name: '手机号匹配成员', mobile: '138 0013 8000', department: ['team'] },
+  { id: 'corp-email', name: '邮箱匹配成员', email: 'MEMBER@example.test', department: ['other'] },
+  { id: 'corp-manual', name: '待手动匹配成员', department: ['team'] },
+]
+if (flags.has('wechat')) {
+  configs.push({ id: 'corp-fixture', name: '企微隔离配置', type: 'weixin', provider: 'corpMessage', configuration: { corpId: 'fixture-corp', agentId: '1000002', corpSecret: 'fixture-only-secret' } })
+  templates.push({ id: 'corp-template', name: '企业微信测试模板', type: 'weixin', provider: 'corpMessage', configId: 'corp-fixture', template: { message: '隔离测试 ${message}' }, variableDefinitions: [{ id: 'message', name: '消息内容', type: 'string', required: true }, { id: 'toUser', name: '企微成员 ID', type: 'string' }] })
+}
+const businessTypes = clone(flags.get('directory') === 'tree' ? templateDirectoryFixture.businessTypes : [])
 if (flags.get('directory') === 'tree') templates.push(...clone(templateDirectoryFixture.templates))
 const histories = clone(fixtures.history)
 if (flags.get('history') === 'missing') histories.splice(0, histories.length, { id: 'history-missing', state: 'error' })
@@ -69,6 +97,7 @@ if (flags.get('history') === 'pages') {
 }
 function record(operation, payload) {
   calls.push([operation, clone(payload)])
+  if (operation === 'deleteConfig' && flags.has('deleteReferenced')) throw { response: { status: 400, data: { status: 400, code: 'error.data.referenced', message: '当前通知配置已绑定模板，不可删除' } } }
   if (failures.delete(operation)) throw Object.assign(new Error(`Test failure: ${operation}`), { response: { status: 500 } })
 }
 const queryRows = (rows, query) => rows.filter(row => (query.terms || []).every(term => {
@@ -85,7 +114,35 @@ Object.assign(messageNotificationApi, {
     return flags.has('noBinding') ? [] : configs.filter(config => ['dingTalkMessage', 'corpMessage', 'officialMessage'].includes(config.provider)).map(config => ({ type: `${config.type}_${config.provider}`, provider: config.id, thirdPartyUserId: `self_${config.provider}`, providerName: '测试用户' }))
   },
   sendInline: async (configId, template, context) => { if (writeDelay) await new Promise(resolve => setTimeout(resolve, writeDelay)); record('sendInline', { configId, template, context }) },
-  queryTemplateDirectory: async () => { record('queryTemplateDirectory', {}); return clone(flags.get('directory') === 'tree' ? templateDirectoryFixture.businessTypes : []) },
+  getBusinessTemplate: async (owner, provider) => {
+    record('getBusinessTemplate', { owner, provider })
+    const business = businessTypes.find(item => item.id === owner)
+    if (!business) throw { status: 404 }
+    const channel = business.channels.find(item => item.channelProvider === provider)
+    if (!channel) return undefined
+    return clone({ channel: { ...channel, providerId: owner, state: channel.state || 'enabled' }, template: templates.find(item => item.id === channel.channelConfiguration?.templateId) })
+  },
+  saveBusinessTemplate: async (owner, provider, payload) => {
+    record('saveBusinessTemplate', { owner, provider, payload })
+    const business = businessTypes.find(item => item.id === owner)
+    if (!business) throw { status: 404 }
+    const id = `${owner}-${provider}`
+    const template = { ...clone(payload.template), id: `stpl_${id}` }
+    const channel = { ...clone(payload.channel), id, providerId: owner, channelProvider: provider, channelConfiguration: { ...payload.channel.channelConfiguration, templateId: template.id } }
+    business.channels = [...business.channels.filter(item => item.channelProvider !== provider), channel]
+    const index = templates.findIndex(item => item.id === template.id)
+    if (index >= 0) templates[index] = template
+    else templates.push(template)
+    return clone({ channel, template })
+  },
+  setBusinessEnabled: async (id, enabled) => {
+    record('setBusinessEnabled', { id, enabled })
+    const business = businessTypes.find(item => item.id === id || item.provider === id)
+    if (!business) throw { status: 404 }
+    if (!business.id) business.id = `actual-${business.provider}`
+    business.state = enabled ? 'enabled' : 'disabled'
+  },
+  queryTemplateDirectory: async () => { record('queryTemplateDirectory', {}); return clone(businessTypes) },
   queryTypes: async () => { record('queryTypes', {}); return clone(flags.get('catalog') === 'extended' ? [...channelTypes, extensionType] : channelTypes) },
   queryProviders: async type => { record('queryProviders', type); if (flags.get('providerError') === type) throw new Error('Provider fixture failure'); return clone(type === extensionType.id ? extensionProviders : flags.has('unifiedTests') && type === 'weixin' ? [...channelProviders.weixin, { id: 'officialMessage', name: '微信服务号' }] : channelProviders[type] || []) },
   queryAllConfigs: async () => { record('queryAllConfigs', {}); return clone(configs) },
@@ -103,10 +160,30 @@ Object.assign(messageNotificationApi, {
   deleteConfig: async id => { record('deleteConfig', id); configs.splice(configs.findIndex(row => row.id === id), 1) },
   queryTemplates: async query => { record('queryTemplates', query); return { data: clone(queryRows(templates, query)) } },
   getTemplate: async id => { record('getTemplate', id); return clone(templates.find(row => row.id === id)) },
+  getSendTemplate: async id => { record('getSendTemplate', id); return clone(templates.find(row => row.id === id)) },
   createTemplate: async payload => { record('createTemplate', payload); templates.push(clone(payload)) },
   updateTemplate: async payload => { record('updateTemplate', payload); Object.assign(templates.find(row => row.id === payload.id), clone(payload)) },
   deleteTemplate: async id => { record('deleteTemplate', id); templates.splice(templates.findIndex(row => row.id === id), 1) },
-  send: async () => { throw new Error('Notification sending is disabled in this browser harness') },
+  send: async (configId, templateId, variables) => {
+    if (!flags.has('wechat') || configId !== 'corp-fixture') throw new Error('Notification sending is disabled in this browser harness')
+    record('sendFixture', { configId, templateId, variables })
+  },
+})
+// Replace every member endpoint before mounting; no test member can reach real services.
+Object.assign(wechatMemberApi, {
+  departments: async id => { record('memberDepartments', id); return [{ id: 'all', name: '全部测试部门', children: [{ id: 'team', name: '研发组' }, { id: 'other', name: '运营组' }] }] },
+  members: async id => { record('members', id); return clone(corporateMembers) },
+  users: async (pageIndex, pageSize) => { record('memberUsers', { pageIndex, pageSize }); return { data: clone(platformMembers.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize)), total: platformMembers.length } },
+  bindings: async id => { record('memberBindings', id); return clone(memberBindings) },
+  bind: async (configId, changes) => {
+    record('bindMembers', { configId, changes })
+    changes.forEach(change => {
+      const index = memberBindings.findIndex(binding => binding.id === change.id)
+      if (index >= 0) memberBindings.splice(index, 1)
+      memberBindings.push({ ...clone(change), id: `binding-${change.userId}` })
+    })
+  },
+  unbind: async id => { record('unbindMember', id); const index = memberBindings.findIndex(binding => binding.id === id); if (index >= 0) memberBindings.splice(index, 1) },
 })
 
 const historyAdapter = {
@@ -130,7 +207,7 @@ const router = createRouter({ history: createMemoryHistory(), routes: [
   { path: '/channels', name: 'system/MessageNotification/Channels', component: () => import('../../views/system/MessageNotification/Channels/index.vue') },
   { path: '/templates', name: 'system/MessageNotification/Templates', component: () => import('../../views/system/MessageNotification/Templates/index.vue') },
 ] })
-const fixturePermission = code => !deniedPermissions.has(String(code)) && !(flags.get('permission') === 'no-template' && String(code).includes('/Templates')) && !(flags.get('permission') === 'no-send' && String(code).endsWith(':action')) && flags.get('permission') !== 'denied' && !(flags.get('permission') === 'read' && String(code).endsWith(':add'))
+const fixturePermission = code => !deniedPermissions.has(String(code)) && !(flags.get('permission') === 'no-template' && String(code).includes('/Templates')) && !(flags.get('permission') === 'no-send' && String(code).endsWith(':action')) && flags.get('permission') !== 'denied' && !(flags.get('permission') === 'read' && String(code).endsWith(':add')) && !(flags.get('permission') === 'no-bind' && String(code).endsWith(':bind'))
 const Root = defineComponent({ setup() {
   usePermissionContext({ hasPermission: fixturePermission })
   // 页面与产品列表共用项目默认面板；隔离环境也提供同一布局契约。
@@ -146,7 +223,7 @@ for (const [name, component] of Object.entries({ AIcon, FullPage, ContentPanel, 
   'j-pro-table': ProTable, 'j-permission-button': PermissionButton, 'j-badge-status': BadgeStatus })) app.component(name, component)
 app.provide(notificationHistoryAdapterKey, historyAdapter)
 i18n.global.locale.value = 'zh'
-window.__notificationSmoke = { calls, router, configs, templates, failures, i18n, deniedPermissions }
+window.__notificationSmoke = { calls, router, configs, templates, businessTypes, failures, i18n, memberBindings, deniedPermissions }
 await router.push(location.hash.slice(1) || '/records')
 await router.isReady()
 app.mount('#notification-test-root')

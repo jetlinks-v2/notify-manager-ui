@@ -17,6 +17,8 @@ const locale = { useI18n: () => ({ t: (key, args) => args?.name ? `Example ${arg
 const dependencies = {
   vue, 'vue-i18n': locale,
   '@jetlinks-web/core': { request: {} },
+  '@jetlinks-web-core/hooks/useNotificationConfigNavigation': { useNotificationConfigNavigation: () => ({ available: vue.ref(true), open() {} }) },
+  '@jetlinks-web-core/components/Upload/utils': { getFileName: file => file.name },
   '@jetlinks-web/utils': { downloadFileByUrl() {}, onlyMessage() {} },
   '@jetlinks-web-core/utils': { getImageUrl: id => `/files/${encodeURIComponent(id)}` },
   // 页面守卫用例不渲染子组件，AutoTree 的真实布局由浏览器验证。
@@ -60,6 +62,9 @@ function mockApi() {
   const calls = []
   return { calls,
     queryTemplateDirectory: async () => [],
+    getBusinessTemplate: async (owner, type) => type === 'notifier-email' ? { channel: { id: 'binding', providerId: owner, channelProvider: type, state: 'enabled', channelConfiguration: { templateId: 'second', notifierId: 'smtp-one' } }, template: record('second', { type: 'email' }) } : undefined,
+    saveBusinessTemplate: async (owner, type, payload) => { calls.push(['saveBusinessTemplate', owner, type, structuredClone(payload)]); return { channel: { ...payload.channel, id: 'binding', providerId: owner, channelConfiguration: { ...payload.channel.channelConfiguration, templateId: 'stpl_binding' } }, template: { ...payload.template, id: 'stpl_binding' } } },
+    setBusinessEnabled: async (...args) => { calls.push(['setBusinessEnabled', ...args]) },
     queryTemplates: async query => { calls.push(['queryTemplates', query]); return { data: [record()] } },
     queryConfigs: async query => { calls.push(['queryConfigs', query]); return { data: [{ id: 'smtp-one', name: 'SMTP', type: 'email', provider: 'embedded', configuration: {} }] } },
     getTemplate: async id => { calls.push(['getTemplate', id]); return record(id) },
@@ -379,10 +384,11 @@ async function settlePage() {
   for (let index = 0; index < 12; index++) { await Promise.resolve(); await vue.nextTick() }
 }
 
-async function mountTemplatePage(query = {}, permission = () => true) {
+async function mountTemplatePage(query = {}, permission = () => true, overrides = {}) {
   const route = vue.reactive({ query })
   const api = mockApi()
   api.queryTemplates = async () => ({ data: [record('first'), record('second')] })
+  Object.assign(api, overrides)
   const facade = load(resolve(root, 'api/notice/messageNotification.ts'), false).messageNotificationApi
   const original = { ...facade }
   Object.assign(facade, api)
@@ -404,6 +410,94 @@ async function mountTemplatePage(query = {}, permission = () => true) {
   await settlePage()
   return { page, route, api, facade, close() { app.unmount(); Object.assign(facade, original) } }
 }
+
+const business = (provider = 'scene', templateId = 'second', channelProvider = 'notifier-email') => ({
+  id: `id-${provider}`, provider, name: provider,
+  channels: templateId ? [{ channelProvider, channelConfiguration: { templateId } }] : [],
+})
+
+test('business entry resolves the actual bound template/provider and preserves its topic and return context', async () => {
+  const current = await mountTemplatePage({ topicProvider: 'scene', channelProvider: 'notifier-dingTalk', q: 'kept' }, () => true, {
+    queryTemplateDirectory: async () => [business('scene', 'ding-template', 'notifier-dingTalk')],
+    getBusinessTemplate: async (owner, type) => type === 'notifier-dingTalk' ? { channel: { providerId: owner, channelProvider: type }, template: record('ding-template', { type: 'dingTalk', provider: 'dingTalkMessage', configId: 'ding-config' }) } : undefined,
+    queryTemplates: async () => ({ data: [record('ding-template', { type: 'dingTalk', provider: 'dingTalkMessage', configId: 'ding-config' })] }),
+  })
+  try {
+    assert.equal(current.page.channelId.value, 'dingTalk:dingTalkMessage')
+    assert.equal(current.route.query.topicProvider, 'scene')
+    assert.equal(current.page.draft.value.configId, 'ding-config')
+    assert.equal(current.route.query.q, 'kept')
+    assert.equal(current.page.draft.value.id, 'ding-template')
+    current.page.startEditing()
+    current.page.draft.value.name = 'Keep business draft'
+    current.page.changeChannel('email:embedded')
+    await settlePage()
+    assert.equal(current.page.draft.value.type, 'email')
+    assert.equal(current.page.businessLinkState.value, 'ready')
+    current.page.changeChannel('dingTalk:dingTalkMessage')
+    await settlePage()
+    assert.equal(current.page.draft.value.name, 'Keep business draft')
+  } finally { current.close() }
+})
+
+test('missing, ambiguous or denied business bindings never select an unrelated first template', async () => {
+  for (const [directory, expected] of [
+    [async () => [business('other')], 'unavailable'],
+    [async () => [business(), { ...business(), id: 'other-scope' }], 'unavailable'],
+    [async () => { throw { status: 403 } }, 'forbidden'],
+  ]) {
+    const current = await mountTemplatePage({ topicProvider: 'scene' }, () => true, { queryTemplateDirectory: directory })
+    try {
+      assert.equal(current.page.draft.value, undefined)
+      assert.equal(current.route.query.templateId, undefined)
+      assert.equal(current.page.businessLinkState.value, expected)
+    } finally { current.close() }
+  }
+})
+
+test('business resolution ignores late template reads after the user follows an explicit deep link', async () => {
+  const late = deferred()
+  const current = await mountTemplatePage({ topicProvider: 'scene' }, () => true, {
+    queryTemplateDirectory: async () => [business('scene', 'late')],
+    getBusinessTemplate: () => late.promise,
+  })
+  try {
+    current.route.query = { channel: 'email:embedded', templateId: 'second' }
+    await settlePage()
+    late.resolve(record('late', { type: 'dingTalk', provider: 'dingTalkMessage' }))
+    await settlePage()
+    assert.equal(current.page.draft.value.id, 'second')
+    assert.equal(current.route.query.channel, 'email:embedded')
+  } finally { current.close() }
+})
+
+test('only a successfully saved business-bound template emits the original AI alarm session event', async () => {
+  const OriginalBroadcast = globalThis.BroadcastChannel
+  const events = []
+  globalThis.BroadcastChannel = class {
+    constructor(name) { this.name = name }
+    postMessage(value) { events.push([this.name, value]) }
+    close() {}
+  }
+  const current = await mountTemplatePage({ topicProvider: 'aiSecurityAlarm', aiAlarmType: 'aiSecurityAlarm', visualAlarmSession: 'a'.repeat(32) }, () => true, {
+    queryTemplateDirectory: async () => [business('aiSecurityAlarm')],
+  })
+  try {
+    current.page.startEditing()
+    current.page.draft.value.subject = 'Changed'
+    current.facade.saveBusinessTemplate = async () => { throw new Error('offline') }
+    await current.page.save()
+    assert.equal(events.length, 0)
+    current.facade.saveBusinessTemplate = current.api.saveBusinessTemplate
+    await current.page.save()
+    assert.deepEqual(events, [[`jetlinks.visual-alarm-template.v1.${'a'.repeat(32)}`, { type: 'template-saved', version: 1, alarmType: 'aiSecurityAlarm' }]])
+    current.page.selectTemplate('first')
+    await settlePage()
+    current.page.draft.value.subject = 'Other template'
+    await current.page.save()
+    assert.equal(events.length, 1)
+  } finally { current.close(); globalThis.BroadcastChannel = OriginalBroadcast }
+})
 
 test('page opens a real template preview, honors deep links and keeps the selection on repeated channel clicks', async () => {
   const current = await mountTemplatePage({ channel: 'email:embedded' })
@@ -513,7 +607,7 @@ test('business directory retains only business groups and actual bindings withou
   assert.equal(alarm.templateId, 'template-alarm')
   assert.equal(alarm.children[0].title, '告警解除')
   assert.equal(alarm.children[0].templateId, 'template-relieve')
-  assert.equal(tree[1].children[0].selectable, false)
+  assert.equal(tree[1].children[0].selectable, true)
   assert.ok(flattenTemplateDirectory(tree).every(node => node.templateId !== 'unbound'))
   assert.deepEqual(buildTemplateDirectory(templates, [], { other: '其他' }, key => key), [])
   const filtered = filterTemplateDirectory(tree, 'TEMPLATE-RELIEVE')
@@ -550,7 +644,7 @@ test('directory selects the child actual ID, preserves group and business collap
   assert.ok(!directory.expandedKeys.value.includes(group.key))
   assert.ok(!directory.expandedKeys.value.includes(parent.key))
   directory.select([child.key])
-  assert.deepEqual(events, [['select', 'template-relieve']])
+  assert.deepEqual(events, [['business', 'relieve-config']])
   directory.select([])
   directory.select([group.key])
   props.disabled = true
@@ -593,4 +687,246 @@ test('business directory ignores late responses after refresh, permission loss a
   unmounted.resolve(directoryFixture.businessTypes)
   await settlePage()
   assert.deepEqual(directory.businessTypes.value, [])
+})
+
+test('explicit activation creates one real business record and unbound business is editable only afterwards', async () => {
+  let directory = [{ provider: 'scene', name: 'Scene', state: 'disabled', channels: [] }]
+  const current = await mountTemplatePage({ topicProvider: 'scene' }, () => true, {
+    queryTemplateDirectory: async () => directory,
+    getBusinessTemplate: async () => undefined,
+    setBusinessEnabled: async (id, enabled) => { assert.equal(id, 'scene'); assert.equal(enabled, true); directory = [{ ...directory[0], id: 'actual-scope-id', state: 'enabled' }] },
+  })
+  try {
+    assert.equal(current.page.draft.value, undefined)
+    await current.page.save()
+    assert.equal(current.api.calls.some(call => call[0] === 'saveBusinessTemplate'), false)
+    await current.page.toggleBusiness()
+    await settlePage()
+    assert.equal(current.route.query.topicProvider, 'actual-scope-id')
+    assert.equal(current.page.selectedBusinessId.value, 'actual-scope-id')
+    assert.equal(current.page.draft.value.type, 'email')
+    assert.equal(current.page.editing.value, true)
+    assert.equal(current.page.channelEnabled.value, true)
+  } finally { current.close() }
+})
+
+test('read-only template users query independent templates without requesting all-for-save or enabling businesses', async () => {
+  let reads = 0, writes = 0
+  const current = await mountTemplatePage({ templateId: 'first', channel: 'email:embedded' }, code => code.endsWith(':query'), {
+    queryTemplateDirectory: async () => { reads++; return [business()] }, setBusinessEnabled: async () => { writes++ },
+  })
+  try {
+    assert.equal(current.page.draft.value.id, 'first')
+    assert.equal(current.page.canManage.value, false)
+    assert.equal(current.page.canSave.value, false)
+    await current.page.toggleBusiness()
+    assert.equal(reads, 0)
+    assert.equal(writes, 0)
+  } finally { current.close() }
+})
+
+test('five business channels save single bindings, preserve states and receiver mapping, and use server IDs on repeat saves', async () => {
+  const { useBusinessTemplateWorkspace } = load(resolve(templatesRoot, 'hooks/useBusinessTemplateWorkspace.ts'))
+  const samples = [
+    ['email:embedded', 'sendTo', {}],
+    ['dingTalk:dingTalkMessage', 'userIdList', { agentId: 'real-agent', message: '${message}' }],
+    ['weixin:corpMessage', 'toUser', { message: '${message}' }],
+    ['voice:aliyun', 'calledNumber', { templateType: 'tts', templateCode: 'TTS_REAL', ttsmessage: '${name}', playTimes: 1 }],
+    ['sms:aliyunSms', 'phoneNumber', { code: 'SMS_REAL', signName: 'ApprovedSign' }],
+  ]
+  for (const [channelId, receiver, content] of samples) {
+    const api = mockApi()
+    const owner = { ...business(), id: 'scope-a', defaultSubscribed: true, defaultNotifyChannels: ['sibling'], grant: { users: ['u1'] }, channels: [{ id: 'sibling', channelProvider: 'inside-mail' }] }
+    const before = structuredClone(owner)
+    let persisted
+    api.getBusinessTemplate = async () => persisted
+    const scope = vue.effectScope()
+    const workspace = scope.run(() => useBusinessTemplateWorkspace(access(), api))
+    try {
+      await workspace.selectBusiness(owner, channelId)
+      workspace.draft.value.configId = 'exact-config'
+      workspace.draft.value.name = 'Business template'
+      workspace.draft.value.subject = 'Subject'
+      workspace.draft.value.text = 'Body'
+      workspace.draft.value.templateJson = JSON.stringify(content)
+      assert.equal(workspace.channelEnabled.value, true)
+      assert.equal(await workspace.saveTemplate(), true)
+      const first = api.calls.find(call => call[0] === 'saveBusinessTemplate')
+      assert.equal(first[1], 'scope-a')
+      assert.equal(first[3].channel.channelConfiguration.notifierId, 'exact-config')
+      assert.equal(first[3].template.configId, 'exact-config')
+      assert.equal(first[3].template.id, undefined)
+      assert.equal(first[3].channel.channelConfiguration.variables[receiver].relation.objectSource.upperKey, 'subscriber')
+      assert.equal(first[3].channel.providerId, 'scope-a')
+      assert.equal(first[3].channel.channels, undefined)
+      assert.deepEqual(owner, before)
+      assert.equal(workspace.draft.value.id, 'stpl_binding')
+      workspace.channelEnabled.value = false
+      assert.equal(await workspace.saveTemplate(), true)
+      const second = api.calls.filter(call => call[0] === 'saveBusinessTemplate')[1][3]
+      assert.equal(second.template.id, 'stpl_binding')
+      assert.equal(second.channel.state, 'disabled')
+      assert.equal(workspace.channelEnabled.value, false)
+      assert.equal(workspace.dirty.value, false)
+      assert.equal(api.calls.some(call => ['createTemplate', 'updateTemplate', 'setBusinessEnabled'].includes(call[0])), false)
+    } finally { scope.stop() }
+  }
+})
+
+test('business drafts survive channel, vendor and asset-scope switches, failed saves and retries', async () => {
+  const { useBusinessTemplateWorkspace } = load(resolve(templatesRoot, 'hooks/useBusinessTemplateWorkspace.ts'))
+  const api = mockApi()
+  const original = { id: 'binding', providerId: 'scope-a', channelProvider: 'notifier-email', state: { value: 'disabled' }, grant: { roles: ['role'] }, channelConfiguration: { templateId: 'old-independent', notifierId: 'smtp-one', variables: { custom: 'keep' } } }
+  api.getBusinessTemplate = async (owner, type) => owner === 'scope-a' && type === 'notifier-email' ? { channel: original, template: record('old-independent', { type: 'email' }) } : undefined
+  const scope = vue.effectScope()
+  const workspace = scope.run(() => useBusinessTemplateWorkspace(access(), api))
+  try {
+    const owner = { ...business(), id: 'scope-a' }
+    await workspace.selectBusiness(owner, 'email:embedded')
+    assert.equal(workspace.channelEnabled.value, false)
+    workspace.draft.value.subject = 'Unsaved A'
+    await workspace.selectBusiness({ ...owner, id: 'scope-b' }, 'email:embedded')
+    assert.notEqual(workspace.draft.value.subject, 'Unsaved A')
+    await workspace.selectBusiness(owner, 'dingTalk:dingTalkRobotWebHook')
+    workspace.draft.value.name = 'Robot draft'
+    await workspace.selectBusiness(owner, 'dingTalk:dingTalkMessage')
+    workspace.draft.value.name = 'Corp draft'
+    await workspace.selectBusiness(owner, 'dingTalk:dingTalkRobotWebHook')
+    assert.equal(workspace.draft.value.name, 'Robot draft')
+    await workspace.selectBusiness(owner, 'email:embedded')
+    assert.equal(workspace.draft.value.subject, 'Unsaved A')
+    const save = api.saveBusinessTemplate
+    api.saveBusinessTemplate = async () => { throw { status: 403 } }
+    assert.equal(await workspace.saveTemplate(), false)
+    assert.equal(workspace.saveState.value, 'forbidden')
+    assert.equal(workspace.dirty.value, true)
+    assert.equal(workspace.draft.value.subject, 'Unsaved A')
+    api.saveBusinessTemplate = save
+    assert.equal(await workspace.saveTemplate(), true)
+    const payload = api.calls.find(call => call[0] === 'saveBusinessTemplate')[3]
+    assert.equal(payload.template.id, undefined)
+    assert.deepEqual(payload.channel.grant, original.grant)
+    assert.equal(payload.channel.channelConfiguration.variables.custom, 'keep')
+    assert.equal(original.channelConfiguration.templateId, 'old-independent')
+  } finally { scope.stop() }
+})
+
+test('missing sending config and supplier fields block writes; imported history preserves managed target', async () => {
+  const { useBusinessTemplateWorkspace } = load(resolve(templatesRoot, 'hooks/useBusinessTemplateWorkspace.ts'))
+  const api = mockApi()
+  api.getBusinessTemplate = async owner => ({ channel: { id: 'binding', providerId: owner, channelProvider: 'notifier-sms', channelConfiguration: { templateId: 'stpl_binding' } }, template: { ...record('stpl_binding'), type: 'sms', provider: 'aliyunSms', template: { code: 'SMS_OLD', signName: 'Old sign' } } })
+  api.getTemplate = async id => ({ ...record(id), type: 'sms', provider: 'aliyunSms', configId: 'sms-source', template: { code: 'SMS_SOURCE', signName: 'Approved' } })
+  const scope = vue.effectScope()
+  const workspace = scope.run(() => useBusinessTemplateWorkspace(access(), api))
+  try {
+    await workspace.selectBusiness(business(), 'sms:aliyunSms')
+    workspace.draft.value.configId = ''
+    await assert.rejects(workspace.saveTemplate(), /configRequired/)
+    workspace.draft.value.configId = 'sms-config'
+    workspace.draft.value.templateJson = '{}'
+    await assert.rejects(workspace.saveTemplate(), /providerFieldsRequired/)
+    await workspace.importTemplate('historical-independent')
+    assert.equal(await workspace.saveTemplate(), true)
+    const payload = api.calls.find(call => call[0] === 'saveBusinessTemplate')[3]
+    assert.equal(payload.template.id, 'stpl_binding')
+    assert.equal(payload.template.configId, 'sms-source')
+    assert.equal(payload.template.template.code, 'SMS_SOURCE')
+    assert.equal(api.calls.some(call => call[0] === 'updateTemplate'), false)
+  } finally { scope.stop() }
+})
+
+test('a placeholder cannot hide multiple asset scopes and a missing bound template cannot be treated as new', async () => {
+  const current = await mountTemplatePage({ topicProvider: 'scene' }, () => true, {
+    queryTemplateDirectory: async () => [{ provider: 'scene', channels: [] }, business(), { ...business(), id: 'another-scope' }],
+  })
+  try {
+    assert.equal(current.page.businessLinkState.value, 'unavailable')
+    assert.equal(current.page.draft.value, undefined)
+    current.page.selectBusiness('another-scope')
+    await settlePage()
+    assert.equal(current.page.selectedBusinessId.value, 'another-scope')
+  } finally { current.close() }
+  const { useBusinessTemplateWorkspace } = load(resolve(templatesRoot, 'hooks/useBusinessTemplateWorkspace.ts'))
+  const api = mockApi()
+  api.getBusinessTemplate = async () => ({ channel: { channelConfiguration: { templateId: 'missing-template' } }, template: null })
+  const scope = vue.effectScope()
+  const workspace = scope.run(() => useBusinessTemplateWorkspace(access(), api))
+  try {
+    await workspace.selectBusiness(business(), 'email:embedded')
+    assert.equal(workspace.detailState.value, 'unavailable')
+    assert.equal(workspace.canSave.value, false)
+    assert.equal(await workspace.saveTemplate(), false)
+  } finally { scope.stop() }
+})
+
+test('business reads normalize enum values and discard late results after permission loss or disposal', async () => {
+  const { useBusinessTemplateWorkspace } = load(resolve(templatesRoot, 'hooks/useBusinessTemplateWorkspace.ts'))
+  const api = mockApi()
+  api.getBusinessTemplate = async () => ({ channel: {}, template: record('enum-template') })
+  const permissions = access()
+  const scope = vue.effectScope()
+  const workspace = scope.run(() => useBusinessTemplateWorkspace(permissions, api))
+  await workspace.selectBusiness(business(), 'email:embedded')
+  assert.equal(workspace.draft.value.id, 'enum-template')
+  const late = deferred()
+  api.getBusinessTemplate = () => late.promise
+  const pending = workspace.selectBusiness({ ...business(), id: 'second-scope' }, 'email:embedded')
+  permissions.add.value = false
+  permissions.update.value = false
+  late.resolve({ channel: {}, template: record('late') })
+  await pending
+  assert.equal(workspace.draft.value, undefined)
+  assert.equal(workspace.canSave.value, false)
+  scope.stop()
+})
+
+
+test('channel link opens the first alarm Webhook and fixes its exact record before further navigation', async () => {
+  const reads = []
+  const directory = [business('scene'), { ...business('alarm-device', ''), id: 'first-alarm' }, { ...business('alarm-device', ''), id: 'second-alarm' }]
+  const current = await mountTemplatePage({ channel: 'webhook:http', businessSelection: 'first-alarm' }, () => true, {
+    queryTemplateDirectory: async () => directory,
+    getBusinessTemplate: async (owner, provider) => { reads.push({ owner, provider }); return undefined },
+    queryTemplates: async () => ({ data: [] }),
+  })
+  try {
+    assert.equal(current.page.selectedBusinessId.value, 'first-alarm')
+    assert.equal(current.page.channelId.value, 'webhook:http')
+    assert.deepEqual(current.route.query, { channel: 'webhook:http', topicProvider: 'first-alarm' })
+    assert.deepEqual(reads, [{ owner: 'first-alarm', provider: 'notifier-webhook' }])
+    directory.reverse()
+    current.page.reload()
+    await settlePage()
+    assert.equal(current.page.selectedBusinessId.value, 'first-alarm')
+    current.page.changeChannel('email:embedded')
+    await settlePage()
+    assert.equal(current.page.selectedBusinessId.value, 'first-alarm')
+    assert.equal(current.page.channelId.value, 'email:embedded')
+  } finally { current.close() }
+})
+
+test('first-alarm entry stays empty without alarms and never falls back to an unrelated saved template', async () => {
+  const current = await mountTemplatePage({ channel: 'webhook:http', businessSelection: 'first-alarm' }, () => true, {
+    queryTemplateDirectory: async () => [business('scene'), business('system-event')],
+  })
+  try {
+    assert.equal(current.page.businessLinkState.value, 'empty')
+    assert.equal(current.page.selectedBusinessId.value, '')
+    assert.equal(current.page.draft.value, undefined)
+    assert.equal(current.api.calls.some(([method]) => method === 'getTemplate'), false)
+  } finally { current.close() }
+})
+
+test('first-alarm entry supports AI alarm placeholders without fabricating a saved record', async () => {
+  const current = await mountTemplatePage({ channel: 'webhook:http', businessSelection: 'first-alarm' }, () => true, {
+    queryTemplateDirectory: async () => [{ provider: 'aiSecurityAlarm', channels: [] }],
+    getBusinessTemplate: async () => { throw new Error('placeholder must not read a saved record') },
+  })
+  try {
+    assert.equal(current.page.selectedBusinessId.value, 'aiSecurityAlarm')
+    assert.equal(current.route.query.topicProvider, 'aiSecurityAlarm')
+    assert.equal(current.page.channelId.value, 'webhook:http')
+    assert.equal(current.page.draft.value, undefined)
+    assert.equal(current.page.businessEnabled.value, false)
+  } finally { current.close() }
 })

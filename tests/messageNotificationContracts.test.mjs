@@ -12,7 +12,7 @@ const root = resolve(import.meta.dirname, '..')
 const calls = []
 let response = { success: true, result: undefined }
 let failure
-const request = Object.fromEntries(['get', 'post', 'patch', 'remove'].map(method => [method, async (url, data, options) => {
+const request = Object.fromEntries(['get', 'post', 'put', 'patch', 'remove'].map(method => [method, async (url, data, options) => {
   calls.push({ method, url, data, ...(options ? { options } : {}) })
   if (failure) throw failure
   return response
@@ -35,6 +35,7 @@ function load(filename) {
   return module.exports
 }
 
+const { notificationFailureMessage } = load(resolve(root, 'api/notice/messageNotificationState.ts'))
 const shared = load(resolve(root, 'views/system/MessageNotification/shared/index.ts'))
 const { messageNotificationApi: api } = load(resolve(root, 'api/notice/messageNotification.ts'))
 const {
@@ -344,6 +345,54 @@ test('template business directory reads existing groups and exact channel templa
   await assert.rejects(api.queryTemplateDirectory(), NotificationRequestError)
 })
 
+
+test('configuration failures keep the backend message and suppress duplicate global notifications', async () => {
+  const data = { status: 400, code: 'error.data.referenced', message: '当前通知配置已绑定模板，不可删除' }
+  for (const original of [data, { data }, { response: { status: 400, data } }]) {
+    assert.equal(notificationFailureMessage(new NotificationRequestError('error', original)), data.message)
+  }
+  assert.equal(notificationFailureMessage(new NotificationRequestError('error', new Error('Request failed with status code 400'))), undefined)
+  assert.equal(notificationFailureMessage({ message: '   ' }), undefined)
+  failure = { response: { status: 400, data } }
+  await assert.rejects(api.deleteConfig('smtp/id'), error => notificationFailureMessage(error) === data.message)
+  assert.deepEqual(calls[0], { method: 'remove', url: '/notifier/config/smtp%2Fid', data: undefined, options: { hiddenError: true } })
+})
+
+test('inline send reuses content endpoint and current email follows personal-center identity precedence', async () => {
+  const template = { name: 'Selected built-in', type: 'email', provider: 'embedded', template: { subject: 'subject', text: 'body', sendTo: [] } }
+  const context = { sendTo: ['recipient@example.test'] }
+  await api.sendInline('smtp/id', template, context)
+  assert.deepEqual(calls[0], { method: 'post', url: '/notifier/smtp%2Fid/_send', data: { template, context }, options: { hiddenError: true } })
+  response.result = [{ provider: 'email', identity: 'first@example.test' }, { provider: 'email', identity: 'primary@example.test', isPrimary: true }]
+  assert.equal(await api.getCurrentEmail(), 'primary@example.test')
+  assert.equal(calls.at(-1).url, '/user/identity/_me')
+  response.result = [{ provider: 'email', identity: 'first@example.test' }]
+  assert.equal(await api.getCurrentEmail(), 'first@example.test')
+  response.result = { email: 'malformed@example.test' }
+  await assert.rejects(api.getCurrentEmail(), { kind: 'error' })
+  failure = { response: { status: 403 } }
+  await assert.rejects(api.getCurrentEmail(), { kind: 'forbidden' })
+  assert.equal(calls.some(call => call.url === '/user/detail'), false)
+})
+
+
+test('business template endpoints encode opaque record IDs and save only the selected channel', async () => {
+  const payload = { channel: { providerId: 'scope/id', channelProvider: 'notifier-email', state: 'enabled', channelConfiguration: { notifierId: 'smtp-exact' } }, template: { configId: 'smtp-exact', type: 'email', provider: 'embedded' } }
+  response = { success: true, result: payload }
+  assert.deepEqual(await api.getBusinessTemplate('scope/id', 'notifier-email'), payload)
+  assert.deepEqual(await api.saveBusinessTemplate('scope/id', 'notifier-email', payload), payload)
+  await api.setBusinessEnabled('business/code', true)
+  await api.setBusinessEnabled('scope/id', false)
+  assert.deepEqual(calls.map(call => [call.method, call.url]), [
+    ['get', '/notify/channel/scope%2Fid/notifier-email/_query-with-template'],
+    ['put', '/notify/channel/scope%2Fid/notifier-email/_save-with-template'],
+    ['post', '/notify/channel/business%2Fcode/enable'], ['post', '/notify/channel/scope%2Fid/disable'],
+  ])
+  assert.deepEqual(calls[1].data, payload)
+  response = { success: false, status: 403 }
+  await assert.rejects(api.saveBusinessTemplate('scope/id', 'notifier-email', payload))
+})
+
 test('optional credential policy supports absent legacy values, replacement, retention and explicit clearing', () => {
   const baseline = { id: 'custom-one', name: 'Custom', type: 'extension', provider: 'custom', configuration: { token: 'saved-token', extra: 1 } }
   const fields = ['token']
@@ -389,22 +438,6 @@ test('robot signing keys never merge across record IDs or provider boundaries', 
   }
 })
 
-test('inline send reuses content endpoint and current email follows personal-center identity precedence', async () => {
-  const template = { name: 'Selected built-in', type: 'email', provider: 'embedded', template: { subject: 'subject', text: 'body', sendTo: [] } }
-  const context = { sendTo: ['recipient@example.test'] }
-  await api.sendInline('smtp/id', template, context)
-  assert.deepEqual(calls[0], { method: 'post', url: '/notifier/smtp%2Fid/_send', data: { template, context }, options: { hiddenError: true } })
-  response.result = [{ provider: 'email', identity: 'first@example.test' }, { provider: 'email', identity: 'primary@example.test', isPrimary: true }]
-  assert.equal(await api.getCurrentEmail(), 'primary@example.test')
-  assert.equal(calls.at(-1).url, '/user/identity/_me')
-  response.result = [{ provider: 'email', identity: 'first@example.test' }]
-  assert.equal(await api.getCurrentEmail(), 'first@example.test')
-  response.result = { email: 'malformed@example.test' }
-  await assert.rejects(api.getCurrentEmail(), { kind: 'error' })
-  failure = { response: { status: 403 } }
-  await assert.rejects(api.getCurrentEmail(), { kind: 'forbidden' })
-  assert.equal(calls.some(call => call.url === '/user/detail'), false)
-})
 
 test('personal phone and notification binding reads distinguish missing, malformed and failed responses', async () => {
   response.result = { telephone: '13800138000' }

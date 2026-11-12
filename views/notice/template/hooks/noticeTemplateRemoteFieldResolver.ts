@@ -25,7 +25,6 @@ export const createTemplateRemoteFieldResolver = (
   form: NoticeTemplateEditorPayload,
   states: TemplateRemoteStates,
   getConfigId: () => string,
-  getAgentId: () => string,
   getSelectedDepartmentId: () => string,
   getSmsTemplate: (code: unknown) => NoticeSmsTemplateOption | undefined,
 ) => {
@@ -97,16 +96,17 @@ export const createTemplateRemoteFieldResolver = (
     currentValue: unknown,
     template: NoticeTemplateData,
   ): NoticeTemplateFieldSchema | undefined => {
-    const disabledByAgent = !getConfigId() || !getAgentId()
+    // Member lookup uses channel credentials and does not require a template AgentId.
+    const disabledByConfig = !getConfigId()
     if (field.key === 'toParty') {
       return {
         ...field,
         kind: 'treeSelect',
         options: ensureOption(states.wechatDepartments.options, currentValue),
         loading: states.wechatDepartments.loading,
-        disabled: field.disabled || disabledByAgent,
-        placeholderKey: disabledByAgent
-          ? 'NoticeCenter.template.placeholder.agentRequired'
+        disabled: field.disabled || disabledByConfig,
+        placeholderKey: disabledByConfig
+          ? 'NoticeCenter.template.placeholder.boundConfigRequired'
           : 'NoticeCenter.template.placeholder.toPartySelect',
       }
     }
@@ -116,9 +116,9 @@ export const createTemplateRemoteFieldResolver = (
         kind: 'select',
         options: ensureOption(states.wechatUsers.options, currentValue, asText(template.toUserName)),
         loading: states.wechatUsers.loading,
-        disabled: field.disabled || disabledByAgent || !getSelectedDepartmentId(),
-        placeholderKey: disabledByAgent
-          ? 'NoticeCenter.template.placeholder.agentRequired'
+        disabled: field.disabled || disabledByConfig || !getSelectedDepartmentId(),
+        placeholderKey: disabledByConfig
+          ? 'NoticeCenter.template.placeholder.boundConfigRequired'
           : 'NoticeCenter.template.placeholder.toUserSelect',
       }
     }
@@ -131,9 +131,9 @@ export const createTemplateRemoteFieldResolver = (
         kind: 'select',
         options: ensureOption(states.wechatTags.options, currentValue),
         loading: states.wechatTags.loading,
-        disabled: field.disabled || disabledByAgent,
-        placeholderKey: disabledByAgent
-          ? 'NoticeCenter.template.placeholder.agentRequired'
+        disabled: field.disabled || disabledByConfig,
+        placeholderKey: disabledByConfig
+          ? 'NoticeCenter.template.placeholder.boundConfigRequired'
           : 'NoticeCenter.template.placeholder.toTagSelect',
       }
     }

@@ -19,6 +19,7 @@ export interface ChannelConfigurationProps {
 /** Adapt metadata into controls and semantic groups, keeping all draft writes in the workspace. */
 export function useChannelConfiguration(props: ChannelConfigurationProps, change?: (key: string, value: unknown, topLevel?: boolean) => void, editField?: (key: string) => void) {
   const { t } = useI18n()
+  const isAliyunVoice = computed(() => props.entry.draft.type === 'voice' && props.entry.draft.provider === 'aliyun')
   const fields = computed(() => {
     const configured = props.entry.definition?.fields ?? channelConfigFields[`${props.entry.draft.type}:${props.entry.draft.provider}`] ?? []
     // Temporarily hide robot signing controls while retaining metadata and saved credentials.
@@ -47,6 +48,7 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
   }
   function label(field: ChannelField): string {
     if (field.key === 'testTemplate') return t('messageNotification.channelTest.fields.testTemplate')
+    if (props.entry.draft.type === 'webhook' && props.entry.draft.provider === 'http' && field.key === 'url') return t('messageNotification.channels.webhook.address')
     if (props.entry.draft.type === 'dingTalk' && props.entry.draft.provider === 'dingTalkRobotWebHook' && field.key === 'secret') return t('messageNotification.channels.robot.secretLabel')
     const known = channelConfigFields[`${props.entry.draft.type}:${props.entry.draft.provider}`]
     const key = `messageNotification.channels.fields.${field.key}`
@@ -54,8 +56,11 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
   }
   function hint(field: ChannelField): string | undefined {
     if (field.key === 'testTemplate') return t('messageNotification.channelTest.settings.hint')
+    if (props.entry.draft.type === 'webhook' && props.entry.draft.provider === 'http' && field.key === 'url') return t('messageNotification.channels.webhook.addressHint')
     if (props.entry.draft.type === 'dingTalk' && props.entry.draft.provider === 'dingTalkRobotWebHook' && field.key === 'secret') return t('messageNotification.channels.robot.secretHint')
     const key = `messageNotification.channels.hints.${props.entry.draft.type}.${field.key}`
+    if (isAliyunVoice.value && ['accessKeyId', 'secret'].includes(field.key)) return t(key)
+    if (isAliyunVoice.value && field.key === 'regionId') return t('NoticeCenter.channel.credential.description.regionId')
     if (props.entry.draft.type === 'weixin' && props.entry.draft.provider === 'corpMessage' && field.key === 'agentId') return t(key)
     return props.entry.draft.type === 'email' && props.entry.draft.provider === 'embedded' && ['host', 'username', 'password', 'sender'].includes(field.key) ? t(key) : field.property?.description
   }
@@ -176,7 +181,15 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
       if (emailOptionsVisible.value && group.key === 'server') mapped.unshift({ key: 'email:preset', label: t('messageNotification.channels.email.preset'),
         value: preset.value, initialValue: emailPresets.find(item => item.host === initial.value.configuration.host)?.id || 'other', editor: 'select',
         options: presetOptions.value, hint: t('messageNotification.channels.email.presetHint'), fullWidth: true, error: fieldError('email:preset') })
-      return { key: group.key, title: t(`messageNotification.channels.groups.${group.key}`), fields: mapped }
+      if (isAliyunVoice.value && group.key === 'credentials') {
+        mapped.unshift({ key: 'voice:provider', label: t('messageNotification.channels.voice.provider'),
+          value: props.entry.draft.provider, initialValue: props.entry.draft.provider, displayValue: t('messageNotification.channels.voice.aliyun'),
+          readonly: true, fullWidth: true, hint: t('messageNotification.channels.hints.voice.provider') })
+        return { key: group.key, title: t('messageNotification.channels.voice.credentials'), fields: mapped }
+      }
+      const titleKey = props.entry.draft.type === 'webhook' && props.entry.draft.provider === 'http' && group.key === 'connection'
+        ? 'messageNotification.channels.webhook.receiver' : `messageNotification.channels.groups.${group.key}`
+      return { key: group.key, title: t(titleKey), fields: mapped }
     })
     return result
   })

@@ -5,10 +5,10 @@ import type { NoticeChannelConfig } from '../../../../../api/notice-center'
 import { buildTemplateDirectory, filterTemplateDirectory, flattenTemplateDirectory } from '../templateDirectoryModel'
 
 interface DirectoryProps {
-  templates: NotificationTemplate[]; businessTypes: NoticeChannelConfig[]; selectedId: string
+  templates: NotificationTemplate[]; businessTypes: NoticeChannelConfig[]; selectedId: string; selectedBusiness?: string
   state: NotificationLoadState; directoryState: NotificationLoadState; disabled?: boolean
 }
-interface DirectoryEvents { (event: 'select', id: string): void; (event: 'reload'): void }
+interface DirectoryEvents { (event: 'select', id: string): void; (event: 'business', id: string): void; (event: 'reload'): void }
 
 export function useTemplateDirectory(props: DirectoryProps, emit: DirectoryEvents) {
   const { t } = useI18n()
@@ -26,8 +26,8 @@ export function useTemplateDirectory(props: DirectoryProps, emit: DirectoryEvent
     .filter(node => node.children?.length && (search.value.trim() || !collapsedKeys.value.includes(node.key)))
     .map(node => node.key))
   const selectedKeys = computed(() => {
-    if (!props.selectedId) return []
-    const matches = allNodes.value.filter(node => node.templateId === props.selectedId)
+    if (!props.selectedId && !props.selectedBusiness) return []
+    const matches = allNodes.value.filter(node => props.selectedBusiness ? node.kind === 'business' && node.businessId === props.selectedBusiness : node.templateId === props.selectedId)
     const node = matches.find(item => item.key === currentNodeKey.value) || matches[0]
     return node ? [node.key] : []
   })
@@ -46,7 +46,10 @@ export function useTemplateDirectory(props: DirectoryProps, emit: DirectoryEvent
   function select(keys: (string | number)[]) {
     // 再次点击当前节点时保留编辑对象，不把树的取消选择传给工作区。
     const node = allNodes.value.find(item => item.key === keys[0])
-    if (!props.disabled && node?.templateId) { currentNodeKey.value = node.key; emit('select', node.templateId) }
+    if (props.disabled || !node) return
+    currentNodeKey.value = node.key
+    if (node.businessId) emit('business', node.businessId)
+    else if (node.templateId) emit('select', node.templateId)
   }
   function reload() { emit('reload') }
 

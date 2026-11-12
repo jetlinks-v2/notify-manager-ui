@@ -136,14 +136,15 @@ test('verified notifier and template backend declarations keep read, save, delet
         update: ['notifier:query', 'notifier:save'],
         delete: ['notifier:delete', 'notifier:query'],
         action: ['notifier:query', 'notifier:send'],
+        bind: ['notifier:query', 'user-third-party-manager:query', 'user-third-party-manager:save', 'user:query'],
       },
     },
     Templates: {
       showPage: ['template'], page: ['notifier:query', 'template:query'],
       buttons: {
         query: ['notifier:query', 'template:query'],
-        add: ['notifier:query', 'template:query', 'template:save'],
-        update: ['notifier:query', 'template:query', 'template:save'],
+        add: ['notifier:query', 'notify-channel:query', 'notify-channel:save', 'template:query', 'template:save'],
+        update: ['notifier:query', 'notify-channel:query', 'notify-channel:save', 'template:query', 'template:save'],
         delete: ['notifier:query', 'template:delete', 'template:query'],
         action: ['notifier:query', 'notifier:send', 'template:query'],
       },
@@ -159,7 +160,7 @@ test('verified notifier and template backend declarations keep read, save, delet
     assert.deepEqual(backendActions(menu.permissions), contract.page)
     assert.deepEqual(Object.fromEntries(menu.buttons.map(button => [button.id, backendActions(button.permissions)])), contract.buttons)
     assert.ok(menu.permissions.every(({ actions }) => actions.every(action => action === 'query')))
-    assert.ok([menu, ...menu.buttons].every(({ permissions }) => permissions.every(({ permission }) => ['notifier', 'template'].includes(permission))))
+    assert.ok([menu, ...menu.buttons].every(({ permissions }) => permissions.every(({ permission }) => ['notifier', 'template', 'notify-channel', 'user', 'user-third-party-manager'].includes(permission))))
   }
   assert.equal(shared.notificationCapabilities.history.query, true)
   assert.deepEqual(calls, [])
@@ -178,7 +179,7 @@ test('selected read, edit and trial menu declarations preserve frontend action I
     ['Templates', ['query'], ['notifier:query', 'template:query']],
     ['Records', ['query'], ['notifier:query']],
     ['Channels', ['query', 'update'], ['notifier:query', 'notifier:save']],
-    ['Templates', ['query', 'update'], ['notifier:query', 'template:query', 'template:save']],
+    ['Templates', ['query', 'update'], ['notifier:query', 'notify-channel:query', 'notify-channel:save', 'template:query', 'template:save']],
     ['Channels', ['query', 'action'], ['notifier:query', 'notifier:send']],
   ]
   for (const [page, actions, backend] of cases) {
@@ -212,7 +213,7 @@ test('the actual Vite route glob finds all new pages and keeps the existing subs
   assert.deepEqual(calls, [])
 })
 
-test('real core module glob and BaseMenuData aggregation retain the system parent and entire existing Notify menu tree', () => {
+test('real core module glob and BaseMenuData aggregation retain the system parent and remove retired Notify menu contributions', () => {
   const menus = definition()
   const system = find('system', assembledMenus)
   const group = find('system/MessageNotification', assembledMenus)
@@ -222,14 +223,10 @@ test('real core module glob and BaseMenuData aggregation retain the system paren
   assert.ok(system.children.includes(group))
   assert.equal(group.owner, 'iot')
   assert.equal(group.children.length, 3)
-  const normalized = ({ children, ...item }) => ({ ...item, ...(children?.length ? { children: children.map(normalized) } : {}) })
-  assert.deepEqual(normalized(find('alarm-center', assembledMenus)), normalized(find('alarm-center', menus)))
-  assert.ok(find('Notify', assembledMenus))
-  for (const code of ['notice/template', 'notice/channel']) {
-    const before = find(code, menus)
-    const after = find(code, assembledMenus)
-    assert.deepEqual(after.permissions, before.permissions)
-    assert.deepEqual(after.assetTypes, before.assetTypes)
+  assert.equal(find('alarm-center', menus), undefined)
+  for (const code of ['Notify', 'notice/template', 'notice/channel']) {
+    assert.equal(find(code, menus), undefined)
+    assert.equal(find(code, assembledMenus), undefined)
   }
   assert.deepEqual(calls, [])
 })

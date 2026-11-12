@@ -25,7 +25,6 @@ export interface ChannelDraftEntry {
   isNew: boolean
   snapshot: string
   issues: ChannelValidationIssue[]
-  failure?: NotificationFailureKind
   definition?: ChannelDefinition
   fieldFailures?: Record<string, NotificationFailureKind>
   refreshFailure?: NotificationFailureKind
@@ -42,6 +41,7 @@ interface ChannelWorkspaceOptions {
   loadConfigs?: (force?: boolean) => Promise<NotifierConfig[]>
   loadDefinition?: (channel: NotificationChannel) => Promise<ChannelDefinition>
   channelName?: (channel: NotificationChannel) => string
+  onMutationError?: (error: unknown) => void
 }
 
 /** Owns provider-scoped queries and in-memory drafts; switching never writes or discards a draft. */
@@ -171,7 +171,6 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
     if (topLevel && (key === 'name' || (key === 'id' && entry.value.isNew))) entry.value.draft[key] = String(value ?? '')
     else if (!topLevel) entry.value.draft.configuration[key] = value
     entry.value.issues = entry.value.issues.filter(issue => issue.path !== key)
-    entry.value.failure = undefined
     if (entry.value.fieldFailures) delete entry.value.fieldFailures[key]
   }
 
@@ -246,7 +245,6 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
     if (current.issues.length) return false
     const version = detailVersion
     busy.value = true
-    current.failure = undefined
     try {
       const payload = channelConfigPayload(current.draft, current.baseline, current.definition)
       const id = payload.id!
@@ -273,7 +271,7 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
       await activate(channelId.value, id, true)
       return true
     } catch (error) {
-      if (version === detailVersion) current.failure = classifyNotificationFailure(error)
+      if (version === detailVersion) options.onMutationError?.(error)
       return false
     } finally { busy.value = false }
   }
@@ -297,7 +295,7 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
       await activate(channelId.value, undefined, true)
       return true
     } catch (error) {
-      if (version === detailVersion) current.failure = classifyNotificationFailure(error)
+      if (version === detailVersion) options.onMutationError?.(error)
       return false
     } finally { busy.value = false }
   }
@@ -307,7 +305,6 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
     if (!entry.value || busy.value || options.blocked?.value) return
     entry.value.draft = JSON.parse(entry.value.snapshot) as NotifierConfigPayload
     entry.value.issues = []
-    entry.value.failure = undefined
   }
 
   /** Permission loss invalidates pending reads and releases all credential-bearing page memory. */

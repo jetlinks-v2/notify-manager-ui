@@ -1,278 +1,5 @@
 [
   {
-    "code": "alarm-center",
-    "name": "告警中心",
-    "i18nMessages": {
-      "name": {
-        "zh_CN": "告警中心",
-        "en_US": "Alerts",
-        "en": "Alerts",
-        "ja": "アラームセンター",
-        "ja_JP": "アラームセンター"
-      }
-    },
-    "owner": "iot",
-    "id": "3c7dca6ea8b5828bbcc023ce905244f7",
-    "sortIndex": 3,
-    "url": "/alarms",
-    "icon": "icon-gaojingzhongxin",
-    "permissions": [],
-    "buttons": [],
-    "showPage": [],
-    "children": [
-      {
-        "code": "Notify",
-        "name": "消息通知",
-        "owner": "iot",
-        "i18nMessages": {
-          "name": {
-            "zh_CN": "消息通知",
-            "en_US": "Notify",
-            "en": "Notify",
-            "ja": "メッセージ通知",
-            "ja_JP": "メッセージ通知"
-          }
-        },
-        "id": "alarms-notify",
-        "url": "/alarms/notify",
-        "icon": "icon-xiaoxitongzhi",
-        "sortIndex": 40,
-        "permissions": [],
-        "buttons": [],
-        "children": [
-          {
-            "code": "notice/template",
-            "name": "消息模板",
-            "owner": "iot",
-            "i18nMessages": {
-              "name": {
-                "zh_CN": "消息模板",
-                "en_US": "Templates",
-                "en": "Templates",
-                "ja": "メッセージテンプレート",
-                "ja_JP": "メッセージテンプレート"
-              }
-            },
-            "id": "notice-template",
-            "url": "/alarms/notify/template",
-            "icon": "icon-yuandian",
-            "sortIndex": 11,
-            "permissions": [
-              {
-                "permission": "notify-channel",
-                "actions": [
-                  "query",
-                  "save"
-                ]
-              }
-            ],
-            "buttons": [
-              {
-                "id": "view",
-                "name": "查看",
-                "i18nMessages": {
-                  "zh_CN": "查看",
-                  "en_US": "View",
-                  "en": "View",
-                  "ja": "表示",
-                  "ja_JP": "表示"
-                },
-                "permissions": [
-                  {
-                    "permission": "notify-channel",
-                    "actions": [
-                      "query",
-                      "save"
-                    ]
-                  },
-                  {
-                    "permission": "notifier",
-                    "actions": [
-                      "query"
-                    ]
-                  },
-                  {
-                    "permission": "template",
-                    "actions": [
-                      "query",
-                      "save"
-                    ]
-                  }
-                ]
-              },
-              {
-                "id": "update",
-                "name": "编辑",
-                "i18nMessages": {
-                  "zh_CN": "编辑",
-                  "en_US": "Edit",
-                  "en": "Edit",
-                  "ja": "編集",
-                  "ja_JP": "編集"
-                },
-                "permissions": [
-                  {
-                    "permission": "notify-channel",
-                    "actions": [
-                      "query",
-                      "save"
-                    ]
-                  },
-                  {
-                    "permission": "notifier",
-                    "actions": [
-                      "query"
-                    ]
-                  },
-                  {
-                    "permission": "template",
-                    "actions": [
-                      "query",
-                      "save"
-                    ]
-                  }
-                ]
-              }
-            ],
-            "showPage": [
-              "template",
-              "notifier"
-            ],
-            "accessSupport": {
-              "text": "支持",
-              "value": "support"
-            },
-            "assetType": "notifySubscriberProvider",
-            "assetTypes":[
-              "notifyConfig",
-              "notifySubscriberProvider"
-            ],
-            "supportDataAccess": true
-          },
-          {
-            "code": "notice/channel",
-            "name": "通知渠道",
-            "owner": "iot",
-            "i18nMessages": {
-              "name": {
-                "zh_CN": "通知渠道",
-                "en_US": "Delivery",
-                "en": "Delivery",
-                "ja": "通知チャネル",
-                "ja_JP": "通知チャネル"
-              }
-            },
-            "id": "notice-channel",
-            "url": "/alarms/notify/delivery",
-            "icon": "icon-yuandian",
-            "sortIndex": 12,
-            "permissions": [
-              {
-                "permission": "notify-channel",
-                "actions": [
-                  "save"
-                ]
-              },
-              {
-                "permission": "notifier",
-                "actions": [
-                  "query",
-                  "save",
-                  "send"
-                ]
-              }
-            ],
-            "buttons": [
-              {
-                "id": "view",
-                "name": "查看",
-                "i18nMessages": {
-                  "zh_CN": "查看",
-                  "en_US": "View",
-                  "en": "View",
-                  "ja": "表示",
-                  "ja_JP": "表示"
-                },
-                "permissions": [
-                  {
-                    "permission": "notify-channel",
-                    "actions": [
-                      "save"
-                    ]
-                  },
-                  {
-                    "permission": "notifier",
-                    "actions": [
-                      "query"
-                    ]
-                  }
-                ]
-              },
-              {
-                "id": "update",
-                "name": "编辑",
-                "i18nMessages": {
-                  "zh_CN": "编辑",
-                  "en_US": "Edit",
-                  "en": "Edit",
-                  "ja": "編集",
-                  "ja_JP": "編集"
-                },
-                "permissions": [
-                  {
-                    "permission": "notify-channel",
-                    "actions": [
-                      "save"
-                    ]
-                  },
-                  {
-                    "permission": "notifier",
-                    "actions": [
-                      "query",
-                      "save"
-                    ]
-                  }
-                ]
-              },
-              {
-                "id": "test",
-                "name": "测试",
-                "i18nMessages": {
-                  "zh_CN": "测试",
-                  "en_US": "Test",
-                  "en": "Test",
-                  "ja": "テスト",
-                  "ja_JP": "テスト"
-                },
-                "permissions": [
-                  {
-                    "permission": "notifier",
-                    "actions": [
-                      "send"
-                    ]
-                  }
-                ]
-              }
-            ],
-            "accessSupport": {
-              "text": "支持",
-              "value": "support"
-            },
-            "showPage": [
-              "notifier"
-            ],
-            "assetType": "notifySubscriberProvider",
-            "assetTypes":[
-              "notifyConfig",
-              "notifySubscriberProvider"
-            ],
-            "supportDataAccess": true
-          }
-        ]
-      }
-    ]
-  },
-  {
     "code": "system",
     "owner": "iot",
     "children": [
@@ -391,14 +118,14 @@
               },
               {
                 "id": "delete",
-                "name": "删除",
+                "name": "清除配置",
                 "i18nMessages": {
-                  "zh_CN": "删除",
-                  "zh": "删除",
-                  "en_US": "Delete",
-                  "en": "Delete",
-                  "ja_JP": "削除",
-                  "ja": "削除"
+                  "zh_CN": "清除配置",
+                  "zh": "清除配置",
+                  "en_US": "Clear configuration",
+                  "en": "Clear configuration",
+                  "ja_JP": "設定をクリア",
+                  "ja": "設定をクリア"
                 },
                 "permissions": [
                   {
@@ -427,6 +154,39 @@
                     "actions": [
                       "query",
                       "send"
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "bind",
+                "name": "同步用户",
+                "i18nMessages": {
+                  "zh_CN": "同步用户",
+                  "zh": "同步用户",
+                  "en_US": "Sync users",
+                  "en": "Sync users",
+                  "ja_JP": "ユーザー同期",
+                  "ja": "ユーザー同期"
+                },
+                "permissions": [
+                  {
+                    "permission": "notifier",
+                    "actions": [
+                      "query"
+                    ]
+                  },
+                  {
+                    "permission": "user",
+                    "actions": [
+                      "query"
+                    ]
+                  },
+                  {
+                    "permission": "user-third-party-manager",
+                    "actions": [
+                      "query",
+                      "save"
                     ]
                   }
                 ]
@@ -524,6 +284,13 @@
                     "actions": [
                       "query"
                     ]
+                  },
+                  {
+                    "permission": "notify-channel",
+                    "actions": [
+                      "query",
+                      "save"
+                    ]
                   }
                 ]
               },
@@ -550,6 +317,13 @@
                     "permission": "notifier",
                     "actions": [
                       "query"
+                    ]
+                  },
+                  {
+                    "permission": "notify-channel",
+                    "actions": [
+                      "query",
+                      "save"
                     ]
                   }
                 ]

@@ -1,10 +1,13 @@
 <template>
   <a-form layout="vertical" :model="draft" :disabled="disabled" class="template-editor">
+    <a-form-item v-if="emailDraft && !existing" :label="t('messageNotification.emailTest.template')">
+      <a-select :value="draft.builtinKey" :options="builtinOptions" @change="selectBuiltin(String($event))" />
+    </a-form-item>
     <a-form-item :label="t('messageNotification.templates.name')" required>
       <a-input v-model:value="draft.name" :maxlength="128" />
     </a-form-item>
     <a-form-item :label="t('messageNotification.templates.templateId')">
-      <a-input v-model:value="draft.id" :disabled="existing || disabled" :placeholder="t('messageNotification.templates.idHint')" />
+      <a-input v-model:value="draft.id" :disabled="managed || existing || disabled" :placeholder="t('messageNotification.templates.idHint')" />
     </a-form-item>
     <a-form-item :label="t('messageNotification.templates.configuration')">
       <a-select v-model:value="draft.configId" :options="configOptions" allow-clear :placeholder="t('messageNotification.templates.configPlaceholder')" @clear="clearConfiguration" />
@@ -32,6 +35,7 @@
         <AttachmentEditor v-model:attachments="draft.attachments" :disabled="disabled" @uploading="setUploading" />
       </a-form-item>
     </template>
+    <ProviderTemplateFields v-else-if="managed" :draft="draft" :disabled="disabled" />
     <a-form-item v-else :label="t('messageNotification.templates.providerContent')" required>
       <div class="template-editor__hint">{{ t('messageNotification.templates.jsonHint') }}</div>
       <a-textarea v-model:value="draft.templateJson" :rows="14" @focus="captureCaret($event, 'templateJson')" @click="captureCaret($event, 'templateJson')" @keyup="captureCaret($event, 'templateJson')" />
@@ -54,9 +58,11 @@ import type { TemplateDraft } from '../model'
 import { useTemplateEditor } from '../hooks/useTemplateEditor'
 import AttachmentEditor from './AttachmentEditor.vue'
 import VariableDefinitions from './VariableDefinitions.vue'
+import ProviderTemplateFields from './ProviderTemplateFields.vue'
 
 const props = defineProps({
   draft: { type: Object as PropType<TemplateDraft>, required: true },
+  managed: { type: Boolean, default: false },
   existing: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false },
   configs: { type: Array as PropType<NotifierConfig[]>, default: () => [] },
@@ -64,7 +70,7 @@ const props = defineProps({
 })
 const emit = defineEmits<{ (event: 'uploading', value: boolean): void }>()
 const {
-  t, emailDraft, insertableVariables, configFailure, configOptions, clearConfiguration,
+  t, emailDraft, builtinOptions, selectBuiltin, insertableVariables, configFailure, configOptions, clearConfiguration,
   setUploading, captureCaret, insertVariable,
 } = useTemplateEditor(props, emit)
 </script>

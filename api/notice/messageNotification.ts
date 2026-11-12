@@ -16,12 +16,12 @@ import type {
 import { classifyNotificationFailure, normalizeNotificationPage, NotificationRequestError } from './messageNotificationState'
 import { readHistoryCounts } from './notificationHistoryCounts'
 import { httpWebhookConfigMetadata, normalizeNotificationConfigMetadata } from './notificationConfigMetadata'
-import type { NoticeChannelConfig } from '../notice-center'
+import { queryNoticeChannelTemplate_api, saveNoticeChannelTemplate_api, type NoticeChannelConfig, type NoticeChannelTemplateItem } from '../notice-center'
 
 export interface CurrentNotificationBinding { type: string; provider: string; providerName?: string; thirdPartyUserId: string }
 
 /** Preserve platform request behavior, but require success before a page updates its saved baseline. */
-async function checked<T>(operation: Promise<AxiosResponseRewrite<T>>): Promise<T> {
+export async function checked<T>(operation: Promise<AxiosResponseRewrite<T>>): Promise<T> {
   try {
     const response = await operation
     if (!response.success) throw new NotificationRequestError(classifyNotificationFailure(response), response)
@@ -56,6 +56,15 @@ function directory(value: unknown): NotificationProvider[] {
 
 /** Typed notification facade using the platform request context and checked responses. */
 export const messageNotificationApi = {
+  getBusinessTemplate(providerId: string, channelProvider: string): Promise<NoticeChannelTemplateItem | undefined> {
+    return checked(queryNoticeChannelTemplate_api(providerId, channelProvider))
+  },
+  saveBusinessTemplate(providerId: string, channelProvider: string, payload: NoticeChannelTemplateItem): Promise<NoticeChannelTemplateItem> {
+    return checked(saveNoticeChannelTemplate_api(providerId, channelProvider, payload))
+  },
+  setBusinessEnabled(providerId: string, enabled: boolean): Promise<unknown> {
+    return checked(request.post(`/notify/channel/${idSegment(providerId)}/${enabled ? 'enable' : 'disable'}`))
+  },
   /** Existing business directory supplies grouping and exact template bindings, never name matching. */
   async queryTemplateDirectory(): Promise<NoticeChannelConfig[]> {
     const result = await checked<NoticeChannelConfig[]>(request.get('/notify/channel/all-for-save'))
@@ -107,19 +116,23 @@ export const messageNotificationApi = {
     return checked<NotifierConfig>(request.get(`/notifier/config/${idSegment(id)}`))
   },
   createConfig(payload: NotifierConfigPayload): Promise<unknown> {
-    return checked<unknown>(request.post('/notifier/config', payload))
+    return checked<unknown>(request.post('/notifier/config', payload, { hiddenError: true }))
   },
   updateConfig(payload: NotifierConfigPayload & { id: string }): Promise<unknown> {
-    return checked<unknown>(request.patch('/notifier/config', payload))
+    return checked<unknown>(request.patch('/notifier/config', payload, { hiddenError: true }))
   },
   deleteConfig(id: string): Promise<unknown> {
-    return checked<unknown>(request.remove(`/notifier/config/${idSegment(id)}`))
+    return checked<unknown>(request.remove(`/notifier/config/${idSegment(id)}`, undefined, { hiddenError: true }))
   },
   async queryTemplates(query: NotificationQuery): Promise<NotificationPage<NotificationTemplate>> {
     return normalizeNotificationPage(await checked<NotificationPage<NotificationTemplate> | NotificationTemplate[]>(request.post('/notifier/template/_query', query)))
   },
   getTemplate(id: string): Promise<NotificationTemplate> {
     return checked<NotificationTemplate>(request.get(`/notifier/template/${idSegment(id)}`))
+  },
+  /** Trial sends need the provider's embedded variables in addition to stored template fields. */
+  getSendTemplate(id: string): Promise<NotificationTemplate> {
+    return checked<NotificationTemplate>(request.get(`/notifier/template/${idSegment(id)}/detail`))
   },
   createTemplate(payload: NotificationTemplatePayload): Promise<unknown> {
     return checked<unknown>(request.post('/notifier/template', payload))

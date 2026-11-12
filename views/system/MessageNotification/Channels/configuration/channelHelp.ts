@@ -11,7 +11,7 @@ const guides: Record<string, { kind: string; steps: number; questions: number }>
   'email:embedded': { kind: 'email', steps: 3, questions: 2 },
   'dingTalk:dingTalkMessage': { kind: 'dingTalk', steps: 3, questions: 1 },
   'dingTalk:dingTalkRobotWebHook': { kind: 'robot', steps: 2, questions: 1 },
-  'weixin:corpMessage': { kind: 'weixin', steps: 3, questions: 1 },
+  'weixin:corpMessage': { kind: 'weixin', steps: 4, questions: 2 },
   'weixin:officialMessage': { kind: 'official', steps: 3, questions: 0 },
   'sms:aliyunSms': { kind: 'sms', steps: 3, questions: 1 },
   'voice:aliyun': { kind: 'voice', steps: 3, questions: 1 },

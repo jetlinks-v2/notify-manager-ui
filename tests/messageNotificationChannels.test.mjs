@@ -29,8 +29,8 @@ const dependencies = {
   '@vueuse/core': { useWindowSize: () => ({ width: pageContext.width }) },
   '@jetlinks-web/utils': { onlyMessage: (...args) => pageContext.messages.push(args), randomString: length => randomBytes(length).toString('hex').slice(0, length) },
   '@jetlinks-web-core/store/auth': { useAuthStore: () => ({ hasPermission: code => pageContext.permissions.get(code)?.value ?? false }) },
-  '@jetlinks-web-core/store/system': { useSystemStore: () => ({ layout: { title: 'Test platform' } }) },
   '@jetlinks-web-core/store/menu': { useMenuStore: () => ({ jumpPage: (...args) => pageContext.jumps.push(args) }) },
+  '@jetlinks-web-core/store/system': { useSystemStore: () => ({ layout: { title: 'Test platform' } }) },
 }
 const cache = new Map()
 
@@ -87,6 +87,7 @@ function testApi(initial = [email()]) {
     async deleteConfig(id) { calls.push(['deleteConfig', id]); records.delete(id) },
     async queryTemplates(query) { calls.push(['queryTemplates', clone(query)]); return { data: [] } },
     async getTemplate(id) { calls.push(['getTemplate', id]); return undefined },
+    async getSendTemplate(id) { calls.push(['getSendTemplate', id]); return undefined },
     async createTemplate() {}, async updateTemplate() {}, async deleteTemplate() {},
     async send(...args) { calls.push(['send', ...clone(args)]) },
   }
@@ -203,7 +204,8 @@ test('late detail responses cannot expose another provider after navigation', as
 
 test('failed saves preserve every input; a later success retains the known secret and extension fields', async () => {
   const io = testApi()
-  const workspace = useChannelWorkspace({ api: io.api, permissions: permissions() })
+  const errors = []
+  const workspace = useChannelWorkspace({ api: io.api, permissions: permissions(), onMutationError: error => errors.push(error) })
   await workspace.activate('email:embedded')
   workspace.changeField('host', 'smtp.updated.example.org')
   workspace.changeField('password', 'typed-secret')
@@ -213,7 +215,7 @@ test('failed saves preserve every input; a later success retains the known secre
   assert.equal(workspace.entry.value.draft.configuration.password, 'typed-secret')
   assert.equal(workspace.entry.value.draft.configuration.host, 'smtp.updated.example.org')
   assert.equal(workspace.dirty.value, true)
-  assert.equal(workspace.entry.value.failure, 'error')
+  assert.equal(errors[0].message, 'offline')
   io.api.updateConfig = update
   assert.equal(await workspace.save(), true)
   assert.equal(workspace.dirty.value, false)
@@ -318,6 +320,7 @@ test('SMTP fields and confidential HTTP header rows follow actual schema and saf
   assert.deepEqual(channelConfigPayload(draft, record).configuration.headers, [])
 })
 
+const template = () => ({ id: 'template-real', name: 'Actual template', type: 'email', provider: 'embedded', template: { subject: 'Hello', text: 'Body', sendTo: [], attachments: [{ name: 'Log', location: '' }] }, variableDefinitions: [{ id: 'code', required: true, type: 'string' }] })
 
 
 
@@ -394,13 +397,15 @@ test('actual leave hook keeps navigation pending, supports stay/leave and cleans
 
 test('extracted page orchestration preserves route filters, send-only trial permission and failed save recovery', async () => {
   const io = testApi([email(), email('smtp-backup')])
+  const queryAllConfigs = io.api.queryAllConfigs
+  io.api.queryAllConfigs = async () => { throw new Error('offline') }
   const originalWindow = globalThis.window
   globalThis.window = { addEventListener() {}, removeEventListener() {} }
   const request = dependencies['@jetlinks-web/core'].request
   const permissionRefs = new Map(Object.values(notificationPermissions).flatMap(actions => Object.values(actions).map(code => [code, vue.ref(true)])))
   permissionRefs.get(notificationPermissions.templates.query).value = false
   pageContext = {
-    route: vue.reactive({ query: { channel: 'email:embedded', q: 'kept-filter' } }),
+    route: vue.reactive({ query: { configId: 'smtp-real', q: 'kept-filter' } }),
     permissions: permissionRefs, width: vue.ref(1100), messages: [], jumps: [],
   }
   pageContext.router = { replace: ({ query }) => { pageContext.route.query = query } }
@@ -421,8 +426,17 @@ test('extracted page orchestration preserves route filters, send-only trial perm
   const app = mount(vue.defineComponent({ setup() { page = useChannelsPage(); return () => null } }))
   try {
     for (let index = 0; index < 24; index += 1) { await Promise.resolve(); await vue.nextTick() }
+    assert.equal(page.state.value, 'error')
+    assert.equal(page.configurationVisible.value, false)
+    assert.equal(io.calls.some(([method]) => method === 'getConfig'), false)
+    io.api.queryAllConfigs = queryAllConfigs
+    await page.refresh()
+    for (let index = 0; index < 24; index += 1) { await Promise.resolve(); await vue.nextTick() }
     assert.equal(page.entry.value.baseline.id, 'smtp-real')
     assert.equal(page.configurationVisible.value, true)
+    assert.equal(page.helpOpen.value, true, 'saved channels show guidance by default')
+    page.toggleHelp(false)
+    assert.equal(page.helpOpen.value, false)
     assert.equal(page.configurationOptions.value.length, 2)
     assert.equal(page.multipleConfigurations.value, false)
     assert.equal(pageContext.route.query.configId, 'smtp-real')
@@ -430,8 +444,22 @@ test('extracted page orchestration preserves route filters, send-only trial perm
     assert.equal(io.calls.filter(([method]) => method === 'getConfig').length, 1)
     assert.equal(page.canTrial.value, true)
     page.showSend()
-    page.trial.close(true)
+    assert.equal(page.trial.open.value, true)
+    permissionRefs.get(notificationPermissions.channels.action).value = false
+    await vue.nextTick()
+    assert.equal(page.trial.open.value, false, 'permission revocation closes a trial immediately')
+    permissionRefs.get(notificationPermissions.channels.action).value = true
+    await vue.nextTick()
+    page.showSend()
     assert.equal(io.calls.some(([method]) => method === 'queryTemplates'), false)
+    const openedFields = []
+    page.configurationPanel.value = { editField: key => openedFields.push(key) }
+    page.fixTestConfiguration()
+    assert.equal(page.trial.open.value, false)
+    assert.deepEqual(openedFields, [], 'field waits for modal focus restoration')
+    await page.afterTestClosed()
+    assert.deepEqual(openedFields, ['config:host'])
+    page.toggleHelp(false)
     page.workspace.changeField('password', 'replacement-secret')
     page.workspace.changeField('host', 'smtp.updated.example.org')
     const update = io.api.updateConfig
@@ -439,19 +467,37 @@ test('extracted page orchestration preserves route filters, send-only trial perm
     await page.save()
     assert.equal(page.entry.value.draft.configuration.password, 'replacement-secret')
     assert.equal(page.dirty.value, true)
-    assert.equal(pageContext.messages.length, 0)
+    assert.deepEqual(pageContext.messages, [['messageNotification.state.error', 'error']])
     io.api.updateConfig = update
     await page.save()
     assert.equal(page.entry.value.draft.configuration.password, '')
-    assert.equal(pageContext.messages.length, 1)
+    assert.equal(pageContext.messages.length, 2)
     permissionRefs.get(notificationPermissions.templates.query).value = true
     assert.equal(page.canTrial.value, true)
+    assert.equal(page.goTemplates, undefined)
+    assert.deepEqual(pageContext.jumps, [])
     assert.equal(io.calls.some(([method]) => method === 'send'), false)
+    const serverMessage = '当前通知配置已绑定模板，不可删除'
+    request.remove = async () => { throw { response: { status: 400, data: { status: 400, code: 'error.data.referenced', message: serverMessage } } } }
+    page.requestRemove()
+    assert.equal(page.deleteOpen.value, true)
+    await page.remove()
+    assert.equal(page.deleteOpen.value, false)
+    assert.equal(page.entry.value.baseline.id, 'smtp-real')
+    assert.deepEqual(pageContext.messages.at(-1), [serverMessage, 'error'])
+    assert.equal(pageContext.messages.length, 3)
+    pageContext.route.query = { configId: 'not-visible' }
+    for (let index = 0; index < 24; index++) { await Promise.resolve(); await vue.nextTick() }
+    assert.equal(page.state.value, 'unavailable')
+    assert.equal(page.entry.value, undefined)
     page.selectChannel([], { node: { key: 'dingTalk:dingTalkMessage' } })
     for (let index = 0; index < 24; index++) { await Promise.resolve(); await vue.nextTick() }
     assert.equal(page.channelId.value, 'dingTalk:dingTalkMessage')
     assert.equal(pageContext.route.query.channel, 'dingTalk:dingTalkMessage')
     assert.equal(page.entry.value.isNew, true)
+    assert.equal(page.helpOpen.value, true, 'new channels show guidance by default')
+    await page.workspace.activate('email:embedded', 'smtp-real')
+    assert.equal(page.helpOpen.value, false, 'manual collapse is remembered per channel')
     for (const [channelId, fields] of [['sms:aliyunSms', ['regionId', 'accessKeyId', 'secret', 'testTemplate']], ['webhook:http', ['url', 'headers']]]) {
       await page.workspace.activate(channelId)
       assert.equal(page.state.value, 'empty')
@@ -585,7 +631,7 @@ test('metadata preserves unknown fields, false/zero defaults, constraints and se
   assert.throws(() => channelConfigPayload(editable, baseline, definition))
 })
 
-test('backend extensions remain visible alongside supported channel settings', () => {
+test('backend additions remain visible alongside explicit channel test settings', () => {
   const known = notificationChannels.find(item => item.id === 'dingTalk:dingTalkMessage')
   const metadata = clone(channelMetadata[known.id])
   metadata.properties.push({ id: 'newSetting', name: '服务商新增字段', valueType: { type: 'string', expands: { required: true } } })
@@ -901,6 +947,42 @@ test('only robots allow a second configuration and keep automatic duplicate-name
   assert.equal(workspace.selectedConfigId.value, 'robot-real')
   assert.equal(io.calls.filter(([method]) => method === 'createConfig').length, 1)
 })
+
+const { builtinEmailTemplates, builtinEmailContext } = load(resolve(root, '../shared/builtinEmailTemplates.ts'))
+const { previewTemplateText, createTemplateDraft, buildTemplatePayload } = load(resolve(root, '../Templates/model.ts'))
+const { useTemplateEditor } = load(resolve(root, '../Templates/hooks/useTemplateEditor.ts'))
+const translateBuiltin = (key, args) => args ? `${key}:${JSON.stringify(args)}` : key
+const flushEmail = async () => { for (let i = 0; i < 6; i++) await Promise.resolve() }
+const emailContext = () => ({ configId: 'smtp-real', permitted: () => true, clean: () => true })
+function emailApi() {
+  const calls = []
+  return { calls, getCurrentEmail: async () => 'me@example.test', sendInline: async (...args) => { calls.push(clone(args)) } }
+}
+
+
+test('template editor consumes the same built-in definitions without persisting samples or changing recipients', () => {
+  const definition = builtinEmailTemplates(translateBuiltin).find(item => item.key === 'scene')
+  const draft = vue.reactive(createTemplateDraft({ id: '', name: '', type: 'email', provider: 'embedded', configId: 'smtp-real', template: { sendTo: ['business@example.test'] } }))
+  const props = { draft, configs: [], configState: 'ready', existing: false }
+  const scope = vue.effectScope()
+  const editor = scope.run(() => useTemplateEditor(props, () => {}))
+  editor.selectBuiltin('scene')
+  const payload = buildTemplatePayload(draft)
+  assert.equal(draft.builtinKey, 'scene')
+  assert.equal(payload.template.subject, definition.payload.template.subject)
+  assert.equal(payload.template.text, definition.payload.template.text)
+  assert.deepEqual(payload.template.sendTo, ['business@example.test'])
+  assert.equal(payload.configId, 'smtp-real')
+  assert.equal(payload.context, undefined)
+  assert.equal(payload.builtinKey, undefined)
+  assert.equal(payload.variableDefinitions.some(item => item.defaultValue !== undefined), false)
+  props.existing = true
+  editor.selectBuiltin('alarm-device')
+  assert.equal(draft.builtinKey, 'scene')
+  scope.stop()
+})
+
+
 
 const robotChannelId = 'dingTalk:dingTalkRobotWebHook'
 const robotWithSecret = (id, secret) => ({ ...robot(id), configuration: { ...robot(id).configuration, secret, extension: 'keep' } })

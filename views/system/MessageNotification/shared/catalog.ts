@@ -34,7 +34,7 @@ export const notificationCapabilities = {
   config: { query: true, create: true, update: true, delete: true, send: true },
   template: { query: true, create: true, update: true, delete: true, send: true },
   history: { query: true, count: true, retry: false, export: true },
-  memberBinding: false,
+  memberBinding: true,
   internalInboxTemplate: false,
 } as const
 
@@ -46,6 +46,7 @@ export const notificationPermissions = {
     update: 'system/MessageNotification/Channels:update',
     delete: 'system/MessageNotification/Channels:delete',
     action: 'system/MessageNotification/Channels:action',
+    bind: 'system/MessageNotification/Channels:bind',
   },
   templates: {
     query: 'system/MessageNotification/Templates:query',
