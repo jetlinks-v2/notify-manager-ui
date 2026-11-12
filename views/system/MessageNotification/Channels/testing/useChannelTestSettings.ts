@@ -8,16 +8,14 @@ export function useChannelTestSettings(props: { channelId: string; value?: unkno
   const settings = computed(() => readTestSettings(props.value))
   const fields = computed(() => testSettingFields(props.channelId))
   const rows = computed(() => Array.isArray(settings.value.parameters) ? settings.value.parameters.filter(row => row && typeof row.name === 'string' && typeof row.value === 'string') : [])
-  const voiceOptions = computed(() => ['tts', 'voice'].map(value => ({ value, label: t(`messageNotification.channelTest.settings.${value}`) })))
   function update(key: string, value: unknown) {
     if (props.disabled) return
-    change({ ...(props.channelId === 'voice:aliyun' ? { templateType: 'tts' as const } : {}), ...settings.value, [key]: value })
+    change({ ...settings.value, [key]: value })
   }
   function updateParameter(index: number, key: 'name' | 'value', value: string) {
     update('parameters', rows.value.map((row, position) => position === index ? { ...row, [key]: value } : row))
   }
   function addParameter() { update('parameters', [...rows.value, { name: '', value: '' }]) }
   function removeParameter(index: number) { update('parameters', rows.value.filter((_row, position) => position !== index)) }
-  const popupContainer = (trigger: HTMLElement) => trigger.parentElement || trigger
-  return { t, settings, fields, rows, voiceOptions, update, updateParameter, addParameter, removeParameter, popupContainer }
+  return { t, settings, fields, rows, update, updateParameter, addParameter, removeParameter }
 }

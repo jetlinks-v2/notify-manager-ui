@@ -36,13 +36,6 @@ export const channelTestAdapters: Readonly<Record<string, ChannelTestAdapter>> =
     recipient: 'phone', providerTemplate: true, missing: config => testSettingsIssues('sms:aliyunSms', config.testTemplate, true),
     build: input => { const settings = readTestSettings(input.config.configuration.testTemplate); return vendorPayload(input, { signName: testText(settings.signName), code: testText(settings.code), phoneNumber: input.recipient }) },
   },
-  'voice:aliyun': {
-    recipient: 'phone', providerTemplate: true, missing: config => testSettingsIssues('voice:aliyun', config.testTemplate, true),
-    build: input => { const settings = readTestSettings(input.config.configuration.testTemplate); return vendorPayload(input, {
-      templateType: settings.templateType, templateCode: testText(settings.templateCode), ttsCode: testText(settings.templateCode),
-      calledShowNumbers: testText(settings.calledShowNumbers), calledNumber: input.recipient, playTimes: 1,
-    }) },
-  },
 }
 
 export const configChannelId = (config: NotifierConfig) => `${notificationEnumValue(config.type)}:${notificationEnumValue(config.provider)}`

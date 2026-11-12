@@ -686,7 +686,7 @@
   "messageNotification.channels.hints.voice.provider": "音声通知サービスを有効にしたプロバイダー",
   "messageNotification.channels.hints.voice.accessKeyId": "プロバイダーの管理画面 › AccessKey 管理。音声サービスの権限のみを持つサブアカウントを推奨します",
   "messageNotification.channels.hints.voice.secret": "AccessKey ID と同時に作成します",
-  "messageNotification.channels.guidance.voice.description": "音声プロバイダーから通知電話を発信します。業務通知はメッセージテンプレートを、テストはこのページで保存した設定を使用します。",
+  "messageNotification.channels.guidance.voice.description": "音声プロバイダーから通知電話を発信します。業務通知はメッセージテンプレートを使用します。",
   "messageNotification.channels.guidance.voice.steps.0.title": "音声サービスを有効にする",
   "messageNotification.channels.guidance.voice.steps.0.description": "選択したプロバイダーで音声通知を有効にし、API 権限を確認します。",
   "messageNotification.channels.guidance.voice.steps.1.title": "アクセス認証情報を入力する",

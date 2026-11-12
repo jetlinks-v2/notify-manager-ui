@@ -43,13 +43,17 @@
 
 ## 通知渠道统一试发
 
-阿里云语音页调整（S）：移除 `voice:aliyun` 的渠道测试分组、测试模板 / 样例参数和顶部试发入口；在 `Channels/testing/channelTestConfig.ts`、`channelTestAdapter.ts` 取消能力注册，并清理语音专用测试编辑逻辑。沿用当前配置表单，保留地域、AccessKey 凭据、历史保存值及业务消息模板；不调整后端接口或其他渠道。验证现有渠道 / 试发回归、模块构建与类型检查，并通过隔离页面核对入口消失和历史配置保留，结果待回填。
+阿里云语音页不提供渠道测试分组、测试模板 / 样例参数或顶部试发入口。`Channels/testing/channelTestConfig.ts`、`channelTestAdapter.ts` 不注册 `voice:aliyun` 测试能力，`ChannelTestSettings.vue` 与 `useChannelTestSettings.ts` 已清理语音专用编辑逻辑；`locales/lang/{zh,en,ja}.json` 同步移除简介中的试发说明。沿用当前配置表单，保留地域、AccessKey 凭据、历史保存值及业务消息模板；后端接口与其他渠道行为不变。
 
-统一入口为 `Channels/testing/ChannelTestModal.vue` 与 `useChannelTest.ts`。邮件、钉钉工作通知 / 群机器人、企业微信、阿里云短信 / 语音、Webhook 共用「发一条测试 · 渠道名称」弹窗、发送锁定、失败重试及结果反馈。渠道更多菜单仅保留清除配置，独立模板页面及其内置邮件内容继续保留。
+语音入口移除验证（2026-11-12）：模块内运行 `node --test tests/messageNotificationChannels.test.mjs tests/messageNotificationTrial.test.mjs`，57/57 通过；定向样式门禁和 `git diff --check` 通过，工作区无独立 lint 脚本。从 `jetlinks-web-core/` 执行 `node --max_old_space_size=16384 ../node_modules/vite/bin/vite.js build --outDir /tmp/notification-voice-remove-final-build -- --module-name notify-manager-ui`，构建通过（29.74 秒，保留既有构建告警）。在 `runtime-ui/` 执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，修改前后均为 213 项既有诊断，无新增或移除；修复既有问题后需重跑。构建后仅删除三语简介中的试发提示，JSON 解析与实际 i18n 加载检查通过。
+
+浏览器使用隔离内存夹具：模块内执行 `SMOKE_PLAYWRIGHT_MODULE="$PWD/../../../ui/node_modules/playwright" node tests/messageNotificationBrowser/trials.mjs`，完整回归通过，覆盖六类支持渠道、语音和服务号隐藏入口、历史值保留、短信参数保存、三语及 390px 窄屏。简介调整后以 `TRIAL_SETTINGS_ONLY=1` 复验相关页面通过，页面错误与业务网络请求均为空；日志前缀 `/tmp/notification-voice-remove-final-`，最终截图与报告位于 `/tmp/notification-voice-remove-copy-browser/`。未修改真实配置或发送通知，真实后端投递不在本次验证范围。
+
+统一入口为 `Channels/testing/ChannelTestModal.vue` 与 `useChannelTest.ts`。邮件、钉钉工作通知 / 群机器人、企业微信、阿里云短信、Webhook 共用「发一条测试 · 渠道名称」弹窗、发送锁定、失败重试及结果反馈。渠道更多菜单仅保留清除配置，独立模板页面及其内置邮件内容继续保留。
 
 - 默认发给自己，可选择其他单个接收人；校验邮箱、手机或渠道成员 ID / OpenID，禁止列表和广播目标。本人邮箱沿用主邮箱身份、首个邮箱身份、资料邮箱的优先级；手机读取账号资料；第三方绑定必须同时匹配 `type_provider` 与当前通知器 ID。加载失败支持重试，与确实未绑定分开显示。群机器人 / Webhook 直接使用当前配置的群 / 地址。
-- 邮件、钉钉、企业微信、机器人和 Webhook 使用固定测试消息，系统名称读取 `useSystemStore().layout.title`。短信、语音只读渠道中保存的服务商测试模板和样例参数，提示实际内容以服务商模板为准。
-- `channelTestAdapter.ts` 集中管理七类提供商的配置条件、接收人规则及内联参数。发送仅调用 `POST /notifier/{configId}/_send`，参数为 `{ template, context }`，不查询或写入业务模板；Webhook 页面的业务模板导航保持独立。微信服务号及未支持的提供商不显示渠道试发入口。
+- 邮件、钉钉、企业微信、机器人和 Webhook 使用固定测试消息，系统名称读取 `useSystemStore().layout.title`。短信只读渠道中保存的服务商测试模板和样例参数，提示实际内容以服务商模板为准。
+- `channelTestAdapter.ts` 集中管理六类提供商的配置条件、接收人规则及内联参数。发送仅调用 `POST /notifier/{configId}/_send`，参数为 `{ template, context }`，不查询或写入业务模板；Webhook 页面的业务模板导航保持独立。阿里云语音、微信服务号及未支持的提供商不显示渠道试发入口。
 - 只允许已保存、无未保存修改且具有渠道查询 / 发送权限的配置试发。弹窗使用保存值的快照；发送期间锁定重复操作，失败保留输入。关闭、配置切换、保存值刷新、权限变化或组件卸载后忽略过期响应。缺配置时引导到对应编辑字段，等待弹窗关闭及焦点恢复后再打开编辑器。成功仅表示「已提交，请检查接收端」。
 
 新增设置通过现有渠道保存接口持久化；`ChannelTestSettings.vue` 以具名字段和参数键值行编辑，试发弹窗不编辑配置、不选择业务模板、不输入 JSON。
@@ -58,7 +62,6 @@
 | --- | --- |
 | 钉钉工作通知 / 企业微信 | `configuration.agentId`；企微复用已有字段，钉钉补充同名字段，试发显式传入内联模板 |
 | 阿里云短信 | `configuration.testTemplate`：`signName`、`code`、`parameters` |
-| 阿里云语音 | `configuration.testTemplate`：`templateType`（`tts` / `voice`）、`templateCode`、可选 `calledShowNumbers`、`parameters` |
 
 `parameters` 为 `{ name, value }[]`；无变量时可省略或为空数组，有变量时名称唯一、值非空，禁止覆盖接收人或路由字段。旧配置可以缺少这些设置，仍可读取和编辑；缺少试发条件时禁用发送并列出缺项。测试设置不改变业务模板规则或历史模板数据，无后端接口 / 数据库变更。仅修改 `runtime-ui/modules/notify-manager-ui`，保留工作区既有变更，不修改运营端 `ui/`。
 

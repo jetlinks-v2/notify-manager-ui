@@ -66,8 +66,8 @@ function apiFixture() {
   }
 }
 
-test('seven provider payloads use explicit single recipients and saved configuration without mutating either', () => {
-  assert.equal(Object.keys(channelTestAdapters).length, 7)
+test('six provider payloads use explicit single recipients and saved configuration without mutating either', () => {
+  assert.equal(Object.keys(channelTestAdapters).length, 6)
   const expected = {
     'email:embedded': { subject: 'Test title', text: 'Test message', sendTo: ['target@example.test'] },
     'dingTalk:dingTalkMessage': { agentId: '1001', message: 'Test message', userIdList: 'member', toAllUser: false },
@@ -75,7 +75,6 @@ test('seven provider payloads use explicit single recipients and saved configura
     'dingTalk:dingTalkRobotWebHook': { messageType: 'text', text: { content: 'Test message' }, at: { atAll: false } },
     'webhook:http': { method: 'POST', url: '', contextAsBody: false, body: '{"message":"Test message"}' },
     'sms:aliyunSms': { signName: '测试签名', code: 'SMS_REAL', phoneNumber: '13800138000' },
-    'voice:aliyun': { templateType: 'tts', templateCode: 'TTS_REAL', ttsCode: 'TTS_REAL', calledShowNumbers: '01012345678', calledNumber: '13800138000', playTimes: 1 },
   }
   for (const [id, adapter] of Object.entries(channelTestAdapters)) {
     const record = config(id), before = clone(record)
@@ -88,8 +87,6 @@ test('seven provider payloads use explicit single recipients and saved configura
     assert.deepEqual(record, before)
     assert.equal(JSON.stringify(result).includes('secret'), false)
   }
-  const voice = config('voice:aliyun'); voice.configuration.testTemplate.templateType = 'voice'
-  assert.equal(buildChannelTest({ config: voice, recipient: '13800138000', title: 'T', message: 'M' }).template.template.templateType, 'voice')
 })
 
 for (const id of Object.keys(channelTestAdapters)) test(`${id}: unified lifecycle uses account/config target and inline sending only`, async () => {
@@ -160,14 +157,14 @@ test('single-recipient validation rejects lists, broadcasts, malformed addresses
 })
 
 test('legacy configurations and unknown providers expose reasons and cannot send', async () => {
-  for (const id of ['dingTalk:dingTalkMessage', 'weixin:corpMessage', 'sms:aliyunSms', 'voice:aliyun']) {
+  for (const id of ['dingTalk:dingTalkMessage', 'weixin:corpMessage', 'sms:aliyunSms']) {
     const api = apiFixture(), trial = useChannelTest(api), record = config(id)
     record.configuration = {}
     trial.show(context(record)); await flush()
     assert.ok(trial.model.value.missing.length)
     assert.equal(await trial.send(), false); assert.deepEqual(api.calls, [])
   }
-  for (const id of ['extension:custom', 'weixin:officialMessage']) {
+  for (const id of ['extension:custom', 'weixin:officialMessage', 'voice:aliyun']) {
     const api = apiFixture(), trial = useChannelTest(api)
     trial.show(context(config(id)))
     assert.equal(trial.model.value.supported, false)
@@ -238,7 +235,7 @@ test('saved configuration is snapshotted and sample parameters cannot redirect a
 })
 
 test('test settings and AgentId round-trip through provider metadata and ordinary config payloads', () => {
-  for (const id of ['dingTalk:dingTalkMessage', 'sms:aliyunSms', 'voice:aliyun']) {
+  for (const id of ['dingTalk:dingTalkMessage', 'sms:aliyunSms']) {
     const record = config(id), [type, provider] = id.split(':')
     const channel = notificationChannels.find(item => item.id === id) || { id, type, provider, secretFields: ['secret'] }
     const definition = channelDefinition(channel, channelMetadata[id] || { properties: [] })
@@ -265,16 +262,24 @@ test('test settings and AgentId round-trip through provider metadata and ordinar
   assert.equal(payload.configuration.appId, 'updated-official')
   assert.equal(payload.configuration.secret, official.configuration.secret)
   assert.deepEqual(payload.configuration.testTemplate, official.configuration.testTemplate)
+  const voice = config('voice:aliyun')
+  const voiceDefinition = channelDefinition(notificationChannels.find(item => item.id === 'voice:aliyun'), channelMetadata['voice:aliyun'])
+  assert.deepEqual(voiceDefinition.fields.map(field => field.key), ['regionId', 'accessKeyId', 'secret'])
+  voice.configuration.testTemplate.parameters = [{ name: '', value: '' }]
+  const voiceDraft = createChannelConfigDraft(voice, voiceDefinition)
+  voiceDraft.configuration.regionId = 'cn-hangzhou'
+  assert.deepEqual(validateChannelDraft(voiceDraft, voice, voiceDefinition), [])
+  assert.deepEqual(channelConfigPayload(voiceDraft, voice, voiceDefinition).configuration, { ...voice.configuration, regionId: 'cn-hangzhou' })
 })
 
 test('settings editor uses named controls and immutable parameter rows, preserving unrelated nested fields', () => {
-  const original = { templateType: 'tts', templateCode: 'TTS_REAL', custom: true, parameters: [{ name: 'name', value: 'old' }] }
-  const props = vue.reactive({ channelId: 'voice:aliyun', value: clone(original), disabled: false })
+  const original = { signName: '测试签名', code: 'SMS_REAL', custom: true, parameters: [{ name: 'name', value: 'old' }] }
+  const props = vue.reactive({ channelId: 'sms:aliyunSms', value: clone(original), disabled: false })
   const editor = useChannelTestSettings(props, value => { props.value = value })
   editor.updateParameter(0, 'value', 'new'); editor.addParameter(); editor.removeParameter(1)
   assert.equal(props.value.parameters[0].value, 'new')
   assert.equal(original.parameters[0].value, 'old')
   assert.equal(props.value.custom, true)
-  props.disabled = true; editor.update('templateCode', 'blocked')
-  assert.equal(props.value.templateCode, 'TTS_REAL')
+  props.disabled = true; editor.update('code', 'blocked')
+  assert.equal(props.value.code, 'SMS_REAL')
 })

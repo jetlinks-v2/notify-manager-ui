@@ -4,21 +4,17 @@ export interface ChannelTestParameter { name: string; value: string }
 export interface ChannelTestSettings extends NotificationObject {
   signName?: string
   code?: string
-  templateType?: 'tts' | 'voice'
-  templateCode?: string
-  calledShowNumbers?: string
   wxTemplateId?: string
   parameters?: ChannelTestParameter[]
 }
-export type ChannelTestSettingsKind = 'sms' | 'voice'
-export interface ChannelTestSettingField { key: 'signName' | 'code' | 'templateType' | 'templateCode' | 'calledShowNumbers' | 'wxTemplateId'; required?: boolean }
+export type ChannelTestSettingsKind = 'sms'
+export interface ChannelTestSettingField { key: 'signName' | 'code' | 'wxTemplateId'; required?: boolean }
 
 export const channelTestSettingsKinds: Readonly<Record<string, ChannelTestSettingsKind>> = {
-  'sms:aliyunSms': 'sms', 'voice:aliyun': 'voice',
+  'sms:aliyunSms': 'sms',
 }
 const fields: Record<ChannelTestSettingsKind, ChannelTestSettingField[]> = {
   sms: [{ key: 'signName', required: true }, { key: 'code', required: true }],
-  voice: [{ key: 'templateType', required: true }, { key: 'templateCode', required: true }, { key: 'calledShowNumbers' }],
 }
 export const testSettingFields = (channelId: string): ChannelTestSettingField[] => fields[channelTestSettingsKinds[channelId]] || []
 export const testText = (value: unknown): string => typeof value === 'string' ? value.trim() : ''
@@ -32,7 +28,6 @@ export function testSettingsIssues(channelId: string, value: unknown, forSend = 
   if (!value || typeof value !== 'object' || Array.isArray(value)) return ['testTemplate']
   const settings = readTestSettings(value)
   const missing = testSettingFields(channelId).filter(field => field.required && !testText(settings[field.key])).map(field => field.key as string)
-  if (settings.templateType && !['tts', 'voice'].includes(settings.templateType)) missing.push('templateType')
   if (settings.parameters !== undefined) {
     const rows = settings.parameters
     // Recipient and routing keys cannot be replaced by vendor sample data.

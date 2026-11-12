@@ -2,8 +2,7 @@
   <div class="channel-test-settings">
     <div v-for="field in fields" :key="field.key" class="channel-test-settings__field">
       <label>{{ t(`messageNotification.channelTest.fields.${field.key}`) }}<span v-if="field.required"> *</span></label>
-      <a-select v-if="field.key === 'templateType'" :value="settings.templateType || 'tts'" :options="voiceOptions" :disabled="disabled" :aria-label="t(`messageNotification.channelTest.fields.${field.key}`)" :get-popup-container="popupContainer" @change="update(field.key, $event)" />
-      <a-input v-else :value="settings[field.key]" :disabled="disabled" :aria-label="t(`messageNotification.channelTest.fields.${field.key}`)" @update:value="update(field.key, $event)" />
+      <a-input :value="settings[field.key]" :disabled="disabled" :aria-label="t(`messageNotification.channelTest.fields.${field.key}`)" @update:value="update(field.key, $event)" />
     </div>
     <div class="channel-test-settings__field">
       <label>{{ t('messageNotification.channelTest.fields.parameters') }}</label>
@@ -23,7 +22,7 @@ import { useChannelTestSettings } from './useChannelTestSettings'
 import type { ChannelTestSettings } from './channelTestConfig'
 const props = defineProps<{ channelId: string; value?: unknown; disabled?: boolean }>()
 const emit = defineEmits<{ (event: 'change', value: ChannelTestSettings): void }>()
-const { t, settings, fields, rows, voiceOptions, update, updateParameter, addParameter, removeParameter, popupContainer } = useChannelTestSettings(props, value => emit('change', value))
+const { t, settings, fields, rows, update, updateParameter, addParameter, removeParameter } = useChannelTestSettings(props, value => emit('change', value))
 </script>
 
 <style scoped>

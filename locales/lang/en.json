@@ -686,7 +686,7 @@
   "messageNotification.channels.hints.voice.provider": "The provider where your voice notification service is enabled",
   "messageNotification.channels.hints.voice.accessKeyId": "Provider console › AccessKey management. Use a sub-account with voice service permissions only",
   "messageNotification.channels.hints.voice.secret": "Created together with the AccessKey ID",
-  "messageNotification.channels.guidance.voice.description": "Place notification calls through a voice provider. Business notifications use message templates; trials use the test settings saved here.",
+  "messageNotification.channels.guidance.voice.description": "Place notification calls through a voice provider. Business notifications use message templates.",
   "messageNotification.channels.guidance.voice.steps.0.title": "Enable the voice service",
   "messageNotification.channels.guidance.voice.steps.0.description": "Enable voice notifications with the selected provider and verify API permissions.",
   "messageNotification.channels.guidance.voice.steps.1.title": "Enter access credentials",

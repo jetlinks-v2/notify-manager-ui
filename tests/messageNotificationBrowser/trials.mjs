@@ -58,7 +58,7 @@ async function snapshot(page, name) {
 try {
   if (!process.env.TRIAL_SETTINGS_ONLY) {
     const page = await open()
-    for (const record of trialRecords.filter(item => item.provider !== 'officialMessage')) {
+    for (const record of trialRecords.filter(item => !['officialMessage', 'aliyun'].includes(item.provider))) {
       await choose(page, record)
       await page.getByRole('button', { name: '更多操作' }).click()
       assert.doesNotMatch(await page.locator('.ant-dropdown:visible').innerText(), /管理模[板版]/)
@@ -66,7 +66,7 @@ try {
       const dialog = await show(page)
       assert.match(await dialog.innerText(), /发一条测试 ·/)
       assert.equal(await dialog.locator('textarea, .ant-select').count(), 0)
-      const vendor = ['aliyunSms', 'aliyun'].includes(record.provider)
+      const vendor = record.provider === 'aliyunSms'
       if (vendor) assert.match(await dialog.innerText(), /实际内容以服务商模板为准/)
       else assert.match(await dialog.innerText(), /隔离验证平台/)
       await eventually(async () => assert.equal(await button(dialog, '发送').isEnabled(), true))
@@ -87,7 +87,7 @@ try {
       await button(dialog, '关闭').click()
       await dialog.waitFor({ state: 'hidden' })
     }
-    pass('All seven supported providers share the modal, saved target rules, submitted feedback and template-free menu/permissions')
+    pass('All six supported providers share the modal, saved target rules, submitted feedback and template-free menu/permissions')
     await choose(page, trialRecords[0])
     let dialog = await show(page)
     await dialog.getByRole('radio', { name: '其他接收人', exact: true }).check()
@@ -147,6 +147,24 @@ try {
     pass('Email, phone and exact-configuration bindings distinguish missing data from failed reads and allow retry')
 
   }
+  const voicePage = await open('', trialRecords[5])
+  for (const language of ['zh', 'en', 'ja']) {
+    await voicePage.evaluate(language => { window.__notificationSmoke.i18n.global.locale.value = language }, language)
+    const labels = await voicePage.evaluate(() => ['messageNotification.channels.test', 'messageNotification.channels.groups.test', 'messageNotification.channelTest.fields.parameters'].map(key => window.__notificationSmoke.i18n.global.t(key)))
+    assert.equal(await button(voicePage, labels[0]).count(), 0)
+    assert.equal(await voicePage.getByText(labels[1], { exact: true }).count(), 0)
+    assert.equal(await voicePage.getByText(labels[2], { exact: true }).count(), 0)
+    assert.match(await voicePage.locator('.channel-configuration').innerText(), /AccessKey/)
+  }
+  await voicePage.evaluate(() => { window.__notificationSmoke.i18n.global.locale.value = 'zh' })
+  await snapshot(voicePage, 'voice-configuration')
+  await voicePage.setViewportSize({ width: 390, height: 844 })
+  await snapshot(voicePage, 'voice-configuration-mobile')
+  assert.equal(await voicePage.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false)
+  assert.deepEqual(await voicePage.evaluate(() => window.__notificationSmoke.configs.find(row => row.id === 'trial-aliyun').configuration), trialRecords[5].configuration)
+  assert.equal((await sends(voicePage)).length, 0)
+  await voicePage.close()
+  pass('Aliyun voice hides channel trials and sample settings in all languages and retains saved configuration on desktop and mobile')
   const officialPage = await open('', trialRecords[7])
   if (!await officialPage.locator('.channel-help').count()) await button(officialPage, '配置说明').click()
   for (const language of ['zh', 'en', 'ja']) {
@@ -197,7 +215,7 @@ try {
   pass('Missing vendor settings lead to the named editor; failed saves retain input, and saved settings drive the next trial')
   await button(savedDialog, '关闭').click()
   await savedDialog.waitFor({ state: 'hidden' })
-  for (const [record, label, value] of [[trialRecords[1], '应用 ID（AgentId）', '1010'], [trialRecords[5], '语音模板编号', 'TTS_BROWSER']]) {
+  for (const [record, label, value] of [[trialRecords[1], '应用 ID（AgentId）', '1010']]) {
     await choose(settingsPage, record)
     const modal = await show(settingsPage)
     assert.equal(await button(modal, '发送').isDisabled(), true)
@@ -212,7 +230,7 @@ try {
     await button(trial, '取消').click()
     await trial.waitFor({ state: 'hidden' })
   }
-  pass('AgentId and voice template defaults save and reopen correctly')
+  pass('AgentId saves and reopens correctly')
   for (const language of ['en', 'ja', 'zh']) {
     await settingsPage.evaluate(language => { window.__notificationSmoke.i18n.global.locale.value = language }, language)
     const name = await settingsPage.evaluate(() => window.__notificationSmoke.i18n.global.t('messageNotification.channels.test'))

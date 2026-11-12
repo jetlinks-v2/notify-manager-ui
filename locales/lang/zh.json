@@ -686,7 +686,7 @@
   "messageNotification.channels.hints.voice.provider": "开通了语音通知服务的那一家",
   "messageNotification.channels.hints.voice.accessKeyId": "服务商控制台 › AccessKey 管理，建议用只开了语音权限的子账号",
   "messageNotification.channels.hints.voice.secret": "和 AccessKey ID 一起创建",
-  "messageNotification.channels.guidance.voice.description": "使用语音服务商拨打通知电话。业务通知使用消息模板，试发使用本页保存的测试消息设置。",
+  "messageNotification.channels.guidance.voice.description": "使用语音服务商拨打通知电话。业务通知使用消息模板。",
   "messageNotification.channels.guidance.voice.steps.0.title": "开通语音服务",
   "messageNotification.channels.guidance.voice.steps.0.description": "在当前服务商开通语音通知服务，确认账号具备调用权限。",
   "messageNotification.channels.guidance.voice.steps.1.title": "填写访问凭证",
