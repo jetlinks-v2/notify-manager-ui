@@ -50,9 +50,9 @@
                 <a-button :type="helpOpen ? 'primary' : 'default'" :ghost="helpOpen" :aria-expanded="helpOpen" aria-controls="notification-channel-help" @click="toggleHelp()"><template #icon><AIcon type="ReadOutlined" /></template>{{ t('messageNotification.channels.helpTitle') }}</a-button>
                 <a-dropdown v-if="configurationVisible && !entry.isNew" :trigger="['click']" :disabled="operationBusy">
                   <a-button :aria-label="t('messageNotification.channels.more')"><AIcon type="MoreOutlined" /></a-button>
-                  <template #overlay><a-menu>
-                    <a-menu-item key="edit"><j-permission-button type="link" :has-permission="[notificationPermissions.channels.update]" :disabled="editing || !canEdit || operationBusy" @click="workspace.startEditing">{{ t('messageNotification.common.edit') }}</j-permission-button></a-menu-item>
-                    <a-menu-item key="delete"><j-permission-button type="link" danger :has-permission="[notificationPermissions.channels.delete]" :disabled="operationBusy" @click="requestRemove">{{ t('messageNotification.channels.clear') }}</j-permission-button></a-menu-item>
+                  <template #overlay><a-menu class="notification-channels__menu">
+                    <a-menu-item key="edit"><j-permission-button type="link" block class="notification-channels__menu-action" :has-permission="[notificationPermissions.channels.update]" :disabled="editing || !canEdit || operationBusy" @click="workspace.startEditing"><template #icon><EditOutlined aria-hidden="true" /></template>{{ t('messageNotification.common.edit') }}</j-permission-button></a-menu-item>
+                    <a-menu-item key="delete"><j-permission-button type="link" block class="notification-channels__menu-action" danger :has-permission="[notificationPermissions.channels.delete]" :disabled="operationBusy" @click="requestRemove"><template #icon><DeleteOutlined aria-hidden="true" /></template>{{ t('messageNotification.channels.clear') }}</j-permission-button></a-menu-item>
                   </a-menu></template>
                 </a-dropdown>
               </div>
@@ -60,7 +60,7 @@
             <div v-if="multipleConfigurations && configs.length" class="notification-page__toolbar">
               <a-select :value="selectedConfigId" class="notification-channels__selector" :options="configurationOptions" :disabled="operationBusy || !canQuery || state === 'loading'" :placeholder="t('messageNotification.channels.chooseConfig')" :aria-label="t('messageNotification.channels.chooseConfig')" @change="workspace.selectConfig(String($event))" />
               <div class="notification-page__actions">
-                <j-permission-button :has-permission="[notificationPermissions.channels.add]" :disabled="operationBusy || !['ready', 'empty'].includes(state)" @click="workspace.createConfig()"><template #icon><AIcon type="PlusOutlined" /></template>{{ t('messageNotification.channels.add') }}</j-permission-button>
+                <j-permission-button :has-permission="[notificationPermissions.channels.add]" :disabled="operationBusy || !['ready', 'empty'].includes(state)" @click="workspace.createConfig()"><template #icon><PlusOutlined aria-hidden="true" /></template>{{ t('messageNotification.channels.add') }}</j-permission-button>
               </div>
             </div>
             <div v-if="state === 'loading' || detailState === 'loading'" class="notification-page__feedback" role="status"><a-spin :tip="t('messageNotification.common.loading')" /></div>
@@ -93,6 +93,9 @@
                 <j-permission-button type="primary" :has-permission="[entry.isNew ? notificationPermissions.channels.add : notificationPermissions.channels.update]" :loading="busy" :disabled="(!entry.isNew && !dirty) || !canEdit || operationBusy" @click="save">{{ t('messageNotification.common.save') }}</j-permission-button>
               </StickyActionBar>
             </template>
+            <CloudEmpty v-else-if="multipleConfigurations && state === 'empty'" class="notification-page__feedback" :description="t('messageNotification.channels.empty')">
+              <j-permission-button type="primary" :has-permission="[notificationPermissions.channels.add]" :disabled="operationBusy || !canQuery" @click="workspace.createConfig()"><template #icon><PlusOutlined aria-hidden="true" /></template>{{ t('messageNotification.common.add') }}</j-permission-button>
+            </CloudEmpty>
             <CloudEmpty v-else class="notification-page__feedback" :description="t(state === 'empty' ? 'messageNotification.channels.cannotCreate' : 'messageNotification.channels.selectConfig')" />
           </template>
         </section>
@@ -109,7 +112,7 @@
 </template>
 
 <script setup lang="ts">
-import { SendOutlined } from '@ant-design/icons-vue'
+import { DeleteOutlined, EditOutlined, PlusOutlined, SendOutlined } from '@ant-design/icons-vue'
 import { DingTalk, Email, Sms, Voice, Webhook, WeixinCorp } from '@jetlinks-web-core/assets/notice'
 import AutoTree from '@jetlinks-web-core/components/AutoTree'
 import { useChannelsPage } from './useChannelsPage'
@@ -150,6 +153,8 @@ const {
 .notification-channels__title-row h2 { margin: 0; font-size: var(--fs-18); font-weight: 500; }
 .notification-channels__summary p { margin: var(--space-2) 0 0; font-size: var(--fs-12); color: var(--text-color-secondary); }
 .notification-channels__selector { flex: 1 1 15rem; min-width: 0; max-width: 28rem; }
+.notification-channels__menu :deep(.ant-dropdown-menu-item) { padding: 0; }
+.notification-channels__menu-action { text-align: left; }
 .notification-channels__body { padding-right: var(--space-2); }
 .notification-channels__members { margin-top: var(--space-6); padding-top: var(--space-4); border-top: 1px solid var(--line); }
 .notification-channels__members h3 { margin: 0 0 var(--space-2); font-size: var(--fs-14); font-weight: 500; }

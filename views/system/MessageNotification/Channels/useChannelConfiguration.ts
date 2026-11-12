@@ -21,12 +21,15 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
   const { t } = useI18n()
   const editing = computed(() => props.entry.isNew || !!props.entry.editing)
   const isAliyunVoice = computed(() => props.entry.draft.type === 'voice' && props.entry.draft.provider === 'aliyun')
-  const fields = computed(() => {
-    const configured = props.entry.definition?.fields ?? channelConfigFields[`${props.entry.draft.type}:${props.entry.draft.provider}`] ?? []
-    // Temporarily hide robot signing controls while retaining metadata and saved credentials.
-    return props.entry.draft.type === 'dingTalk' && props.entry.draft.provider === 'dingTalkRobotWebHook'
-      ? configured.filter(field => field.key !== 'secret') : configured
-  })
+  const configuredFields = computed(() => props.entry.definition?.fields ?? channelConfigFields[`${props.entry.draft.type}:${props.entry.draft.provider}`] ?? [])
+  // Hidden settings remain in the draft and metadata so saving visible fields preserves existing values.
+  const fields = computed(() => configuredFields.value.filter(field => {
+    const { type, provider } = props.entry.draft
+    if (type === 'dingTalk' && provider === 'dingTalkRobotWebHook') return field.key !== 'secret'
+    if (type === 'sms' && provider === 'aliyunSms') return field.key !== 'testTemplate'
+    if (type === 'email' && provider === 'embedded') return field.key !== 'properties'
+    return true
+  }))
   const groups = computed(() => [...new Set(fields.value.map(field => field.group || 'configuration'))].map(key => ({
     key, fields: fields.value.filter(field => (field.group || 'configuration') === key),
   })))
@@ -35,7 +38,7 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
     const rows = props.entry.baseline?.configuration.headers
     return Array.isArray(rows) ? rows.filter(row => row && typeof row.key === 'string').map(row => row.key.toLowerCase()) : []
   })
-  const emailOptionsVisible = computed(() => props.entry.draft.type === 'email' && props.entry.draft.provider === 'embedded' && ['host', 'port', 'properties'].every(key => fields.value.some(field => field.key === key)))
+  const emailOptionsVisible = computed(() => props.entry.draft.type === 'email' && props.entry.draft.provider === 'embedded' && ['host', 'port', 'properties'].every(key => configuredFields.value.some(field => field.key === key)))
   const encryption = computed(() => emailEncryption(props.entry.draft.configuration))
   const customPreset = ref(false)
   watch([() => props.entry.key, editing], () => { customPreset.value = false })

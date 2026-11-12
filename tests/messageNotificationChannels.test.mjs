@@ -839,6 +839,8 @@ test('SMTP presets and encryption retain custom properties and do not rewrite th
   const draft = { id: 'new', name: '邮件', type: 'email', provider: 'embedded', configuration: clone(configuration) }
   const entry = vue.reactive({ key: 'new', draft, isNew: true, snapshot: JSON.stringify(draft), issues: [], definition: channelDefinition(notificationChannels[0], channelMetadata['email:embedded']) })
   const editor = useChannelConfiguration({ entry, disabled: false }, (key, value) => { entry.draft.configuration[key] = value })
+  assert.equal(editor.formGroups.value.flatMap(group => group.fields).some(field => field.key === 'config:properties'), false)
+  assert.equal(editor.formGroups.value.flatMap(group => group.fields).some(field => field.key === 'email:encryption'), true)
   editor.setPreset('exchange')
   assert.equal(entry.draft.configuration.host, 'smtp.office365.com')
   assert.equal(entry.draft.configuration.port, 587)
@@ -945,9 +947,11 @@ test('whole-form email edits keep coupled draft values, custom ports and extra S
   const io = testApi([record])
   const workspace = useChannelWorkspace({ api: io.api, permissions: permissions(), loadDefinition: async channel => channelDefinition(channel, channelMetadata[channel.id]) })
   await workspace.activate('email:embedded')
-  workspace.startEditing()
   const props = configurationProps(workspace)
   const model = useChannelConfiguration(props, workspace.changeField)
+  assert.equal(model.formGroups.value.flatMap(group => group.fields).some(field => field.key === 'config:properties'), false)
+  workspace.startEditing()
+  assert.equal(model.formGroups.value.flatMap(group => group.fields).some(field => field.key === 'config:properties'), false)
   model.changeValue('email:encryption', 'starttls')
   assert.equal(workspace.entry.value.draft.configuration.port, 587)
   workspace.changeField('port', 2525)
@@ -1019,6 +1023,60 @@ test('inline password updates keep blank input and unknown metadata false/zero v
   assert.equal(customIO.records.get('custom').configuration.token, 'saved-token')
 })
 
+
+test('SMS hides test settings in every form mode and preserves them when saving credentials', async () => {
+  const record = sms()
+  record.configuration.testTemplate = { signName: 'Saved', code: 'SMS_SAVED', parameters: [{ name: 'code', value: '123456' }] }
+  const io = testApi([record])
+  const workspace = useChannelWorkspace({ api: io.api, permissions: permissions(), loadDefinition: async channel => channelDefinition(channel, channelMetadata[channel.id]) })
+  await workspace.activate('sms:aliyunSms')
+  const editor = useChannelConfiguration(configurationProps(workspace), workspace.changeField)
+  for (const edit of [false, true]) {
+    if (edit) workspace.startEditing()
+    assert.equal(editor.formGroups.value.some(group => group.key === 'test'), false)
+    assert.equal(editor.formGroups.value.flatMap(group => group.fields).some(field => field.key === 'config:testTemplate'), false)
+  }
+  editor.changeValue('config:accessKeyId', 'updated-key')
+  assert.equal(await workspace.save(), true)
+  assert.deepEqual(io.records.get(record.id).configuration.testTemplate, record.configuration.testTemplate)
+  assert.equal(io.records.get(record.id).configuration.secret, 'saved-secret')
+  assert.equal(io.calls.filter(([method]) => method === 'updateConfig').length, 1)
+  const fresh = useChannelWorkspace({ api: testApi([]).api, permissions: permissions(), loadDefinition: async channel => channelDefinition(channel, channelMetadata[channel.id]) })
+  await fresh.activate('sms:aliyunSms')
+  const newForm = useChannelConfiguration(configurationProps(fresh), fresh.changeField)
+  assert.equal(newForm.formGroups.value.some(group => group.key === 'test'), false)
+  assert.equal(newForm.formGroups.value.flatMap(group => group.fields).some(field => field.key === 'config:testTemplate'), false)
+})
+
+test('empty robots require Add, retain explicit drafts across channels and return to empty after deletion', async () => {
+  const io = testApi([email()])
+  const perms = permissions()
+  const workspace = useChannelWorkspace({ api: io.api, permissions: perms })
+  await workspace.activate('dingTalk:dingTalkRobotWebHook')
+  assert.equal(workspace.state.value, 'empty')
+  assert.equal(workspace.entry.value, undefined)
+  assert.equal(workspace.hasUnsavedChanges.value, false)
+  perms.add.value = false
+  workspace.createConfig()
+  assert.equal(workspace.entry.value, undefined)
+  perms.add.value = true
+  workspace.createConfig()
+  const id = workspace.entry.value.draft.id
+  assert.equal(workspace.entry.value.isNew, true)
+  workspace.changeField('url', 'https://fixture.example.test/new-robot')
+  await workspace.activate('email:embedded')
+  await workspace.activate('dingTalk:dingTalkRobotWebHook')
+  assert.equal(workspace.entry.value.draft.id, id)
+  assert.equal(workspace.entry.value.draft.configuration.url, 'https://fixture.example.test/new-robot')
+  assert.equal(io.calls.filter(([method]) => method === 'createConfig').length, 0)
+  assert.equal(await workspace.save(), true)
+  assert.equal(workspace.selectedConfigId.value, id)
+  assert.equal(await workspace.deleteConfig(), true)
+  assert.equal(workspace.state.value, 'empty')
+  assert.equal(workspace.entry.value, undefined)
+  assert.equal(workspace.hasUnsavedChanges.value, false)
+  assert.equal(io.calls.filter(([method]) => method === 'createConfig').length, 1)
+})
 
 test('only robots allow a second configuration and keep automatic duplicate-name numbering', async () => {
   const io = testApi([email(), robot()])
@@ -1131,6 +1189,7 @@ test('new robots can omit the optional signing key and old robots can edit or ad
   const io = testApi([])
   const workspace = signingWorkspace(io)
   await workspace.activate(robotChannelId)
+  workspace.createConfig()
   workspace.changeField('url', 'https://fixture.example.test/new')
   assert.equal(await workspace.save(), true)
   const id = workspace.selectedConfigId.value
@@ -1218,6 +1277,7 @@ test('new robots hide signing while email and SMS retain their credential editor
   const io = testApi([])
   const workspace = signingWorkspace(io)
   await workspace.activate(robotChannelId)
+  workspace.createConfig()
   const editor = robotEditor(workspace)
   assert.equal(editor.formGroups.value.flatMap(group => group.fields).some(field => field.key === 'config:secret'), false)
   assert.equal(editor.canClearSigningSecret.value, false)

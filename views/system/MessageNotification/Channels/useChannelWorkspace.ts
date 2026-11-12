@@ -144,7 +144,8 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
         return
       }
       const candidate = requestedId ?? (rememberedId && 'id' in rememberedId ? rememberedId.id : undefined)
-      if (!configs.value.length && !requestedId && options.permissions.add.value) { createConfig(); return }
+      // Multi-configuration channels start at an explicit Add entry; single configurations open their first form.
+      if (!multipleConfigurations.value && !configs.value.length && !requestedId && options.permissions.add.value) { createConfig(); return }
       // Open existing data on entry; an explicit link must never fall back to a different record.
       const selected = selectNotificationConfig(configs.value, candidate) ?? (!requestedId ? configs.value[0] : undefined)
       await selectConfig(selected?.id)

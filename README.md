@@ -56,7 +56,7 @@
 - `channelTestAdapter.ts` 集中管理六类提供商的配置条件、接收人规则及内联参数。发送仅调用 `POST /notifier/{configId}/_send`，参数为 `{ template, context }`，不查询或写入业务模板；Webhook 页面的业务模板导航保持独立。阿里云语音、微信服务号及未支持的提供商不显示渠道试发入口。
 - 只允许已保存、无未保存修改且具有渠道查询 / 发送权限的配置试发。弹窗使用保存值的快照；发送期间锁定重复操作，失败保留输入。关闭、配置切换、保存值刷新、权限变化或组件卸载后忽略过期响应。缺配置时等待测试弹窗关闭，再进入整表编辑并联动对应帮助步骤。成功仅表示「已提交，请检查接收端」。
 
-新增设置通过现有渠道保存接口持久化；`ChannelTestSettings.vue` 以具名字段和参数键值行编辑，试发弹窗不编辑配置、不选择业务模板、不输入 JSON。
+短信配置页不再展示或编辑“渠道测试”区域；已有 `configuration.testTemplate` 继续原样保留。顶部“发送测试消息”的入口、参数读取及发送逻辑保持不变，试发弹窗不编辑配置、不选择业务模板、不输入 JSON。
 
 | 提供商 | 保存路径与字段 |
 | --- | --- |
@@ -244,7 +244,13 @@ AgentId 浏览器复核：9200 实际企业微信页已显示新字段和默认�
 
 ### 已配置渠道回显与整表编辑
 
-整表编辑（2026-11-12）：所有渠道的已有配置默认只读，更多菜单在“清除配置”上方提供“编辑”，受配置更新权限控制；点击后全部可修改字段进入编辑态，左下角出现“取消 / 保存”。`Channels/useChannelWorkspace.ts` 按配置保存编辑状态和草稿，`useChannelsPage.ts` 编排入口、保存反馈及测试补全配置，`ChannelConfiguration.vue` 通过 `useChannelConfiguration.ts` 映射只读字段和整表输入。复用 `InlineEditForm` 的 form/detail 模式及 `StickyActionBar`，不改变共享组件、后端接口或运营端 `ui/`。试发按钮使用 `SendOutlined`，图标不改变按钮的可访问名称；“编辑”使用模块中英日资源。
+渠道表单精简：短信顶部“发送测试消息”保持原样；短信的“渠道测试”区和邮件的“SMTP 扩展属性”在新建、查看及编辑时均移除，已有配置值继续保留；邮件预设和加密方式仍通过内部 `properties` 联动。群机器人空配置先显示“添加”入口，点击后创建草稿，已有配置继续支持多套选择与新增。更多菜单中的编辑按钮铺满菜单项宽度。实现范围为本模块的 `Channels/index.vue`、表单适配和 workspace，配套更新说明文案及现有内存夹具；验证字段可见性、历史值保留、群机器人新增/删除/草稿隔离、权限和窄屏菜单。
+
+精简验证：渠道 / 试发 / 契约定向测试 90/90 通过，`smoke.mjs`（`SMOKE_CHANNELS_ONLY=1`）10 项和 `trials.mjs` 9 项通过。内存夹具覆盖新建/查看/编辑字段移除、短信凭据保存后原有试发正常、邮件加密联动、群机器人显式添加及清除后回到空态、权限限制、编辑按钮右侧空白点击和 390px 布局；无页面错误或真实配置写入。定向样式检查、三语资源键与 JSON、`git diff --check` 和生产构建通过（24.28 秒）；模块类型检查仍有 193 项既有诊断，无新增或移除，无独立 lint 脚本。验证命令沿用下方质量检查，日志及浏览器报告前缀为 `/tmp/notification-form-cleanup-`。
+
+整表编辑（2026-11-12）：所有渠道的已有配置默认只读，更多菜单在“清除配置”上方提供“编辑”，受配置更新权限控制；点击后全部可修改字段进入编辑态，左下角出现“取消 / 保存”。`Channels/useChannelWorkspace.ts` 按配置保存编辑状态和草稿，`useChannelsPage.ts` 编排入口、保存反馈及测试补全配置，`ChannelConfiguration.vue` 通过 `useChannelConfiguration.ts` 映射只读字段和整表输入。复用 `InlineEditForm` 的 form/detail 模式及 `StickyActionBar`，不改变共享组件、后端接口或运营端 `ui/`。`Channels/index.vue` 中试发、编辑和清除配置按钮分别使用 `SendOutlined`、`EditOutlined` 和 `DeleteOutlined`，图标不改变按钮的可访问名称；“编辑”使用模块中英日资源。
+
+菜单图标补充验证：定向样式检查、`git diff --check` 和生产构建通过（23.90 秒）；类型检查仍为 193 项既有诊断，无新增或移除，工作区无独立 lint 脚本。内存夹具核对 1440px / 390px 菜单图标、按钮可访问名称与布局通过，无页面错误或配置写入；报告为 `/tmp/notification-menu-icons-browser/report.json`。
 
 整表编辑验证（2026-11-12）：模块目录执行 `node --test tests/messageNotificationChannels.test.mjs tests/messageNotificationTrial.test.mjs tests/messageNotificationContracts.test.mjs`，88/88 通过，覆盖只读渲染、整表提交、取消还原、失败/权限/提交锁定、跨配置草稿、SMTP 联动、动态字段和凭据保留。既有 `tests/messageNotificationBrowser/` 的 `smoke.mjs`（设置 `SMOKE_CHANNELS_ONLY=1`）、`trials.mjs`、`webhook.mjs`、`robotSigning.mjs` 均通过；八类渠道统一编辑/取消，中英日按钮、下拉和复合控件零自动写入、短信测试配置补全、左下角按钮、390px 布局、无更新权限及失败重试均已覆盖。浏览器使用 `SMOKE_PLAYWRIGHT_MODULE="$PWD/../../../ui/node_modules/playwright"` 和现有 9200 Vite 服务，接口均由内存夹具提供，无页面错误；未写入真实配置或发送真实通知。报告位于 `/tmp/notification-whole-edit-{browser,trials,webhook,robot}/report.json`。
 
@@ -263,7 +269,7 @@ AgentId 浏览器复核：9200 实际企业微信页已显示新字段和默认�
 
 分组详情和整表保存覆盖动态后端目录中的全部提供商。公共表单为 `runtime-ui/jetlinks-web-core/src/components/InlineEditForm/`，通过 core 根入口或目录公开入口导出；API、事件、插槽和示例见组件 README。通知模块通过 `Channels/useChannelConfiguration.ts` / `ChannelConfiguration.vue` 映射业务元数据，`useChannelWorkspace.ts` 承载草稿、校验与提交，`useChannelsPage.ts` / `index.vue` 管理操作入口。
 
-已有配置展示保存值和凭据掩码，字段自身不响应点击或键盘进入编辑；“编辑”同时展开普通字段、测试模板及样例参数、请求头和 SMTP 扩展参数，服务商等固有只读字段保持只读。本页不接入字段 submit，失焦、Enter、选择下拉及元数据控件完成事件均不保存。取消仅还原当前配置快照和校验错误，退出编辑，不发送请求；保存整表校验后仅调用一次既有创建或更新接口，成功回到只读，失败保留输入。无修改时禁用保存，提交期间锁定取消、重复保存和配置切换。首次配置仍直接填写并在左下角保存，不增加取消入口。
+已有配置展示保存值和凭据掩码，字段自身不响应点击或键盘进入编辑；“编辑”同时展开所有可见的普通字段和请求头，服务商等固有只读字段保持只读；短信“渠道测试”和邮件“SMTP 扩展属性”均不显示。本页不接入字段 submit，失焦、Enter、选择下拉及元数据控件完成事件均不保存。取消仅还原当前配置快照和校验错误，退出编辑，不发送请求；保存整表校验后仅调用一次既有创建或更新接口，成功回到只读，失败保留输入。无修改时禁用保存，提交期间锁定取消、重复保存和配置切换。单配置渠道首次进入时直接填写，群机器人首次填写由“添加”入口开启；新建配置在左下角保存，不增加取消入口。
 
 非机器人渠道每个 `type/provider` 只提供一套配置入口：没有配置选择器和新增入口，已存在记录时 workspace 也禁止创建第二套。机器人由 `shared/catalog.ts` 的 `multipleConfigurations` 标记，动态目录继承该展示能力；当前后端机器人提供商为 `dingTalk:dingTalkRobotWebHook`，保留选择、增加、自动重名编号和删除。未知提供商默认单套，不影响动态渠道或字段发现。历史重复数据不自动删除：默认进入后端第一条，仍兼容明确配置 ID 的原有跳转，防止已引用模板错绑。此限制作用于本页面，不新增后端唯一约束或执行历史数据迁移。
 
