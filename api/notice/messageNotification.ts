@@ -12,11 +12,14 @@ import type {
   NotifierConfigPayload,
   NotificationProvider,
   NotificationConfigMetadata,
+  NotificationVariable,
 } from './messageNotificationTypes'
 import { classifyNotificationFailure, normalizeNotificationPage, NotificationRequestError } from './messageNotificationState'
 import { readHistoryCounts } from './notificationHistoryCounts'
 import { httpWebhookConfigMetadata, normalizeNotificationConfigMetadata } from './notificationConfigMetadata'
-import type { NoticeChannelConfig } from '../notice-center'
+import type { NoticeChannelConfig, NoticeChannelTemplateItem, NoticeProviderTemplateInfo } from '../notice-center'
+
+interface BusinessVariableMetadata extends NotificationVariable { valueType?: { type?: string; format?: string } }
 
 /** Preserve platform request behavior, but require success before a page updates its saved baseline. */
 async function checked<T>(operation: Promise<AxiosResponseRewrite<T>>): Promise<T> {
@@ -52,6 +55,26 @@ function directory(value: unknown): NotificationProvider[] {
   return value
 }
 
+/** Missing channels are valid; malformed successful responses must not become prototype defaults. */
+function businessTemplate(value: unknown): NoticeChannelTemplateItem | undefined {
+  if (value === undefined || value === null) return
+  if (!value || typeof value !== 'object' || !('channel' in value)
+    || !value.channel || typeof value.channel !== 'object'
+    || !('channelProvider' in value.channel) || !nonemptyString(value.channel.channelProvider)) {
+    throw new NotificationRequestError('error', value)
+  }
+  if ('template' in value && value.template !== undefined && value.template !== null) {
+    const template = value.template
+    if (typeof template !== 'object' || !('id' in template) || !nonemptyString(template.id)
+      || !('configId' in template) || !nonemptyString(template.configId)
+      || !('type' in template) || !nonemptyString(template.type)
+      || !('provider' in template) || !nonemptyString(template.provider)
+      || !('template' in template) || !template.template || typeof template.template !== 'object'
+      || Array.isArray(template.template)) throw new NotificationRequestError('error', value)
+  }
+  return value as NoticeChannelTemplateItem
+}
+
 /** Typed notification facade using the platform request context and checked responses. */
 export const messageNotificationApi = {
   /** Existing business directory supplies grouping and exact template bindings, never name matching. */
@@ -71,6 +94,43 @@ export const messageNotificationApi = {
     const result = await checked<unknown>(request.get(`/notifier/config/${idSegment(type)}/${idSegment(provider)}/metadata`))
     // Only the verified HTTP provider omits metadata; errors and unknown providers remain explicit.
     return normalizeNotificationConfigMetadata(result ?? (type === 'webhook' && provider === 'http' ? httpWebhookConfigMetadata : undefined))
+  },
+  /** Template fields have their own metadata endpoint; absent or empty metadata permits the JSON editor. */
+  async getTemplateMetadata(type: string, provider: string): Promise<NotificationConfigMetadata | undefined> {
+    const result = await checked<unknown>(request.get(`/notifier/template/${idSegment(type)}/${idSegment(provider)}/config/metadata`))
+    if (result === undefined || result === null) return
+    if (typeof result !== 'object' || Array.isArray(result)) throw new NotificationRequestError('error', result)
+    return normalizeNotificationConfigMetadata({ ...result, properties: 'properties' in result ? result.properties : [] })
+  },
+  /** Business channels use persisted provider IDs; HTTP failures never mean an unconfigured channel. */
+  async getBusinessTemplate(providerId: string, channelProvider: string): Promise<NoticeChannelTemplateItem | undefined> {
+    return businessTemplate(await checked<unknown>(request.get(`/notify/channel/${idSegment(providerId)}/${idSegment(channelProvider)}/_query-with-template`)))
+  },
+  async saveBusinessTemplate(providerId: string, channelProvider: string, payload: NoticeChannelTemplateItem): Promise<NoticeChannelTemplateItem> {
+    const result = businessTemplate(await checked<unknown>(request.put(`/notify/channel/${idSegment(providerId)}/${idSegment(channelProvider)}/_save-with-template`, payload)))
+    if (!result?.template) throw new NotificationRequestError('error', result)
+    return result
+  },
+  /** First save creates one disabled topic and its current channel in the backend transaction. */
+  async saveBusinessTemplates(topicProvider: string, payload: NoticeProviderTemplateInfo): Promise<NoticeProviderTemplateInfo> {
+    const result = await checked<NoticeProviderTemplateInfo>(request.put(`/notify/channel/${idSegment(topicProvider)}/_save-with-templates`, payload))
+    if (!result?.provider || !nonemptyString(result.provider.id) || !Array.isArray(result.channels)) throw new NotificationRequestError('error', result)
+    result.channels = result.channels.map(item => {
+      const normalized = businessTemplate(item)
+      if (!normalized?.template) throw new NotificationRequestError('error', item)
+      return normalized
+    })
+    return result
+  },
+  async queryBusinessVariables(providerId: string): Promise<NotificationVariable[]> {
+    const result = await checked<BusinessVariableMetadata[]>(request.get(`/notify/channel/${idSegment(providerId)}/variables`))
+    if (!Array.isArray(result) || result.some(item => !item || !nonemptyString(item.id))) throw new NotificationRequestError('error', result)
+    // PropertyMetadata exposes valueType, while stored template declarations expose type directly.
+    return result.map(item => {
+      const format = item.format || item.valueType?.format || item.expands?.format
+      return { ...item, type: typeof item.type === 'string' ? item.type : item.valueType?.type,
+        ...(typeof format === 'string' ? { format } : {}) }
+    })
   },
   async queryAllConfigs(): Promise<NotifierConfig[]> {
     const result = await checked<unknown>(request.post('/notifier/config/_query/no-paging', {}))
