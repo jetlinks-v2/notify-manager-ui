@@ -1,6 +1,5 @@
 import type { NoticeChannelConfig } from '../../../../api/notice-center'
 import type { NotificationTemplate } from '../shared'
-import { businessIdentity } from './businessTemplateModel'
 
 export interface TemplateDirectoryNode {
   key: string
@@ -8,10 +7,15 @@ export interface TemplateDirectoryNode {
   kind: 'group' | 'business' | 'template'
   class?: string
   templateId?: string
-  businessId?: string
+  business?: NoticeChannelConfig
   searchText: string
   selectable: boolean
   children?: TemplateDirectoryNode[]
+}
+
+/** 业务身份独立于当前渠道模板，未保存的业务也能成为选中对象。 */
+export function templateBusinessKey(item: NoticeChannelConfig, index = 0): string {
+  return JSON.stringify(['business', item.type?.id || 'other', item.id || item.provider || item.providerId || index])
 }
 
 /** Bind only IDs returned by the business directory and visible in the current channel. */
@@ -29,16 +33,16 @@ export function buildTemplateDirectory(
   businessTypes.forEach((item, index) => {
     const groupId = item.type?.id || 'other'
     const provider = item.provider || item.providerId || item.id || ''
-    const key = JSON.stringify(['business', groupId, item.id || provider || index])
+    const key = templateBusinessKey(item, index)
     const translated = item.i18nName ? translate(item.i18nName) : ''
     const title = translated && translated !== item.i18nName ? translated : item.name || provider
     const ids = [...new Set((item.channels || []).map(channel => channel.channelConfiguration?.templateId)
       .filter((id): id is string => Boolean(id && templateMap.has(id))))]
     const node: TemplateDirectoryNode = {
-      key, title: `${title}${businessTypes.filter(row => row.provider === item.provider).length > 1 ? ` (${businessIdentity(item)})` : ''}`, kind: 'business', businessId: businessIdentity(item), templateId: ids.length === 1 ? ids[0] : undefined,
+      key, title, kind: 'business', business: item, templateId: ids.length === 1 ? ids[0] : undefined,
       searchText: [title, provider, ...ids.map(id => `${templateMap.get(id)!.name} ${id}`)].join(' '),
-      selectable: !!businessIdentity(item),
-      children: ids.length > 1 ? ids.map(id => ({ ...templateNode(templateMap.get(id)!, JSON.stringify([key, id])), businessId: businessIdentity(item) })) : undefined,
+      selectable: true,
+      children: ids.length > 1 ? ids.map(id => templateNode(templateMap.get(id)!, JSON.stringify([key, id]))) : undefined,
     }
     const group = groups.get(groupId) || {
       key: JSON.stringify(['group', groupId]), title: item.type?.name || labels.other,

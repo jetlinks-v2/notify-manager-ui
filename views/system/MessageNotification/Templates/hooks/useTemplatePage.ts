@@ -1,22 +1,26 @@
-import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
+import type { LocationQueryRaw } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { usePermission } from '@jetlinks-web/hooks'
 import { useMediaQuery } from '@vueuse/core'
 import { useNotificationConfigNavigation } from '@jetlinks-web-core/hooks/useNotificationConfigNavigation'
 import { messageNotificationApi } from '../../../../../api/notice/messageNotification'
-import { businessIdentity, businessRecordId } from '../businessTemplateModel'
-import { classifyNotificationFailure } from '../../shared'
+import type { NoticeChannelConfig } from '../../../../../api/notice-center'
 import {
-  notificationChannels, notificationConfigurationChange, notificationPermissions,
-  normalizeNotificationNavigation, notificationQuery,
+  notificationConfigurationChange, notificationPermissions, notificationQuery,
+  classifyNotificationFailure, normalizeNotificationNavigation,
 } from '../../shared'
 import { TemplateValidationError } from '../model'
+import { buildTemplateDirectory, flattenTemplateDirectory, templateBusinessKey } from '../templateDirectoryModel'
 import { useTemplateWorkspace } from '../useTemplateWorkspace'
 import { useTemplateBusinessDirectory } from './useTemplateBusinessDirectory'
 import { useTemplateBusinessNavigation } from './useTemplateBusinessNavigation'
 
-/** Coordinate routing and browser lifecycle outside the presentational page. */
+const identity = (business?: NoticeChannelConfig) => business?.id || business?.providerId || business?.provider || ''
+const queryText = (value: unknown) => typeof value === 'string' ? value : Array.isArray(value) && typeof value[0] === 'string' ? value[0] : ''
+
+/** 业务决定编辑对象，渠道决定提供商；路由只同步明确身份，不用模板列表首项猜业务。 */
 export function useTemplatePage() {
   const { t } = useI18n()
   const compact = useMediaQuery('(max-width: 768px)')
@@ -25,180 +29,256 @@ export function useTemplatePage() {
   const { hasPerm: canQuery } = usePermission(ref(notificationPermissions.templates.query))
   const { hasPerm: canAdd } = usePermission(ref(notificationPermissions.templates.add))
   const { hasPerm: canUpdate } = usePermission(ref(notificationPermissions.templates.update))
+  const { hasPerm: canQueryConfig } = usePermission(ref(notificationPermissions.channels.query))
   const canManage = computed(() => canQuery.value && (canAdd.value || canUpdate.value))
-  const businessDirectory = useTemplateBusinessDirectory(canManage)
-  const businessNavigation = useTemplateBusinessNavigation(computed(() => route.query), businessDirectory.businessTypes, businessDirectory.directoryState)
+  const directory = useTemplateBusinessDirectory(canManage)
   const workspace = useTemplateWorkspace({ query: canQuery, add: canAdd, update: canUpdate })
-  const { channelId, templates, configs, listState, draft, hasDirtyDrafts, saving } = workspace
+  const { channelId, templates, draft, business, channels, detailState, listState, saving } = workspace
+  const businessNavigation = useTemplateBusinessNavigation(computed(() => route.query), directory.businessTypes, directory.directoryState, channels)
   const configurationNavigation = useNotificationConfigNavigation(() => workspace.refreshConfigs(), 'system/MessageNotification/Channels')
+  const canConfigure = computed(() => canQueryConfig.value && configurationNavigation.available.value)
   const changingBusiness = ref(false)
   const businessActionState = ref('idle')
-  const selectedBusiness = computed(() => businessNavigation.business.value)
-  const selectedBusinessId = computed(() => selectedBusiness.value ? businessIdentity(selectedBusiness.value) : '')
-  const businessEnabled = computed(() => !!selectedBusiness.value && !!businessRecordId(selectedBusiness.value) && (typeof selectedBusiness.value.state === 'string' ? selectedBusiness.value.state : selectedBusiness.value.state?.value) !== 'disabled')
-  const businessOptions = computed(() => businessDirectory.businessTypes.value.map(item => ({ value: businessIdentity(item), label: `${item.name || item.provider} (${businessIdentity(item)})` })))
+  const selectedBusinessId = computed(() => identity(business.value))
+  const businessEnabled = computed(() => !!business.value?.id && (typeof business.value.state === 'string' ? business.value.state : business.value.state?.value) !== 'disabled')
   const uploading = ref(false)
   const editing = ref(false)
-  const busy = computed(() => saving.value || uploading.value || changingBusiness.value)
+  const initialized = ref(false)
+  const selectionUnavailable = ref(false)
   const validationMessage = ref('')
   const saved = ref(false)
-  const navigation = computed(() => normalizeNotificationNavigation(route.query))
-  const channelOptions = computed(() => notificationChannels.map(channel => ({ value: channel.id, label: t(channel.labelKey) })))
-  const templateOptions = computed(() => templates.value.map(template => ({ value: template.id, label: `${template.name} (${template.id})` })))
-  const selectedTemplateId = computed(() => workspace.activeKey.value.startsWith('new:') ? undefined : workspace.activeKey.value || undefined)
-  const title = computed(() => selectedBusiness.value?.name || draft.value?.name || t(workspace.entry.value?.existing === false ? 'messageNotification.templates.create' : 'messageNotification.templates.title'))
-  const listFailure = computed(() => ['unavailable', 'forbidden', 'error'].includes(listState.value))
-  const detailFailure = computed(() => ['unavailable', 'forbidden', 'error'].includes(workspace.detailState.value))
-  const saveFailure = computed(() => ['unavailable', 'forbidden', 'error'].includes(workspace.saveState.value))
   const confirmation = reactive({ open: false })
-  let confirmResult: ((value: boolean) => void) | undefined
-  let loadedChannel = ''
+  const busy = computed(() => saving.value || uploading.value || changingBusiness.value)
+  const navigation = computed(() => normalizeNotificationNavigation(route.query, channels.value))
+  const directoryNodes = computed(() => flattenTemplateDirectory(buildTemplateDirectory(templates.value, directory.businessTypes.value,
+    { other: t('messageNotification.templates.otherGroup') }, t)))
+  const channelOptions = computed(() => channels.value.map(channel => ({ value: channel.id, label: channel.labelKey ? t(channel.labelKey) : channel.name || channel.id })))
+  const templateOptions = computed(() => directoryNodes.value.filter(node => node.kind === 'business').map(node => ({ value: node.key, label: node.title })))
+  const importOptions = computed(() => templates.value.map(item => ({ value: item.id, label: `${item.name} (${item.id})` })))
+  const selectedDirectoryKey = computed(() => business.value ? templateBusinessKey(business.value) : workspace.activeKey.value)
+  const selectedTemplateId = selectedDirectoryKey
+  const title = computed(() => business.value?.name || draft.value?.name || t('messageNotification.templates.title'))
+  const description = computed(() => String(business.value?.description || draft.value?.description || ''))
+  const activeConfig = computed(() => workspace.configs.value.find(config => config.id === draft.value?.configId))
+  const listFailure = computed(() => ['unavailable', 'forbidden', 'error'].includes(workspace.catalogState.value))
+  const feedbackState = computed(() => businessNavigation.requested.value && !['ready', 'idle', 'loading', 'empty'].includes(businessNavigation.state.value)
+    ? businessNavigation.state.value : selectionUnavailable.value ? 'unavailable' : detailState.value)
+  const detailFailure = computed(() => ['unavailable', 'forbidden', 'error'].includes(feedbackState.value))
+  const saveFailure = computed(() => ['unavailable', 'forbidden', 'error'].includes(workspace.saveState.value))
+  const canEdit = computed(() => canQuery.value && !!draft.value && detailState.value === 'ready'
+    && (workspace.entry.value?.existing ? canUpdate.value : canAdd.value))
+  const missingConfiguration = computed(() => !!draft.value && workspace.configState.value === 'empty')
+  let confirmationResult: ((value: boolean) => void) | undefined
+  let revision = 0
+  let catalogRevision = 0
+  let loadedSelection = ''
+  let acceptedQuery: LocationQueryRaw = { ...route.query }
+  let disposed = false
 
-  /** Route context owns selection; changing vendors keeps the concrete business and its cached drafts. */
-  watch([navigation, canQuery, canManage, businessNavigation.business, businessNavigation.state, businessNavigation.channel], async () => {
-    validationMessage.value = ''
-    saved.value = false
-    // 首项选择只用于落地；立即固定实际业务身份，刷新目录不再改变编辑对象。
-    if (navigation.value.businessSelection === 'first-alarm' && businessNavigation.state.value === 'ready' && selectedBusiness.value) {
-      await router.replace({ query: notificationQuery({ channel: businessNavigation.channel.value }, { ...route.query, topicProvider: businessIdentity(selectedBusiness.value) }) })
-      return
-    }
-    const id = businessNavigation.requested.value ? businessNavigation.channel.value : navigation.value.channel || 'email:embedded'
-    const templateId = businessNavigation.requested.value ? '' : navigation.value.templateId || ''
-    const reloadList = loadedChannel !== id || ['idle', 'forbidden'].includes(listState.value) || !canQuery.value
-    loadedChannel = id
-    const load = reloadList ? workspace.loadChannel(id, templateId) : workspace.selectTemplate(templateId)
-    await workspace.binding.selectBusiness(businessNavigation.state.value === 'ready' ? selectedBusiness.value : undefined, id)
-    await load
-    if (!businessNavigation.requested.value && !templateId && !navigation.value.templateId && channelId.value === id
-      && !workspace.activeKey.value && listState.value === 'ready' && templates.value[0]) selectTemplate(templates.value[0].id)
+  watch(canQuery, async () => {
+    const current = ++catalogRevision
+    initialized.value = false
+    await workspace.loadCatalog()
+    if (current === catalogRevision) initialized.value = true
   }, { immediate: true })
 
-  // 新建和未保存草稿继续编辑，首次查看已保存模板时只展示预览。
-  watch([workspace.activeKey, workspace.detailState], () => {
-    editing.value = workspace.detailState.value === 'ready' && (!workspace.entry.value?.existing || workspace.dirty.value)
-  })
+  /** 显式旧 templateId 优先解析真实业务绑定；没有显式选择时取树中的首个业务。 */
+  async function synchronizeSelection() {
+    if (!initialized.value || directory.directoryState.value === 'loading' || changingBusiness.value) return
+    const current = ++revision
+    const requested = businessNavigation.requested.value
+    const channel = requested ? businessNavigation.channel.value : queryText(route.query.channel) || navigation.value.channel || channels.value[0]?.id || ''
+    const requestedTemplate = navigation.value.templateId || ''
+    const requestedConfig = navigation.value.configId || ''
+    const businesses = directory.businessTypes.value
+    const bindings = requestedTemplate ? businesses.filter(item => item.channels?.some(binding => binding.channelConfiguration?.templateId === requestedTemplate)) : []
+    const bound = bindings.length === 1 ? bindings[0] : undefined
+    const first = directoryNodes.value.find(node => node.kind === 'business')?.business
+    const target = requested ? businessNavigation.state.value === 'ready' ? businessNavigation.business.value : undefined
+      : bound || (!requestedTemplate ? first : undefined)
+    // 首个告警仅用于落地，立即固定具体记录，目录刷新或重排不会改变当前业务。
+    if (target && navigation.value.businessSelection === 'first-alarm') {
+      await router.replace({ query: selectionQuery(channel, target) })
+      return
+    }
+    const standaloneId = requested || bindings.length > 1 ? '' : requestedTemplate
+    const selection = JSON.stringify([channel, identity(target), target ? '' : standaloneId, requestedConfig])
+    selectionUnavailable.value = requested && !target && businessNavigation.state.value !== 'empty' || bindings.length > 1
+    if (selection === loadedSelection) return
+    if (loadedSelection && identity(target) !== identity(business.value) && workspace.hasDirtyDrafts.value) {
+      if (!await confirmDiscard()) { if (current === revision) await router.replace({ query: acceptedQuery }); return }
+      if (current !== revision) return
+      if (business.value) workspace.discardBusinessDrafts()
+      else await workspace.discardDraft()
+    }
+    const changedBusiness = identity(target) !== identity(business.value)
+    loadedSelection = selection
+    validationMessage.value = ''
+    saved.value = false
+    if (changedBusiness) editing.value = false
+    if (target) await workspace.loadBusiness(target, channel, requestedConfig)
+    else await workspace.loadChannel(channel, standaloneId)
+    if (current === revision) acceptedQuery = { ...route.query }
+  }
 
+  watch([initialized, () => route.query.channel, () => route.query.ch, () => route.query.business, () => route.query.templateId, () => route.query.configId,
+    () => route.query.topicProvider, () => route.query.channelProvider, () => route.query.aiAlarmType, () => route.query.visualAlarmSession, () => route.query.businessSelection,
+    directory.businessTypes, directory.directoryState], synchronizeSelection, { immediate: true })
   watch(notificationConfigurationChange, change => {
     if (change?.channel === channelId.value) void workspace.refreshConfigs()
   })
 
+  function selectionQuery(channel: string, selectedBusiness?: NoticeChannelConfig, templateId?: string): LocationQueryRaw {
+    const query = notificationQuery({ channel, templateId }, route.query, channels.value)
+    for (const key of ['business', 'topicProvider', 'channelProvider']) delete query[key]
+    if (selectedBusiness) {
+      if (route.query.topicProvider || route.query.aiAlarmType || route.query.businessSelection) query.topicProvider = identity(selectedBusiness)
+      else query.business = identity(selectedBusiness)
+      if (selectedBusiness.provider !== query.aiAlarmType) { delete query.aiAlarmType; delete query.visualAlarmSession }
+    } else { delete query.aiAlarmType; delete query.visualAlarmSession }
+    return query
+  }
   function setUploading(value: boolean) { uploading.value = value }
-  function reload() {
+  async function reload() {
     if (busy.value) return
-    void businessDirectory.reloadDirectory()
-    void workspace.loadChannel(channelId.value, workspace.managed.value ? '' : navigation.value.templateId)
-    void workspace.binding.selectBusiness(selectedBusiness.value, channelId.value, true)
+    if (workspace.hasDirtyDrafts.value && !await confirmDiscard()) return
+    const previousBusiness = business.value
+    if (previousBusiness) workspace.discardBusinessDrafts()
+    else await workspace.discardDraft()
+    loadedSelection = ''
+    initialized.value = false
+    await Promise.all([workspace.reloadCatalog(), directory.reloadDirectory()])
+    if (previousBusiness && workspace.saveOutcomeUnknown.value && directory.directoryState.value === 'ready') {
+      const refreshed = directory.businessTypes.value.find(item => previousBusiness.id && item.id === previousBusiness.id)
+        || directory.businessTypes.value.find(item => item.provider === previousBusiness.provider)
+      if (refreshed) workspace.resetBusinessIdentity(refreshed)
+    }
+    initialized.value = true
   }
   function startEditing() {
-    if (busy.value || !workspace.canSave.value) return
+    if (busy.value || !canEdit.value) return
     saved.value = false
     editing.value = true
   }
   function changeChannel(value: string | number) {
-    if (!busy.value && String(value) !== channelId.value) void router.replace({ query: notificationQuery({ channel: String(value) }, route.query) })
+    const next = String(value)
+    if (!busy.value && next !== channelId.value) void router.replace({ query: selectionQuery(next, business.value) })
   }
-  function selectTemplate(value: unknown) {
+  async function selectTemplate(value: unknown) {
     if (busy.value) return
-    const query = { ...route.query }
-    for (const key of ['topicProvider', 'channelProvider', 'aiAlarmType', 'visualAlarmSession']) delete query[key]
-    void router.replace({ query: notificationQuery({ channel: channelId.value, templateId: String(value) }, query) })
+    const key = String(value)
+    const node = directoryNodes.value.find(item => item.key === key)
+    if (node?.kind === 'group' || key === workspace.activeKey.value) return
+    const nextBusiness = node?.kind === 'business' ? node.business : undefined
+    if (nextBusiness && identity(nextBusiness) === identity(business.value)) return
+    if (workspace.hasDirtyDrafts.value && !await confirmDiscard()) return
+    if (business.value) workspace.discardBusinessDrafts()
+    else await workspace.discardDraft()
+    editing.value = false
+    await router.replace({ query: selectionQuery(channelId.value, nextBusiness, nextBusiness ? undefined : node?.templateId || key) })
   }
-  function selectBusiness(value: unknown) {
-    if (!busy.value) void router.replace({ query: notificationQuery({ channel: channelId.value }, { ...route.query, topicProvider: String(value) }) })
-  }
-  async function toggleBusiness() {
-    const business = selectedBusiness.value
-    if (!business || !canManage.value || busy.value) return
-    const wasEnabled = businessEnabled.value
-    changingBusiness.value = true
-    businessActionState.value = 'loading'
-    try {
-      await messageNotificationApi.setBusinessEnabled(businessIdentity(business), !wasEnabled)
-      await businessDirectory.reloadDirectory()
-      // Enabling a placeholder returns void; select only the unambiguous persisted record from the refreshed directory.
-      const candidates = businessDirectory.businessTypes.value.filter(item => businessRecordId(business)
-        ? businessRecordId(item) === businessRecordId(business) : item.provider === business.provider && !!businessRecordId(item))
-      if (candidates.length === 1) await router.replace({ query: notificationQuery({ channel: channelId.value }, { ...route.query, topicProvider: businessIdentity(candidates[0]) }) })
-      businessActionState.value = businessDirectory.directoryState.value === 'ready' ? 'ready' : businessDirectory.directoryState.value
-    } catch (error) { businessActionState.value = classifyNotificationFailure(error) }
-    finally { changingBusiness.value = false }
-  }
-  function openConfiguration() {
-    if (workspace.configState.value !== 'empty' || busy.value) return
-    configurationNavigation.open(selectedBusinessId.value, undefined, { channel: channelId.value })
-  }
-  async function importTemplate(value: unknown) {
-    if (busy.value) return
-    await workspace.binding.importTemplate(String(value))
-    editing.value = true
-  }
-  async function createTemplate() {
+  function createTemplate() {
     if (busy.value || !canAdd.value || !canQuery.value) return
-    const query = { ...route.query }
-    for (const key of ['topicProvider', 'channelProvider', 'aiAlarmType', 'visualAlarmSession']) delete query[key]
-    await router.replace({ query: notificationQuery({ channel: channelId.value, configId: navigation.value.configId }, query) })
-    await nextTick()
-    const selectedConfig = configs.value.find(config => config.id === navigation.value.configId)
-    workspace.createTemplate(selectedConfig?.id)
+    workspace.createTemplate(navigation.value.configId)
     editing.value = true
     saved.value = false
   }
 
-  /** Failed saves leave the editor intact; only verified success clears its dirty state. */
+  /** 保存成功只回写当前业务的真实身份和绑定，不清空目录或覆盖其他业务。 */
   async function save() {
+    const current = revision
     validationMessage.value = ''
     saved.value = false
     try {
-      if (await workspace.saveTemplate()) {
+      if (!await workspace.saveTemplate()) return
+      if (disposed || current !== revision) return
+      const selected = business.value
+      if (selected) {
         businessNavigation.notifySaved(draft.value?.id)
-        if (workspace.managed.value) await businessDirectory.reloadDirectory()
-        else await router.replace({ query: notificationQuery({ channel: channelId.value, templateId: draft.value?.id || undefined, configId: draft.value?.configId || undefined }, route.query) })
-        saved.value = true
-        editing.value = false
+        const index = directory.businessTypes.value.findIndex(item => item.id ? item.id === selected.id : item.provider === selected.provider)
+        if (index >= 0) directory.businessTypes.value[index] = selected
       }
+      loadedSelection = JSON.stringify([channelId.value, identity(selected), selected ? '' : draft.value?.id || '', ''])
+      await router.replace({ query: selectionQuery(channelId.value, selected, draft.value?.id || undefined) })
+      acceptedQuery = { ...route.query }
+      saved.value = true
+      editing.value = false
     } catch (error) {
       validationMessage.value = error instanceof TemplateValidationError ? t(error.message) : t('messageNotification.templates.error')
     }
   }
-
+  function restoreDefault() {
+    if (busy.value || !canEdit.value || !workspace.canRestoreDefault.value) return
+    workspace.restoreDefault()
+    editing.value = true
+    saved.value = false
+  }
   function confirmDiscard(): Promise<boolean> {
+    if (confirmation.open) return Promise.resolve(false)
     confirmation.open = true
-    return new Promise(resolve => { confirmResult = resolve })
+    return new Promise(resolve => { confirmationResult = resolve })
   }
   function resolveConfirmation(value: boolean) {
     confirmation.open = false
-    confirmResult?.(value)
-    confirmResult = undefined
+    confirmationResult?.(value)
+    confirmationResult = undefined
   }
-  /** 取消只丢弃当前草稿；没有修改时直接返回预览，其他 ID 的草稿仍保留。 */
   async function requestDiscard() {
-    if (busy.value) return
-    const key = workspace.activeKey.value
-    if (workspace.dirty.value && !await confirmDiscard()) return
-    if (key !== workspace.activeKey.value || busy.value) return
+    if (busy.value || workspace.dirty.value && !await confirmDiscard()) return
     validationMessage.value = ''
     saved.value = false
-    if (workspace.dirty.value || !workspace.entry.value?.existing) await workspace.discardDraft()
+    await workspace.discardDraft()
     editing.value = false
   }
-  onBeforeRouteLeave(async () => !hasDirtyDrafts.value && !uploading.value || await confirmDiscard())
+  async function goConfigure() {
+    if (busy.value || !canConfigure.value) return
+    configurationNavigation.open(identity(business.value), undefined, { channel: channelId.value, configId: draft.value?.configId })
+  }
+  /** 显式启停与模板保存分离；占位业务启用后只接受唯一的实际记录。 */
+  async function toggleBusiness() {
+    const selected = business.value
+    if (!selected || !canManage.value || busy.value) return
+    changingBusiness.value = true
+    businessActionState.value = 'loading'
+    try {
+      await messageNotificationApi.setBusinessEnabled(identity(selected), !businessEnabled.value)
+      await directory.reloadDirectory()
+      const matches = directory.businessTypes.value.filter(item => selected.id ? item.id === selected.id : item.provider === selected.provider && !!item.id)
+      if (matches.length === 1) {
+        workspace.resetBusinessIdentity(matches[0], selected)
+        changingBusiness.value = false
+        await router.replace({ query: selectionQuery(channelId.value, matches[0]) })
+      }
+      businessActionState.value = directory.directoryState.value === 'ready' && matches.length !== 1 ? 'unavailable' : directory.directoryState.value
+    } catch (error) { businessActionState.value = classifyNotificationFailure(error) }
+    finally { changingBusiness.value = false }
+  }
+  async function importTemplate(value: unknown) {
+    if (busy.value || !canEdit.value) return
+    await workspace.importTemplate(String(value))
+    editing.value = true
+  }
+  onBeforeRouteUpdate(() => !busy.value)
+  onBeforeRouteLeave(async () => !saving.value && (!workspace.hasDirtyDrafts.value && !uploading.value || await confirmDiscard()))
   function beforeUnload(event: BeforeUnloadEvent) {
-    if (hasDirtyDrafts.value || uploading.value) { event.preventDefault(); event.returnValue = '' }
+    if (workspace.hasDirtyDrafts.value || busy.value) { event.preventDefault(); event.returnValue = '' }
   }
   if (typeof window !== 'undefined') window.addEventListener('beforeunload', beforeUnload)
   onBeforeUnmount(() => {
+    disposed = true
+    ++revision
+    ++catalogRevision
     if (typeof window !== 'undefined') window.removeEventListener('beforeunload', beforeUnload)
     resolveConfirmation(false)
   })
 
   return {
-    canManage, selectedBusiness, selectedBusinessId, businessEnabled, businessOptions, selectBusiness, toggleBusiness, changingBusiness, businessActionState,
-    channelEnabled: workspace.binding.channelEnabled, importTemplate, openConfiguration, canConfigure: configurationNavigation.available,
-    businessLinkPending: businessNavigation.requested, businessLinkState: businessNavigation.state,
-    t, compact, workspace, ...workspace, ...businessDirectory, canQuery, canAdd, busy, uploading, editing, title, startEditing, validationMessage,
-    saved, channelOptions, templateOptions, selectedTemplateId, listFailure, detailFailure,
-    saveFailure, confirmation, setUploading, reload, changeChannel, selectTemplate,
-    createTemplate, save, requestDiscard, resolveConfirmation,
+    canManage, selectedBusiness: business, selectedBusinessId, businessEnabled, changingBusiness, businessActionState, toggleBusiness,
+    businessLinkPending: businessNavigation.requested, businessLinkState: businessNavigation.state, importOptions,
+    t, compact, workspace, ...workspace, ...directory, canQuery, canAdd, canEdit, canConfigure, busy, uploading,
+    editing, title, description, activeConfig, selectedDirectoryKey, selectedTemplateId, templateOptions,
+    validationMessage, saved, channelOptions, listFailure, detailFailure, feedbackState, saveFailure,
+    missingConfiguration, confirmation, setUploading, reload, changeChannel, selectTemplate, createTemplate,
+    startEditing, save, restoreDefault, requestDiscard, goConfigure, resolveConfirmation, importTemplate,
   }
 }

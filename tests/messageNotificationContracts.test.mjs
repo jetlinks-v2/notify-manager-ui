@@ -377,7 +377,7 @@ test('inline send reuses content endpoint and current email follows personal-cen
 
 
 test('business template endpoints encode opaque record IDs and save only the selected channel', async () => {
-  const payload = { channel: { providerId: 'scope/id', channelProvider: 'notifier-email', state: 'enabled', channelConfiguration: { notifierId: 'smtp-exact' } }, template: { configId: 'smtp-exact', type: 'email', provider: 'embedded' } }
+  const payload = { channel: { providerId: 'scope/id', channelProvider: 'notifier-email', state: 'enabled', channelConfiguration: { notifierId: 'smtp-exact' } }, template: { id: 'stored-exact', configId: 'smtp-exact', type: 'email', provider: 'embedded', template: { subject: 'Subject', text: 'Body' } } }
   response = { success: true, result: payload }
   assert.deepEqual(await api.getBusinessTemplate('scope/id', 'notifier-email'), payload)
   assert.deepEqual(await api.saveBusinessTemplate('scope/id', 'notifier-email', payload), payload)

@@ -3,6 +3,7 @@ import {
   type NotificationAttachment, type NotificationObject, type NotificationTemplate,
   type NotificationTemplatePayload, type NotificationVariable, type NotificationChannel,
 } from '../shared'
+import { getByPath, normalizeTemplateBeforeSubmit } from '../../../notice/template/hooks/noticeTemplateFormModel'
 
 export interface TemplateDraft {
   builtinKey?: string
@@ -31,7 +32,7 @@ export function createTemplateDraft(record: NotificationTemplate): TemplateDraft
   return {
     id: record.id, name: record.name, configId: record.configId ?? '',
     type: notificationEnumValue(record.type), provider: notificationEnumValue(record.provider),
-    description: record.description ?? '', subject: stringValue(content.subject), text: stringValue(content.text),
+    description: record.description ?? '', subject: stringValue(content.subject), text: stringValue(content.text === undefined ? content.message : content.text),
     sendTo: Array.isArray(content.sendTo) ? content.sendTo.map(String) : [],
     attachments: Array.isArray(content.attachments) ? content.attachments.map(item => ({ ...cloneNotificationValue(item), name: stringValue(item.name), location: stringValue(item.location) })) : [],
     variables: cloneNotificationValue(record.variableDefinitions ?? []), extraTemplate: content,
@@ -79,10 +80,38 @@ export function attachmentToUploadFile(attachment: NotificationAttachment, index
   }
 }
 
-/** Validate the same DTO fields that are submitted; no business-category binding is introduced. */
-export function buildTemplatePayload(draft: TemplateDraft): NotificationTemplatePayload {
+/** Apply existing provider conversions without leaking editor aliases or discarding extension fields. */
+function normalizeProviderContent(draft: TemplateDraft, content: NotificationObject): NotificationObject {
+  if (!resolveNotificationChannel(draft.type, draft.provider)) return content
+  const source = cloneNotificationValue(content)
+  if (isEmailDraft(draft)) source.message = draft.text
+  if (draft.type === 'sms' && draft.provider === 'aliyunSms') {
+    if (!stringValue(source.code).trim()) throw new TemplateValidationError('smsTemplateRequired')
+    if (!stringValue(source.signName).trim()) throw new TemplateValidationError('smsSignRequired')
+  }
+  if (draft.type === 'voice' && draft.provider === 'aliyun') {
+    if (source.templateCode === undefined) source.templateCode = source.ttsCode
+    if (!stringValue(source.templateCode).trim()) throw new TemplateValidationError('voiceTemplateRequired')
+    if (source.ttsmessage === undefined) source.ttsmessage = source.message
+  }
+  if (draft.type === 'dingTalk' && draft.provider === 'dingTalkRobotWebHook') {
+    const messageType = stringValue(source.messageType) || 'markdown'
+    source.messageType = messageType
+    if (source.message === undefined) source.message = getByPath(source, messageType === 'text' ? ['text', 'content'] : [messageType, 'text'])
+  }
+  const result = normalizeTemplateBeforeSubmit({
+    name: draft.name, type: draft.type, provider: draft.provider, template: source,
+    // 这里只复用内容归一化，保存时仍保留原变量定义的额外元数据与真实默认值。
+    variableDefinitions: draft.variables,
+  }).template
+  if (isEmailDraft(draft) || draft.provider === 'dingTalkRobotWebHook') delete result.message
+  return result
+}
+
+/** Validate against the supplied backend catalog; omission retains the original verified catalog. */
+export function buildTemplatePayload(draft: TemplateDraft, allowedChannels?: readonly NotificationChannel[]): NotificationTemplatePayload {
   if (!draft.name.trim()) throw new TemplateValidationError('nameRequired')
-  if (!resolveNotificationChannel(draft.type, draft.provider)) throw new TemplateValidationError('unsupportedProvider')
+  if (!resolveNotificationChannel(draft.type, draft.provider, allowedChannels)) throw new TemplateValidationError('unsupportedProvider')
   const ids = draft.variables.map(variable => variable.id.trim())
   if (ids.some(id => !id || /[${}\s]/.test(id)) || new Set(ids).size !== ids.length) throw new TemplateValidationError('invalidVariables')
   let content: NotificationObject
@@ -104,7 +133,7 @@ export function buildTemplatePayload(draft: TemplateDraft): NotificationTemplate
   return {
     ...(draft.id.trim() ? { id: draft.id.trim() } : {}), name: draft.name.trim(),
     type: draft.type, provider: draft.provider, configId: draft.configId || '',
-    description: draft.description, template: content,
+    description: draft.description, template: normalizeProviderContent(draft, content),
     variableDefinitions: cloneNotificationValue(draft.variables).map(variable => ({ ...variable, id: variable.id.trim() })),
   }
 }

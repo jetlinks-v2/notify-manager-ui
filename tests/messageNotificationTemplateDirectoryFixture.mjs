@@ -2,7 +2,7 @@
 const channel = templateId => ({ channelProvider: 'notifier-email', channelConfiguration: { templateId } })
 export default {
   templates: [
-    { id: 'template-relieve', name: '设备告警解除邮件', type: 'email', provider: 'embedded', template: { subject: '设备告警已解除', text: '告警解除通知内容', sendTo: [], attachments: [] } },
+    { id: 'template-relieve', name: '设备告警解除邮件', type: 'email', provider: 'embedded', configId: 'smtp-primary', template: { subject: '设备告警已解除', text: '告警解除通知内容', sendTo: [], attachments: [] } },
   ],
   businessTypes: [
     { id: 'device-config', provider: 'alarm-device', name: '设备告警', type: { id: 'iot', name: '物联告警' }, channels: [channel('template-alarm')] },

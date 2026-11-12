@@ -6,7 +6,7 @@ export default {
   ],
   templates: [
     { id: 'template-alarm', name: '设备告警邮件', type: 'email', provider: 'embedded', configId: 'smtp-primary', template: { subject: '设备 ${deviceName} 告警', text: '告警内容：${alarmName}', sendTo: ['receiver@example.test'], attachments: [] }, variableDefinitions: [{ id: 'deviceName', name: '设备名称', type: 'string', required: true }, { id: 'alarmName', name: '告警名称', type: 'string' }], description: '测试邮件模板' },
-    { id: 'template-maintenance', name: '维护通知', type: 'email', provider: 'embedded', template: { subject: '维护通知', text: '计划维护内容', sendTo: [], attachments: [] }, variableDefinitions: [] },
+    { id: 'template-maintenance', name: '维护通知', type: 'email', provider: 'embedded', configId: 'smtp-primary', template: { subject: '维护通知', text: '计划维护内容', sendTo: [], attachments: [] }, variableDefinitions: [] },
   ],
   history: [
     { id: 'history-error', notifierId: 'smtp-primary', templateId: 'template-alarm', notifyType: 'email', provider: 'embedded', state: 'error', notifyTime: 1794182500000, receiver: ['failed@example.test'], notifyMessage: '设备 B 温度告警发送失败', template: '{"subject":"告警快照"}', context: { deviceName: '设备 B' }, errorMessage: '邮件服务拒绝接收', result: { response: '550 rejected' }, bizType: 'alarm', bizId: 'alarm-002' },

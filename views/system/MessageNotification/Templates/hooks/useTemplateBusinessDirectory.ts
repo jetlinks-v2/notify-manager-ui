@@ -17,7 +17,7 @@ export function useTemplateBusinessDirectory(canQuery: Ref<boolean>, api: Messag
     try {
       const result = await api.queryTemplateDirectory()
       if (current !== revision || !canQuery.value) return
-      businessTypes.value = result
+      businessTypes.value = result.map(item => !item.id && item.providerId ? { ...item, id: item.providerId } : item)
       directoryState.value = result.length ? 'ready' : 'empty'
     } catch (error) {
       if (current === revision) directoryState.value = classifyNotificationFailure(error)
