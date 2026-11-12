@@ -43,6 +43,7 @@ function load(filename, inline = true) {
   const { code } = transformSync(source, { loader: 'ts', format: 'cjs' })
   const module = { exports: {} }
   const imports = name => {
+    if (name.endsWith('.css')) return {}
     if (Object.hasOwn(dependencies, name)) return dependencies[name]
     if (name.startsWith('.')) {
       let path = resolve(dirname(filename), name)
@@ -98,6 +99,24 @@ test('actual template conversion preserves ID, provider fields, variable metadat
   assert.deepEqual(payload.template.providerExtra, { untouched: true })
   assert.deepEqual(payload.variableDefinitions[0].expands, { x: true })
   assert.equal(original.template.subject, 'Alarm ${device.name}')
+})
+
+test('email saving converts legacy line breaks to HTML only at the persistence boundary', () => {
+  const original = '第一行 <温度> & 告警\r\n第二行\n\n第三行'
+  const draft = model.createTemplateDraft(record('legacy-email', { template: { subject: 'Subject', text: original } }))
+  const before = model.templateDraftFingerprint(draft)
+  const payload = model.buildTemplatePayload(draft)
+  assert.equal(payload.template.text, '第一行 &lt;温度&gt; &amp; 告警<br>第二行<br><br>第三行')
+  assert.equal(model.templateDraftFingerprint(draft), before)
+  assert.equal(model.createTemplateDraft({ ...record(), template: payload.template }).text, payload.template.text)
+  draft.text = '<p><strong>${device.name}</strong></p><p>第二段<br>第三行</p>'
+  assert.equal(model.buildTemplatePayload(draft).template.text, draft.text)
+  for (const empty of ['<p><br></p>', '<p>&nbsp;</p>']) {
+    draft.text = empty
+    assert.throws(() => model.buildTemplatePayload(draft), /contentRequired/)
+  }
+  draft.text = '&'.repeat(1025)
+  assert.throws(() => model.buildTemplatePayload(draft), /contentLimit/)
 })
 
 test('new generic provider templates use valid object JSON and do not inherit email fields', () => {
@@ -305,6 +324,26 @@ test('actual editor setup restores focus and inserts a variable over the selecte
   assert.deepEqual(selection, [18, 18])
 })
 
+test('email editing hides advanced settings and retains configuration, recipients and declarations', async () => {
+  const Editor = load(resolve(templatesRoot, 'components/TemplateEditor.vue')).default
+  const draft = model.createTemplateDraft(record('stored-email', { template: { subject: 'Subject', text: 'Body', sendTo: ['existing@example.test'], attachments: [] } }))
+  const baseline = model.templateDraftFingerprint(draft)
+  const render = async configs => {
+    const app = vue.createSSRApp(Editor, { draft, existing: true, businessMode: true, configs, configState: 'ready' })
+    app.config.warnHandler = () => {}
+    return renderToString(app)
+  }
+  const html = await render([{ id: 'smtp-one', name: 'SMTP', type: 'email', provider: 'embedded' }])
+  assert.ok(!html.includes('template-editor__advanced'))
+  assert.ok(!html.includes('messageNotification.templates.recipients'))
+  assert.ok(!html.includes('messageNotification.templates.configPlaceholder'))
+  assert.equal(model.templateDraftFingerprint(draft), baseline)
+  draft.configId = ''
+  const unconfigured = await render([{ id: 'smtp-one', name: 'SMTP', type: 'email', provider: 'embedded' }, { id: 'smtp-two', name: 'SMTP 2', type: 'email', provider: 'embedded' }])
+  assert.ok(!unconfigured.includes('template-editor__advanced'))
+  assert.ok(unconfigured.includes('messageNotification.templates.configPlaceholder'))
+})
+
 test('actual preview renders escaped example text without executable HTML', async () => {
   const Preview = load(resolve(templatesRoot, 'components/TemplatePreview.vue')).default
   const draft = model.createTemplateDraft(record())
@@ -360,6 +399,8 @@ async function settlePage() {
 }
 
 async function mountTemplatePage(query = {}, permission = () => true, options = {}) {
+  const messages = []
+  dependencies['@jetlinks-web/utils'].onlyMessage = (...args) => messages.push(args)
   const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value))
   const route = vue.reactive({ query })
   const api = mockApi()
@@ -441,7 +482,7 @@ async function mountTemplatePage(query = {}, permission = () => true, options = 
   const app = renderer.createApp({ setup(_, context) { page = Page.setup({}, context); return () => null } })
   app.mount({})
   await settlePage()
-  return { page, route, api, facade, records, businessTypes, leave: () => leaveGuard(), updateRoute: query => replace({ query }),
+  return { page, route, api, facade, records, businessTypes, messages, leave: () => leaveGuard(), updateRoute: query => replace({ query }),
     close() { app.unmount(); Object.assign(facade, original) } }
 }
 
@@ -535,7 +576,7 @@ test('only a successfully saved business-bound template emits the original AI al
 
 const businessKey = business => load(resolve(templatesRoot, 'templateDirectoryModel.ts')).templateBusinessKey(business)
 
-test('actual page route guard retains dirty drafts on cancel and creation success stays visible with real channel fixtures', async () => {
+test('actual page route guard retains dirty drafts on cancel and creation success shows a toast with real channel fixtures', async () => {
   const current = await mountTemplatePage({ channel: 'email:embedded', templateId: 'first' }, () => true, { businessTypes: [] })
   try {
     const { page } = current
@@ -554,7 +595,7 @@ test('actual page route guard retains dirty drafts on cancel and creation succes
     assert.equal(await confirmed, true)
     await page.save()
     await settlePage()
-    assert.equal(page.saved.value, true)
+    assert.deepEqual(current.messages, [['messageNotification.templates.saved', 'success']])
     assert.equal(page.draft.value, undefined)
     assert.equal(page.workspace.hasDirtyDrafts.value, false)
     page.setUploading(true)
@@ -816,7 +857,7 @@ test('saving blocks route departure and updates, while upload busy state require
     pending.resolve()
     await save
     await settlePage()
-    assert.equal(page.saved.value, true)
+    assert.deepEqual(current.messages, [['messageNotification.templates.saved', 'success']])
     assert.equal(page.busy.value, false)
     assert.equal(await current.leave(), true)
     page.setUploading(true)
@@ -845,12 +886,12 @@ test('failed business saves retain editing and a successful single-channel save 
     await current.page.save()
     assert.equal(current.page.editing.value, true)
     assert.equal(current.page.draft.value.subject, 'Changed subject')
-    assert.equal(current.page.saved.value, false)
+    assert.deepEqual(current.messages, [])
     current.facade.saveBusinessTemplate = current.api.saveBusinessTemplate
     await current.page.save()
     await settlePage()
     assert.equal(current.page.editing.value, false)
-    assert.equal(current.page.saved.value, true)
+    assert.deepEqual(current.messages, [['messageNotification.templates.saved', 'success']])
     assert.equal(current.page.draft.value.subject, 'Changed subject')
     assert.equal(current.route.query.business, 'device-config')
     assert.equal(current.route.query.templateId, 'template-alarm')
@@ -884,7 +925,7 @@ test('first save adopts actual topic and template IDs, preserves the sibling dra
     assert.equal(page.draft.value.id, 'template-saved-aiComplianceAlarm-notifier-email')
     assert.equal(current.route.query.business, page.business.value.id)
     assert.equal(current.route.query.templateId, page.draft.value.id)
-    assert.equal(page.saved.value, true)
+    assert.deepEqual(current.messages, [['messageNotification.templates.saved', 'success']])
     assert.equal(page.editing.value, false)
     page.changeChannel('webhook:http')
     await settlePage()
@@ -933,7 +974,7 @@ test('an explicit unbound template deep link keeps standalone editing and persis
     page.draft.value.subject = 'Standalone edit'
     await page.save()
     await settlePage()
-    assert.equal(page.saved.value, true)
+    assert.deepEqual(current.messages, [['messageNotification.templates.saved', 'success']])
     assert.equal(page.editing.value, false)
     assert.equal(page.draft.value.id, 'second')
     assert.equal(current.route.query.templateId, 'second')

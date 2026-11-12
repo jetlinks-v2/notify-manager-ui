@@ -28,6 +28,13 @@ export function useTemplateCatalog(permitted: Ref<boolean>, channelId: Ref<strin
   })
   const configState = computed<NotificationLoadState>(() => snapshotState.value === 'ready' || snapshotState.value === 'empty'
     ? configs.value.length ? 'ready' : 'empty' : snapshotState.value)
+  /** Navigation reflects every visible channel config, independently of the selected business template. */
+  const channelConfigurationStates = computed<Record<string, NotificationLoadState>>(() => Object.fromEntries(channels.value.map(channel => [
+    channel.id, snapshotState.value === 'ready' || snapshotState.value === 'empty'
+      ? allConfigs.value.some(config => notificationEnumValue(config.type) === channel.type
+        && notificationEnumValue(config.provider) === channel.provider) ? 'ready' : 'empty'
+      : snapshotState.value,
+  ])))
   const metadata = computed(() => schemas.get(channelId.value))
   const metadataState = computed<NotificationLoadState>(() => schemaStates.get(channelId.value) ?? 'idle')
 
@@ -123,6 +130,6 @@ export function useTemplateCatalog(permitted: Ref<boolean>, channelId: Ref<strin
     return channel
   }
 
-  return { channels, catalogState, configs, configState, metadata, metadataState,
+  return { channels, catalogState, configs, configState, channelConfigurationStates, metadata, metadataState,
     loadCatalog, loadConfigs, loadMetadata, clear, requireChannel }
 }

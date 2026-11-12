@@ -39,6 +39,7 @@ function load(filename) {
 }
 
 const { useTemplateWorkspace } = load(resolve(root, 'views/system/MessageNotification/Templates/useTemplateWorkspace.ts'))
+const { useTemplateCatalog } = load(resolve(root, 'views/system/MessageNotification/Templates/hooks/useTemplateCatalog.ts'))
 const { messageNotificationApi } = load(resolve(root, 'api/notice/messageNotification.ts'))
 const { NotificationRequestError } = load(resolve(root, 'api/notice/messageNotificationState.ts'))
 const permissions = () => ({ query: vue.ref(true), add: vue.ref(true), update: vue.ref(true) })
@@ -115,6 +116,47 @@ test('business drafts use the backend directory and reuse one exact-provider con
   assert.equal(workspace.draft.value.text, '邮件草稿')
   assert.equal(io.calls.filter(([name]) => name === 'queryAllConfigs').length, 1)
   assert.equal(io.calls.some(([name]) => name === 'getBusinessTemplate'), false)
+})
+
+test('channel configuration states use all exact enum provider pairs and survive selection changes without requests', async () => {
+  const io = mockApi([
+    { ...config(), type: { value: 'email', text: 'Email' }, provider: { value: 'embedded', text: 'SMTP' } },
+    config('robot', 'dingTalk', 'dingTalkRobotWebHook'),
+    config('foreign', 'voice', 'embedded'),
+  ])
+  const workspace = useTemplateWorkspace(permissions(), io.api)
+  await workspace.loadBusiness(business(null), 'email:embedded')
+  assert.equal(workspace.channelConfigurationStates.value['email:embedded'], 'ready')
+  assert.equal(workspace.channelConfigurationStates.value['dingTalk:dingTalkRobotWebHook'], 'ready')
+  assert.equal(workspace.channelConfigurationStates.value['dingTalk:dingTalkMessage'], 'empty')
+  assert.equal(workspace.channelConfigurationStates.value['voice:aliyun'], 'empty')
+  const before = { ...workspace.channelConfigurationStates.value }
+  await workspace.loadBusiness(business(null), 'voice:aliyun')
+  assert.deepEqual(workspace.channelConfigurationStates.value, before)
+  assert.equal(io.calls.filter(([name]) => name === 'queryAllConfigs').length, 1)
+  assert.equal(workspace.isDefault.value, true)
+  assert.equal(workspace.channelConfigurationStates.value['voice:aliyun'], 'empty')
+})
+
+test('configuration state refresh retains loading and failures instead of reporting unreadable channels as empty', async () => {
+  const io = mockApi()
+  const catalog = useTemplateCatalog(vue.ref(true), vue.ref('email:embedded'), io.api)
+  await catalog.loadCatalog()
+  assert.ok(Object.values(catalog.channelConfigurationStates.value).every(state => state === 'idle'))
+  let resolveConfigs
+  io.api.queryAllConfigs = () => new Promise(resolve => { resolveConfigs = resolve })
+  const pending = catalog.loadConfigs()
+  assert.ok(Object.values(catalog.channelConfigurationStates.value).every(state => state === 'loading'))
+  resolveConfigs([config('voice', 'voice', 'aliyun')])
+  await pending
+  assert.equal(catalog.channelConfigurationStates.value['voice:aliyun'], 'ready')
+  assert.equal(catalog.channelConfigurationStates.value['email:embedded'], 'empty')
+  io.api.queryAllConfigs = async () => { throw new NotificationRequestError('forbidden') }
+  await catalog.loadConfigs(true)
+  assert.ok(Object.values(catalog.channelConfigurationStates.value).every(state => state === 'forbidden'))
+  io.api.queryAllConfigs = async () => []
+  await catalog.loadConfigs(true)
+  assert.ok(Object.values(catalog.channelConfigurationStates.value).every(state => state === 'empty'))
 })
 
 test('a real business template wins over prototypes and single-channel saving preserves state grant and variables', async () => {

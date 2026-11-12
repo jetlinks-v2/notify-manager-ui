@@ -105,11 +105,41 @@
 
 ### 业务节点联动与模板预览
 
+基于最新 `2.20`（`6dfceb8`）的交付验证：消息通知回归按有效切片覆盖 337 项，其中最终渠道回归 40/40 通过，其余 297 项沿用本轮联合回归成功结果；内置模板校验同时保证草稿保留原文、保存正文转换 HTML 换行。模块构建通过（1 分 2 秒），6 个变更 Vue 的 SFC 编译和定向样式检查、浏览器夹具语法及 `git diff --check` 通过；中英日各 1030 个键一致，其中消息通知各 646 个。模块类型检查未通过，共 213 条诊断：原有 211 条，加上远端基线已有的 `useTemplatePage.ts` 对当前 core `useNotificationConfigNavigation` 的两处调用签名不匹配；本次不修改 core，需同步 core 契约后重跑本节类型命令。日志前缀 `/tmp/notify-email-delivery-`。
+
+模板保存反馈：`Templates/index.vue` 已移除保存成功的页面横幅，`hooks/useTemplatePage.ts` 删除对应 `saved` 状态，保存及路由同步完成后使用 `onlyMessage(t('messageNotification.templates.saved'), 'success')`。保留失败反馈、草稿和路由同步逻辑。现有模板回归 36/36 通过，覆盖保存失败无成功提示、首次保存和已有模板保存成功提示；页面样式门禁通过，模块构建通过（1 分 13 秒，保留既有 chunk 告警）。类型检查仍有 211 条既有诊断，忽略行号后与上一轮基线一致，无新增；模块没有独立 lint 脚本。本轮未调用真实保存接口。
+
+邮件变量附件（2026-11-12）：`components/AttachmentEditor.vue` 与 `hooks/useTemplateAttachments.ts` 保留普通文件上传，并提供真实变量选择、附件文件名及“作为附件 / 插入正文”操作。保存沿用 `template.attachments[].{name,location}`；变量地址保留 `${变量ID}`，成功操作后通过 `useTemplateEditor.ts` 的 `registerVariable` 登记真实变量元数据，不写入预览样例。变量附件支持编辑、取消、删除，与上传附件共用 5 个数量限制及重名检查；正文图片不占附件数，上传并发、禁用、草稿切换和迟到结果均有隔离。`useEmailRichTextEditor.ts` 的 `insertAttachmentImage` 复用 Quill 正文选区插入变量图片；附件名仅在预览时替换样例。`components/TemplateEditor.vue` 已移除邮件“更多设置”，保留历史发送配置、接收对象与变量声明；缺少有效发送配置时仍显示必要的配置选择项。不改后端、左侧目录或其他前端工作区。
+
+本轮验证：消息通知回归 275/275 通过，模块构建通过（53.20 秒，保留既有 chunk 告警），3 个变更 Vue 文件的样式门禁通过；类型检查仍有 211 条既有诊断，对比 Quill 基线无新增，不能视为类型检查通过。中 / 英 / 日各 467 个消息通知键保持一致。浏览器内存夹具已验证变量附件添加、编辑取消、正文指定位置插图、普通上传与变量附件共存、单渠道保存回显及预览；真实页面仅只读检查，未保存真实通知配置或发送邮件。截图：`/Users/fuhao/.codex/visualizations/2026/11/11/01a1caae-7901-7753-a763-5ff87ae35585/notification-variable-attachments.jpg`。真实文件服务及收件端效果尚待联调。
+
+邮件正文使用 Quill 2.0.3，`components/channels/EmailTemplateEditor.vue` 保留现有格式工具栏，`hooks/useEmailRichTextEditor.ts` 管理真实选区、语义 HTML、5120 长度、禁用与生命周期。四个 Tiptap 依赖已移除，不新增 Vue 实例。进入编辑不改写历史纯文本 / HTML；用户修改后写入语义 HTML，保留列表类型与换行。草稿重置会清空撤销历史及图片选区，其他渠道与单渠道保存契约保持不变。
+
+正文图片支持按钮选择上传、粘贴 / 拖放，接受小于 2 MB 的 JPG / PNG / GIF / WebP。`hooks/useEmailTemplateImages.ts` 复用 core `createFileUploadCustomRequest()`（`/file/upload?options=publicAccess`）与 `getFileDownloadUrl()`，成功后将真实可访问的绝对地址按光标插入正文，不保存 base64。上传期间保留原文，保存与渠道 / 业务切换沿用原有锁；附件和正文图片上传状态按来源聚合，任一仍在上传就不能提前解锁。上传失败、权限变化、切换草稿或卸载后的迟到结果不写入正文；异步选区随正文变化调整，多图按序插入。
+
+图片地址也支持 `${imageUrl}` 或固定 HTTP(S) / 根路径中嵌入变量。在图片地址输入框聚焦后，点击变量面板插入到该输入框的光标位置；保存保留变量表达式。手工根路径在插入时按当前站点补全绝对地址，HTTP(S) 协议统一小写，变量 token 不进行 URL 编码；不批量改写历史图片。后端先对整个 HTML 替换变量，再处理图片，因此完整图片变量的实际值须为完整 HTTP(S) 地址。编辑器中的变量图片以原始地址占位并提供悬停提示，避免请求尚未解析的地址；右侧预览先替换样例，再用 DOMPurify 净化 HTML 和校验最终图片 URL，显示合法图片，移除未解析或危险地址。不新增后端未提供的图片变量，变量值仍由实际业务提供。
+
+后端邮件提供商固定按 HTML 发送。`definition/emailTemplateContent.ts` 统一纯文本转义、换行、空正文 / 仅图片正文判断、图片地址校验及安全预览；`model.ts#buildTemplatePayload` 在保存边界转换旧纯文本，既有 HTML 保留，预览样例不进入保存。仅含合法图片或图片变量的正文也可保存。旧纯文本需保存后才会按转换后的 HTML 发送，本次不批量改写真实配置。
+
+Quill 验证（2026-11-12）：统一消息通知回归 **254/254 通过**，其中真实 Quill 编辑器 17 项、图片上传 12 项、HTML / 图片净化 11 项。覆盖格式、列表语义、光标变量、Enter 后静默选区、挂载不脏、外部重置 / 撤销隔离、长度、禁用、图片变量保存回显、地址规范化和选区移动；上传覆盖 MIME / 大小、真实 URL、失败 / 并发 / 迟到结果、多图书签及附件状态聚合。最终模块构建通过（54.09 秒，保留既有分块告警），两个 Vue 文件定向样式门禁及 `git diff --check` 通过，三语各 448 个消息通知键一致。模块 `vue-tsc` 仍为 211 条既有诊断，相比单文件默认模板版本按文件 / 错误码 / 消息忽略行号后无新增或移除，不能视为类型检查通过。日志前缀 `/tmp/notification-quill-`，命令沿用下文；工作区无独立 lint 脚本。
+
+浏览器在 9200 隔离内存夹具验证 Enter 后图片插入新段、上传期间保存 / 渠道锁定、图片地址输入框点击变量后弹层保持可操作、变量图片占位和右侧样例图实际加载（自然宽度 320）、保存后重新编辑仍保留图片 URL 与 `${imageUrl}`，重新进入编辑没有产生无关草稿修改。截图为 `/Users/fuhao/.codex/visualizations/2026/11/11/01a1caae-7901-7753-a763-5ff87ae35585/notification-quill-images.jpg`。上传和保存仅写入夹具内存，真实文件服务权限 / URL 可达性及实际邮件收件端待测试环境联调，本次未写入真实通知配置或发送通知。
+
+依赖声明位于本模块 `package.json`，锁版本位于运行时工作区 `pnpm-lock.yaml`。完整工作区安装仍受已有 `patchedDependencies` 引用的补丁文件缺失影响；本次保持原配置，隔离安装并定向更新锁。所有 29 个 importer 的依赖闭包核验完整，移除仅上轮新增且当前不可达的 Tiptap 依赖项，Quill 离线冻结锁验证通过。完整安装需补齐原补丁文件后重跑 `pnpm install --frozen-lockfile`。
+
+本模块独立 PR 不包含父仓锁文件；父工程接入该版本时须同步 `modules/notify-manager-ui` importer 的 `dompurify@3.4.17`、`quill@2.0.3`、`jsdom@26.1.0` 及依赖闭包，再验证冻结锁安装。
+
+默认模板唯一维护入口为 `views/system/MessageNotification/Templates/definition/templateDefaults.ts`，统一定义六类通知的默认文案、业务 / 渠道正文结构、预览样例和真实字段适配；已移除分散的 `prototypeMessages.ts`、`prototypeContent.ts` 和 `prototypePreviewExamples.ts`。修改默认内容只更新该文件，默认生成、恢复默认及预览继续使用原有导出；后端已保存模板仍优先读取，界面语言不重写已有草稿。验证（2026-11-12）：六类业务、七个真实 provider 共 42 组模板以及变量 / 预览样例在合并前后逐字一致；统一回归 213/213、模块构建（1 分 3 秒）及 `git diff --check` 通过。类型检查仍有 211 条既有诊断，相比渠道状态版本无新增或移除。本次没有修改 Vue 或样式，沿用渠道状态版本的定向样式验证；页面与保存入口未变化，未重复浏览器操作或写入真实配置。验证命令沿用下文，日志前缀 `/tmp/notification-template-single-file-`。
+
+渠道状态导航：顶部 `TemplateChannelNavigation.vue` 使用 `a-button-group` 和 `a-badge`，`hooks/useTemplateCatalog.ts` 从已有后端全量通知配置快照派生 `channelConfigurationStates`，按真实 type/provider 判断，已配置显示绿点、未配置显示灰点。状态只表示当前权限可见的渠道配置存在；钉钉 / 企业微信大类任一子提供商已配置即显示绿点，不依据业务模板绑定或启用状态判断。读取中和失败使用中性灰点与独立状态提示，不当作未配置；任一渠道配置变更后刷新同一快照，切换渠道不增加配置查询，不向展示组件传递完整配置或凭据。
+
+渠道状态验证（2026-11-12）：统一消息通知回归 **213/213 通过**，新增覆盖精确 type/provider 及枚举值匹配、跨渠道快照复用、机器人分组、响应式刷新和读取失败状态；模块构建通过（55.09 秒），两个变更 Vue 文件定向样式检查及 `git diff --check` 通过。模块 `vue-tsc` 仍为 211 条既有诊断，相比上次按文件 / 错误码 / 消息忽略行号后无新增或移除，不能视为类型检查通过。9200 登录页已验证真实 `ant-btn-group`、六类渠道状态点、语音切换及选中态，1212px 视口无页面横向溢出；当前账号可见六类渠道均有配置，均显示绿点，未配置及失败状态由自动回归覆盖。沿用下文验证命令，日志前缀 `/tmp/notification-template-channel-status-`，截图 `notification-template-channel-status.jpg` 与下文效果图在同一目录；未写入真实配置或发送通知。
+
 截图样式已对齐用户提供的邮件、钉钉、企业微信、语音、短信、Webhook 共 12 张查看 / 编辑截图。六类渠道分别由 `components/channels/` 下的独立编辑、预览组件承载；编辑区采用内容表单、可用变量、实时预览三栏，复用 `TemplateVariablePanel.vue` 和 `TemplatePhoneFrame.vue`，按工作区实际宽度收为两栏或单栏。顶部 `TemplateChannelNavigation.vue` 将钉钉、企业微信按大类组织，子项仍使用后端真实 provider。动态目录、权限、草稿与保存契约沿用下文约定。
 
 消息模板入口为 `views/system/MessageNotification/Templates/index.vue`，owning module 为 `runtime-ui/modules/notify-manager-ui`。页面沿用左侧 `TemplateDirectory.vue` 的树结构、样式、搜索和展开规则，所有非文件夹业务节点均可选择，包括尚未绑定模板的业务；首次进入默认选择树中的首个业务，显式业务 / templateId 深链优先。设备告警和告警解除仍是独立业务及模板，展示层保持父子排列。
 
-右侧以当前业务与渠道为上下文，优先展示已保存模板；确实未配置时使用原型 `shared/notify.js` 的默认文案，按后端真实变量适配。原型未覆盖的业务或提供商保留入口，显示未配置并允许按实际字段编辑。邮件使用单封邮件卡及附件列表，钉钉 / 微信使用手机消息卡片，语音使用来电界面及播报原文，短信使用手机气泡及字数，Webhook 使用 HTTP 请求卡及请求体，其他提供商展示字段摘要。编辑与预览实时联动；变量点击插入当前光标位置，预览样例不进入保存值，不执行模板中的 HTML。
+右侧以当前业务与渠道为上下文，优先展示已保存模板；确实未配置时使用原型 `shared/notify.js` 的默认文案，按后端真实变量适配。原型未覆盖的业务或提供商保留入口，显示未配置并允许按实际字段编辑。邮件使用单封邮件卡及附件列表，钉钉 / 微信使用手机消息卡片，语音使用来电界面及播报原文，短信使用手机气泡及字数，Webhook 使用 HTTP 请求卡及请求体，其他提供商展示字段摘要。编辑与预览实时联动；变量点击插入当前光标位置，预览样例不进入保存值；邮件仅渲染净化后的 HTML，其他渠道继续按文本或有限 Markdown 展示。
 
 钉钉工作通知、企业微信的标题 / 正文表单由真实 `message` 的首行 / 余文适配，保存仍合回原字段，进入编辑不改动原值。短信保留真实服务商模板编号、签名远程选择和只读审核原文；短信 / 语音的变量对应表仅展示现有引用，实际发送参数仍由业务 `channel.channelConfiguration.variables` 提供，不新增后端未支持的变量映射字段。Webhook 保留 `contextAsBody` 模式，历史对象请求体的文本读取与变量插入统一使用格式化 JSON，进入编辑不改写原数据；请求地址预览隐藏账号、查询参数和片段，不展示虚构签名头。截图中的站内信、服务商演示参数和后端不可用变量不新增为业务能力。
 
