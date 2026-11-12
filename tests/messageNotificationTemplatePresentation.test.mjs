@@ -65,6 +65,39 @@ function editor(draft, overrides = {}) {
   return { props, value, stop: () => scope.stop() }
 }
 const flush = async () => { await Promise.resolve(); await Promise.resolve(); await vue.nextTick() }
+
+test('attachment actions declare real variables without persisting preview defaults or duplicating metadata', () => {
+  const variable = { id: 'detail.imageUrl', name: '图片', type: 'file', defaultValue: 'https://example.test/sample.png', expands: { businessType: 'image', mockValue: 'preview' } }
+  const item = editor(draftFor('email', 'embedded', { subject: 'Subject', text: 'Body' }), { availableVariables: [variable] })
+  const before = JSON.stringify(item.props.draft)
+  assert.equal(item.value.registerVariable('missing'), false)
+  assert.equal(JSON.stringify(item.props.draft), before)
+  assert.equal(item.value.registerVariable(variable.id), true)
+  assert.equal(item.value.registerVariable(variable.id), true)
+  const declarations = item.props.draft.variables.filter(value => value.id === variable.id)
+  assert.equal(declarations.length, 1)
+  assert.equal(declarations[0].defaultValue, undefined)
+  assert.deepEqual(declarations[0].expands, variable.expands)
+  assert.equal(variable.defaultValue, 'https://example.test/sample.png')
+  item.props.disabled = true
+  item.props.availableVariables.push({ id: 'otherImage', name: '其他图片' })
+  assert.equal(item.value.registerVariable('otherImage'), false)
+  assert.equal(item.props.draft.variables.some(value => value.id === 'otherImage'), false)
+  item.stop()
+})
+
+test('variable attachment names preview samples while their saved source and names retain expressions', () => {
+  const attachments = [{ name: '${detail.targetName}-告警.png', location: '${detail.imageUrl}' }, { name: '运行时附件.png', location: '' }]
+  const draft = draftFor('email', 'embedded', { subject: 'Subject', text: '<p>正文</p>', attachments, sendTo: ['existing@example.test'] })
+  const before = JSON.stringify(draft)
+  const preview = useTemplatePreview({ draft })
+  assert.equal(preview.attachmentNames.value, 'Camera 218-告警.png, 运行时附件.png')
+  assert.equal(JSON.stringify(draft), before)
+  const payload = buildTemplatePayload(draft)
+  assert.deepEqual(payload.template.attachments, attachments)
+  assert.deepEqual(payload.template.sendTo, ['existing@example.test'])
+  assert.equal(payload.configId, 'config-one')
+})
 async function renderPreview(props) {
   const Preview = load(resolve(templateRoot, 'components/TemplatePreview.vue')).default
   const app = vue.createSSRApp({ render: () => vue.h(Preview, props) })
@@ -360,7 +393,7 @@ test('email preview is one message card with actual metadata and an unchanged bo
     assert.match(html, /sender@example.test/)
     assert.match(html, /receiver@example.test/)
     assert.match(html, /2026-01-01 12:00:00/)
-    assert.match(html, /First line\n\nSecond line/)
+    assert.match(html, /First line<br><br>Second line/)
     assert.match(html, /alarm-report.pdf/)
     assert.doesNotMatch(html, /emailList|template-preview__summary|DO_NOT_SHOW_PASSWORD|DO_NOT_SHOW_ACCOUNT/)
     assert.equal(JSON.stringify(draft), baseline)
@@ -402,6 +435,10 @@ test('changed Vue components compile and remain within the repository size const
     const source = readFileSync(filename, 'utf8')
     assert.ok(source.split('\n').length <= 300)
     assert.doesNotThrow(() => compileScript(parse(source, { filename }).descriptor, { id: filename, inlineTemplate: true }))
-    assert.doesNotMatch(source, /v-html|request\.(get|post|patch)/)
+    assert.doesNotMatch(source, /request\.(get|post|patch)/)
+    if (name === 'channels/EmailTemplatePreview.vue') {
+      assert.match(source, /sanitizeEmailPreview/)
+      assert.match(source, /v-html="safeBody"/)
+    } else assert.doesNotMatch(source, /v-html/)
   }
 })

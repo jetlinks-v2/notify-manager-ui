@@ -56,13 +56,12 @@
           </a-space>
           <a-alert v-if="['error', 'forbidden', 'unavailable'].includes(businessActionState)" type="error" show-icon :message="t(`messageNotification.templates.${businessActionState}`)" />
           <div class="message-templates__channels">
-            <TemplateChannelNavigation :value="channelId" :channels="channels" :disabled="busy" @change="changeChannel" />
+            <TemplateChannelNavigation :value="channelId" :channels="channels" :configuration-states="channelConfigurationStates" :disabled="busy" @change="changeChannel" />
           </div>
           <a-alert v-if="listFailure" type="warning" show-icon :message="t(`messageNotification.templates.${catalogState}`)">
             <template #action><a-button size="small" :disabled="busy" @click="reload">{{ t('messageNotification.templates.reload') }}</a-button></template>
           </a-alert>
           <a-spin wrapper-class-name="notification-page__body message-templates__detail" :spinning="detailState === 'loading' || catalogState === 'loading' || directoryState === 'loading'">
-            <a-alert v-if="saved" type="success" show-icon :message="t('messageNotification.templates.saved')" />
             <a-alert v-if="detailFailure" type="warning" show-icon :message="t(`messageNotification.templates.${feedbackState}`)">
               <template #action><a-button size="small" :disabled="busy" @click="reload">{{ t('messageNotification.templates.reload') }}</a-button></template>
             </a-alert>
@@ -111,9 +110,9 @@ const contentEditor = ref<{ insertVariable(id: string): Promise<void>; canInsert
 const {
   canManage, selectedTemplateId, businessEnabled, changingBusiness, businessActionState, toggleBusiness,
   businessLinkPending, businessLinkState, importOptions, channelEnabled, importTemplate,
-  t, compact, workspace, channels, channelId, templates, configs, listState, configState, businessTypes, directoryState,
+  t, compact, workspace, channels, channelId, templates, configs, listState, configState, channelConfigurationStates, businessTypes, directoryState,
   detailState, activeKey, draft, entry, business, dirty, saving, canSave, canQuery, editing, title, description,
-  canAdd, canEdit, canConfigure, busy, uploading, validationMessage, saved, channelOptions, templateOptions,
+  canAdd, canEdit, canConfigure, busy, uploading, validationMessage, channelOptions, templateOptions,
   selectedDirectoryKey, listFailure, detailFailure, feedbackState, saveFailure, saveState, confirmation,
   isDefault, canRestoreDefault, missingConfiguration, hasContent, catalogState, metadata, metadataState, availableVariables, saveOutcomeUnknown,
   currentChannel, activeConfig, setUploading, reload, changeChannel, selectTemplate, createTemplate, save,

@@ -3,6 +3,7 @@ import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vu
 import type { LocationQueryRaw } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { usePermission } from '@jetlinks-web/hooks'
+import { onlyMessage } from '@jetlinks-web/utils'
 import { useMediaQuery } from '@vueuse/core'
 import { useNotificationConfigNavigation } from '@jetlinks-web-core/hooks/useNotificationConfigNavigation'
 import { messageNotificationApi } from '../../../../../api/notice/messageNotification'
@@ -46,7 +47,6 @@ export function useTemplatePage() {
   const initialized = ref(false)
   const selectionUnavailable = ref(false)
   const validationMessage = ref('')
-  const saved = ref(false)
   const confirmation = reactive({ open: false })
   const busy = computed(() => saving.value || uploading.value || changingBusiness.value)
   const navigation = computed(() => normalizeNotificationNavigation(route.query, channels.value))
@@ -114,7 +114,6 @@ export function useTemplatePage() {
     const changedBusiness = identity(target) !== identity(business.value)
     loadedSelection = selection
     validationMessage.value = ''
-    saved.value = false
     if (changedBusiness) editing.value = false
     if (target) await workspace.loadBusiness(target, channel, requestedConfig)
     else await workspace.loadChannel(channel, standaloneId)
@@ -125,7 +124,7 @@ export function useTemplatePage() {
     () => route.query.topicProvider, () => route.query.channelProvider, () => route.query.aiAlarmType, () => route.query.visualAlarmSession, () => route.query.businessSelection,
     directory.businessTypes, directory.directoryState], synchronizeSelection, { immediate: true })
   watch(notificationConfigurationChange, change => {
-    if (change?.channel === channelId.value) void workspace.refreshConfigs()
+    if (change?.channel) void workspace.refreshConfigs()
   })
 
   function selectionQuery(channel: string, selectedBusiness?: NoticeChannelConfig, templateId?: string): LocationQueryRaw {
@@ -157,7 +156,6 @@ export function useTemplatePage() {
   }
   function startEditing() {
     if (busy.value || !canEdit.value) return
-    saved.value = false
     editing.value = true
   }
   function changeChannel(value: string | number) {
@@ -181,14 +179,12 @@ export function useTemplatePage() {
     if (busy.value || !canAdd.value || !canQuery.value) return
     workspace.createTemplate(navigation.value.configId)
     editing.value = true
-    saved.value = false
   }
 
   /** 保存成功只回写当前业务的真实身份和绑定，不清空目录或覆盖其他业务。 */
   async function save() {
     const current = revision
     validationMessage.value = ''
-    saved.value = false
     try {
       if (!await workspace.saveTemplate()) return
       if (disposed || current !== revision) return
@@ -201,7 +197,7 @@ export function useTemplatePage() {
       loadedSelection = JSON.stringify([channelId.value, identity(selected), selected ? '' : draft.value?.id || '', ''])
       await router.replace({ query: selectionQuery(channelId.value, selected, draft.value?.id || undefined) })
       acceptedQuery = { ...route.query }
-      saved.value = true
+      onlyMessage(t('messageNotification.templates.saved'), 'success')
       editing.value = false
     } catch (error) {
       validationMessage.value = error instanceof TemplateValidationError ? t(error.message) : t('messageNotification.templates.error')
@@ -211,7 +207,6 @@ export function useTemplatePage() {
     if (busy.value || !canEdit.value || !workspace.canRestoreDefault.value) return
     workspace.restoreDefault()
     editing.value = true
-    saved.value = false
   }
   function confirmDiscard(): Promise<boolean> {
     if (confirmation.open) return Promise.resolve(false)
@@ -226,7 +221,6 @@ export function useTemplatePage() {
   async function requestDiscard() {
     if (busy.value || workspace.dirty.value && !await confirmDiscard()) return
     validationMessage.value = ''
-    saved.value = false
     await workspace.discardDraft()
     editing.value = false
   }
@@ -277,7 +271,7 @@ export function useTemplatePage() {
     businessLinkPending: businessNavigation.requested, businessLinkState: businessNavigation.state, importOptions,
     t, compact, workspace, ...workspace, ...directory, canQuery, canAdd, canEdit, canConfigure, busy, uploading,
     editing, title, description, activeConfig, selectedDirectoryKey, selectedTemplateId, templateOptions,
-    validationMessage, saved, channelOptions, listFailure, detailFailure, feedbackState, saveFailure,
+    validationMessage, channelOptions, listFailure, detailFailure, feedbackState, saveFailure,
     missingConfiguration, confirmation, setUploading, reload, changeChannel, selectTemplate, createTemplate,
     startEditing, save, restoreDefault, requestDiscard, goConfigure, resolveConfirmation, importTemplate,
   }

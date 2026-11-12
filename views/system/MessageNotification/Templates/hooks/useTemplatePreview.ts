@@ -95,7 +95,7 @@ export function useTemplatePreview(props: PreviewProps) {
   const recipients = computed(() => emailDraft.value ? props.draft.sendTo.map(render).join(', ') : render(firstText(
     template.value.toUserName, template.value.toUser, template.value.userIdList, template.value.touser,
     template.value.phoneNumber, template.value.calledNumber, template.value.CalledNumber)))
-  const attachmentNames = computed(() => props.draft.attachments.map(item => item.name).join(', '))
+  const attachmentNames = computed(() => props.draft.attachments.map(item => render(item.name)).join(', '))
   const signature = computed(() => render(template.value.signName))
   const code = computed(() => render(firstText(template.value.code, template.value.ttsCode, template.value.templateCode, template.value.wxTemplateId)))
   const caller = computed(() => render(template.value.calledShowNumbers))

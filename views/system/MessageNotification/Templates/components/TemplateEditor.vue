@@ -39,16 +39,18 @@
         </template>
       </a-spin>
     </template>
-    <a-collapse ghost :default-active-key="!draft.configId ? ['advanced'] : []" class="template-editor__advanced">
+    <a-form-item v-if="needsEmailConfiguration" :label="t('messageNotification.templates.configuration')" required>
+      <a-select v-model:value="draft.configId" :options="configOptions" :placeholder="t('messageNotification.templates.configPlaceholder')" />
+      <a-alert v-if="configFailure" type="warning" show-icon :message="t(`messageNotification.templates.${configState}`)" />
+      <div v-else-if="configState === 'empty'" class="template-editor__hint">{{ t('messageNotification.templates.noConfig') }}</div>
+    </a-form-item>
+    <a-collapse v-if="!emailDraft" ghost :default-active-key="!draft.configId ? ['advanced'] : []" class="template-editor__advanced">
       <a-collapse-panel key="advanced" :header="t('messageNotification.templates.visual.advancedSettings')">
     <a-form-item :label="t('messageNotification.templates.configuration')">
       <a-select v-model:value="draft.configId" :options="configOptions" allow-clear :placeholder="t('messageNotification.templates.configPlaceholder')" @clear="clearConfiguration" />
       <a-alert v-if="configFailure" type="warning" show-icon :message="t(`messageNotification.templates.${configState}`)" />
       <div v-else-if="configState === 'empty'" class="template-editor__hint">{{ t('messageNotification.templates.noConfig') }}</div>
     </a-form-item>
-        <a-form-item v-if="emailDraft" :label="t('messageNotification.templates.recipients')">
-          <a-select v-model:value="draft.sendTo" mode="tags" :token-separators="[',', ';']" :placeholder="t('messageNotification.templates.recipientHint')" />
-        </a-form-item>
         <VariableDefinitions v-model:variables="draft.variables" :disabled="disabled" />
       </a-collapse-panel>
     </a-collapse>
@@ -94,6 +96,9 @@ const channelEditors: Record<string, Component> = {
   'voice:aliyun': VoiceTemplateEditor, 'sms:aliyunSms': SmsTemplateEditor, 'webhook:http': WebhookTemplateEditor,
 }
 const channelEditor = computed(() => parsed.value.valid || emailDraft.value ? channelEditors[`${props.draft.type}:${props.draft.provider}`] : undefined)
+// A new template still needs an explicit choice when several readable SMTP configurations exist.
+const needsEmailConfiguration = computed(() => emailDraft.value && props.configState !== 'loading'
+  && !configOptions.value.some(option => option.value === props.draft.configId && !option.disabled))
 defineExpose({ insertVariable, canInsertVariable })
 </script>
 
