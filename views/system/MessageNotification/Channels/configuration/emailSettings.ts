@@ -2,12 +2,6 @@ import type { EmailProperty, NotificationObject } from '../../shared'
 import type { ChannelDefinition } from './channelMetadata'
 
 export type EmailEncryption = 'ssl' | 'starttls' | 'none'
-export const emailPresets = [
-  { id: 'tencent', host: 'smtp.exmail.qq.com', port: 465, encryption: 'ssl' },
-  { id: 'aliyun', host: 'smtp.qiye.aliyun.com', port: 465, encryption: 'ssl' },
-  { id: 'netease', host: 'smtp.qiye.163.com', port: 465, encryption: 'ssl' },
-  { id: 'exchange', host: 'smtp.office365.com', port: 587, encryption: 'starttls' },
-] as const
 
 /** JavaMail properties are authoritative; the legacy ssl flag only supplies missing defaults. */
 export function emailEncryption(configuration: NotificationObject): EmailEncryption {

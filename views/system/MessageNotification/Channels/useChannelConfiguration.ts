@@ -7,7 +7,9 @@ import type { ChannelDraftEntry, ChannelFieldChange } from './useChannelWorkspac
 import type { ConfigurationPairsModel } from './useConfigurationPairs'
 import { propertyRules } from './configuration/channelMetadata'
 import { readTestSettings, testText } from './testing/channelTestConfig'
-import { emailEncryption, emailEncryptionChanges, emailEncryptionProperties, emailPresets, type EmailEncryption } from './configuration/emailSettings'
+import { emailEncryption } from './configuration/emailSettings'
+import { emailBrandForHost } from './configuration/emailSmtpCatalog'
+import { useEmailSmtpSettings } from './configuration/useEmailSmtpSettings'
 
 export interface ChannelConfigurationProps {
   entry: ChannelDraftEntry
@@ -39,12 +41,7 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
     return Array.isArray(rows) ? rows.filter(row => row && typeof row.key === 'string').map(row => row.key.toLowerCase()) : []
   })
   const emailOptionsVisible = computed(() => props.entry.draft.type === 'email' && props.entry.draft.provider === 'embedded' && ['host', 'port', 'properties'].every(key => configuredFields.value.some(field => field.key === key)))
-  const encryption = computed(() => emailEncryption(props.entry.draft.configuration))
-  const customPreset = ref(false)
-  watch([() => props.entry.key, editing], () => { customPreset.value = false })
-  const preset = computed(() => customPreset.value ? 'other' : emailPresets.find(item => item.host === props.entry.draft.configuration.host)?.id || 'other')
-  const presetOptions = computed(() => [...emailPresets.map(item => ({ value: item.id, label: t(`messageNotification.channels.email.presets.${item.id}`) })), { value: 'other', label: t('messageNotification.channels.email.presets.other') }])
-  const encryptionOptions = computed(() => ['ssl', 'starttls', 'none'].map(value => ({ value, label: t(`messageNotification.channels.email.encryption.${value}`) })))
+  const { preset, presetOptions, smtpOptions, smtpHint, encryption, encryptionOptions, setPreset, setSmtpHost, selectSmtpHost, setEncryption, filterSmtpOption } = useEmailSmtpSettings(props, emailOptionsVisible, change)
 
   function issue(path: string): string | undefined {
     const value = props.entry.issues.find(item => item.path === path)
@@ -59,6 +56,7 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
     return known && (known.some(item => item.key === field.key) || ['properties', 'headers'].includes(field.key)) ? t(key) : field.property?.name || field.key
   }
   function hint(field: ChannelField): string | undefined {
+    if (emailOptionsVisible.value && field.key === 'host') return smtpHint.value
     if (field.key === 'testTemplate') return t('messageNotification.channelTest.settings.hint')
     if (props.entry.draft.type === 'webhook' && props.entry.draft.provider === 'http' && field.key === 'url') return t('messageNotification.channels.webhook.addressHint')
     if (props.entry.draft.type === 'dingTalk' && props.entry.draft.provider === 'dingTalkRobotWebHook' && field.key === 'secret') return t('messageNotification.channels.robot.secretHint')
@@ -93,21 +91,6 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
     const value = propertyRules(field.property).maxLength
     return typeof value === 'number' ? value : undefined
   }
-  /** Transport presets update only the displayed SMTP fields and encryption properties. */
-  function setEncryption(value: unknown) {
-    if (!props.disabled && emailOptionsVisible.value && ['ssl', 'starttls', 'none'].includes(String(value))) {
-      for (const [key, next] of Object.entries(emailEncryptionChanges(props.entry.draft.configuration, value as EmailEncryption))) change?.(key, next)
-    }
-  }
-  function setPreset(id: string) {
-    if (props.disabled || !emailOptionsVisible.value) return
-    customPreset.value = id === 'other'
-    const selected = emailPresets.find(item => item.id === id)
-    if (!selected) return
-    change?.('host', selected.host); change?.('port', selected.port)
-    change?.('properties', emailEncryptionProperties(props.entry.draft.configuration, selected.encryption))
-  }
-
   const initial = computed<NotifierConfigPayload>(() => JSON.parse(props.entry.snapshot))
   const formMessages = computed<InlineEditMessages>(() => ({
     save: t('messageNotification.common.save'), cancel: t('messageNotification.common.cancel'),
@@ -157,7 +140,7 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
     const value = props.entry.draft.configuration[field.key]
     const isSelect = ['boolean', 'enum'].includes(type)
     const pairs = pairKind.value === field.key
-    const editor = field.kind === 'secret' ? 'password' : pairs || ['array', 'object', 'date', 'time'].includes(type) ? 'custom'
+    const editor = emailOptionsVisible.value && field.key === 'host' ? 'custom' : field.kind === 'secret' ? 'password' : pairs || ['array', 'object', 'date', 'time'].includes(type) ? 'custom'
       : isSelect ? 'select' : ['int', 'long', 'float', 'double'].includes(type) ? 'number' : 'text'
     const pairDisplay = pairs && Array.isArray(saved) ? saved.map(row => `${row[pairKind.value === 'headers' ? 'key' : 'name']}: ${pairKind.value === 'headers' ? notificationSecretMask : row.value}`).join('\n') : undefined
     const trialSettings = readTestSettings(saved)
@@ -186,7 +169,8 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
         return items
       })
       if (emailOptionsVisible.value && group.key === 'server') mapped.unshift({ key: 'email:preset', label: t('messageNotification.channels.email.preset'),
-        value: preset.value, initialValue: emailPresets.find(item => item.host === initial.value.configuration.host)?.id || 'other', editor: 'select',
+        value: preset.value, initialValue: emailBrandForHost(initial.value.configuration.host), editor: 'custom',
+        displayValue: t(`messageNotification.channels.email.presets.${emailBrandForHost(initial.value.configuration.host)}`),
         options: presetOptions.value, hint: t('messageNotification.channels.email.presetHint'), fullWidth: true, error: fieldError('email:preset') })
       if (isAliyunVoice.value && group.key === 'credentials') {
         mapped.unshift({ key: 'voice:provider', label: t('messageNotification.channels.voice.provider'),
@@ -206,6 +190,7 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
   function changeValue(key: string, value: unknown) {
     if (key === 'email:preset') setPreset(String(value))
     else if (key === 'email:encryption') setEncryption(value)
+    else if (emailOptionsVisible.value && key === 'config:host') setSmtpHost(value)
     else {
       const field = metadataField(key)
       if (!field) return
@@ -217,6 +202,7 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
     return key === `config:${pairKind.value}` && pairKind.value ? { kind: pairKind.value, value: value as Record<string, string>[] | undefined, disabled, savedKeys: savedHeaderKeys.value } : undefined
   }
   return { t, editing, hiddenErrors, numberBounds, selectedValue, setSelectedValue, preset, setPreset,
+    emailOptionsVisible, smtpOptions, selectSmtpHost, filterSmtpOption,
     formGroups, formMessages, changeValue, metadataField, customPairModel,
     canClearSigningSecret, clearSecretOpen, clearSecretPending, clearSecretError, requestClearSigningSecret, cancelClearSigningSecret, clearSigningSecret }
 }

@@ -281,6 +281,25 @@ AgentId 浏览器复核：9200 实际企业微信页已显示新字段和默认�
 
 ### 已配置渠道回显与整表编辑
 
+邮件服务商与 SMTP 选择（2026-11-13）：仅调整本模块邮件渠道表单。“常用邮箱”使用腾讯、阿里、网易、微软、其他五项 `a-segmented`，同品牌个人邮箱、企业邮箱和云邮件推送合并分组。前四组使用可搜索 SMTP 单选，显示“产品 / 地域 · 地址”；其他使用 `a-auto-complete`，候选仅含其余品牌并允许自定义输入。中英日的五项分段在 390px 下完整显示，不改变页面壳层。
+
+`Channels/configuration/emailSmtpCatalog.ts` 集中维护 34 个公开地址：腾讯 6、阿里 15、网易 5、微软 4、其他 4；只记录 SMTP，不混入 POP / IMAP / MX。腾讯包括 QQ / Foxmail、企业邮及海外、SES 三个站点；阿里包括个人邮、企业邮通用 / 信创 / 香港 / 兼容及国际站、DirectMail 当前地域和仍支持的旧址；网易包括 163 / 126 / yeah、企业邮通用 / 杭州；微软包括 Exchange Online、世纪互联、Outlook.com、Azure Communication Services；其他为 Gmail、Yahoo、iCloud、飞书。网易 VIP 等尚未取得可靠参数的产品不猜测地址，仍可自定义输入。
+
+目录依据：
+
+- 腾讯：[企业邮客户端配置](https://kf.qq.com/faq/161223ume6vM161223uYJfQr.html)、[SES SMTP](https://cloud.tencent.cn/document/product/1288/65750)。
+- 阿里：[个人邮箱](https://help.aliyun.com/zh/enterprise-email/user-guide/what-is-the-address-of-the-client-protocol-server-of-alibaba-mail-personal-edition)、[企业邮箱端口与地址](https://help.aliyun.com/zh/enterprise-email/user-guide/what-is-the-port-number-and-server-address-of-alibaba-mail)、[国际站点](https://www.alibabacloud.com/help/en/enterprise-email/user-guide/what-is-the-port-number-and-server-address-of-alibaba-mail)、[DirectMail](https://help.aliyun.com/zh/direct-mail/smtp-service-address-1)。DirectMail 原悉尼旧址按官方说明保留兼容，不当作新增地域。
+- 网易：个人邮箱沿用官方客户端配置资料；企业邮杭州地址参考[西安工业大学信息技术中心的网易企业邮箱配置](https://nic.xatu.edu.cn/info/10403/192081.htm)。不把未经核验的 VIP 或海外地址补入目录。
+- 微软：[世纪互联端点](https://learn.microsoft.com/en-us/microsoft-365/enterprise/urls-and-ip-address-ranges-21vianet?view=o365-worldwide)、[Outlook.com SMTP](https://support.microsoft.com/en-us/office/pop-imap-and-smtp-settings-for-outlook-com-d088b986-291d-42b8-9564-9c414e2aa040)。世纪互联使用专门端点文档中的 `smtp.partner.outlook.cn`，不采用部分旧客户端说明中的 `smtp.office365.cn`。
+
+`Channels/configuration/useEmailSmtpSettings.ts` 管理品牌识别、候选筛选和连接参数联动，`Channels/useChannelConfiguration.ts` / `ChannelConfiguration.vue` 通过既有 `InlineEditForm` 自定义插槽接入。打开配置只识别品牌，不改写原始大小写、空白、端口或加密属性；切换品牌保留属于该品牌的地址，否则采用原有企业邮默认值。切换其他保留当前输入，但不将前四组地址加回候选。自定义输入只修改地址，即使输入已知品牌地址也保持“其他”编辑状态；明确选择候选才填入默认端口与加密方式。保存后依据实际地址回显品牌，分组不进入 payload；取消恢复已保存配置。禁用、只读和提交期间阻止联动写入。保留账号、密码、其他 SMTP 属性与既有加密切换对自定义端口的保护。
+
+接口与边界：继续使用 `host`、`port`、`properties` 和既有整表创建 / 更新接口；不增加后端字段、不修改共享表单、运营端 `ui/` 或试发流程。三语提示说明 Outlook.com / Hotmail 要求 OAuth2，而当前表单不提供 OAuth2 授权；预设地址不代表新增认证能力或已验证实际投递。
+
+验证：从模块目录执行 `node --test tests/messageNotificationChannels.test.mjs tests/messageNotificationContracts.test.mjs tests/messageNotificationTrial.test.mjs`，98/98 通过，覆盖多品牌 / 地域、语言资源、旧值回显、候选排除、自定义输入、参数联动、取消 / 保存 / 失败、凭据保留和锁定。既有 `tests/messageNotificationBrowser/smoke.mjs`（`SMOKE_CHANNELS_ONLY=1`）10 项与新增 `tests/messageNotificationBrowser/emailSmtp.mjs` 5 组浏览器断言通过，使用 `SMOKE_PLAYWRIGHT_MODULE="$PWD/../../../ui/node_modules/playwright"` 和本机 9200 服务；全部业务操作由内存夹具提供，无页面错误和真实业务请求。覆盖中英日、390px、明确选择和输入的差异、取消、保存失败后重试及保存后的品牌回显。
+
+质量检查：从 `runtime-ui/` 执行 `node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/system/MessageNotification/Channels/ChannelConfiguration.vue` 通过；三语 JSON / SMTP 文案键及 `git diff --check` 通过，修改的 Vue 文件低于 300 行。`./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json` 修改前后均为 195 条既有诊断，忽略行列比较无新增 / 移除；完整类型检查仍未通过，需修复基线后重跑。工作区无独立 lint 脚本。在 `runtime-ui/jetlinks-web-core/` 执行 `node --max_old_space_size=16384 ../node_modules/vite/bin/vite.js build --outDir /tmp/notification-smtp-build -- --module-name notify-manager-ui` 通过（21.43 秒），保留既有分块等构建告警。日志前缀 `/tmp/notification-smtp-`；浏览器报告及截图位于 `/tmp/notification-smtp-browser/` 与 `/tmp/notification-smtp-smoke/`。未保存真实配置或发送邮件，各供应商账号认证及实际投递仍需测试环境联调。
+
 渠道表单精简：短信顶部“发送测试消息”保持原样；短信的“渠道测试”区和邮件的“SMTP 扩展属性”在新建、查看及编辑时均移除，已有配置值继续保留；邮件预设和加密方式仍通过内部 `properties` 联动。群机器人空配置先显示“添加”入口，点击后创建草稿，已有配置继续支持多套选择与新增。更多菜单中的编辑按钮铺满菜单项宽度。实现范围为本模块的 `Channels/index.vue`、表单适配和 workspace，配套更新说明文案及现有内存夹具；验证字段可见性、历史值保留、群机器人新增/删除/草稿隔离、权限和窄屏菜单。
 
 精简验证：渠道 / 试发 / 契约定向测试 90/90 通过，`smoke.mjs`（`SMOKE_CHANNELS_ONLY=1`）10 项和 `trials.mjs` 9 项通过。内存夹具覆盖新建/查看/编辑字段移除、短信凭据保存后原有试发正常、邮件加密联动、群机器人显式添加及清除后回到空态、权限限制、编辑按钮右侧空白点击和 390px 布局；无页面错误或真实配置写入。定向样式检查、三语资源键与 JSON、`git diff --check` 和生产构建通过（24.28 秒）；模块类型检查仍有 193 项既有诊断，无新增或移除，无独立 lint 脚本。验证命令沿用下方质量检查，日志及浏览器报告前缀为 `/tmp/notification-form-cleanup-`。
@@ -314,7 +333,7 @@ AgentId 浏览器复核：9200 实际企业微信页已显示新字段和默认�
 
 配置信息移除验证（2026-11-11）：渠道测试 37/37、单文件定向样式检查、模块构建（24.34 秒）和 `git diff --check` 通过；模块类型检查保持 235 项既有诊断，无新增或移除，工作区无独立 lint 脚本。隔离浏览器确认邮件仅展示“邮箱服务商”“发件账号”，没有配置名称或 ID 区块，页面错误日志为空。日志前缀 `/tmp/notification-remove-config-information-`；未操作真实配置。
 
-邮件预设同时更新草稿中的服务器、端口和加密属性，点击整表保存时才提交；选择“其他 / 自定义”允许手动填写服务器，不发起保存。加密切换仅联动原方式的标准端口，自定义端口和其他 SMTP 参数保留。说明在新建及已有配置均默认展开，并记住当前页面中各渠道的开关选择；字段聚焦联动相关步骤。宽屏左右排列，窄屏上下排列。
+邮件品牌与 SMTP 候选按本节“邮件服务商与 SMTP 选择”维护：选择地址更新连接参数，手动输入保留原有参数，点击整表保存时才提交。加密切换仅联动原方式的标准端口，自定义端口和其他 SMTP 参数保留。说明在新建及已有配置均默认展开，并记住当前页面中各渠道的开关选择；字段聚焦联动相关步骤。宽屏左右排列，窄屏上下排列。
 
 边界：企业微信成员对应及试发已按上节接入；未增加部门对应、出口 IP 查询、回调服务器或 Webhook 签名。企业微信 AgentId 由渠道提供，兼容历史模板；其他提供商的 AgentId、短信签名等仍归模板。未知提供商不跳转到不兼容模板，运营端 `ui/` 未修改。
 

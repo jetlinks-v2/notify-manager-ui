@@ -57,6 +57,7 @@ function load(filename) {
 const { useChannelCatalog } = load(resolve(root, 'useChannelCatalog.ts'))
 const { channelDefinition, channelDefaults } = load(resolve(root, 'configuration/channelMetadata.ts'))
 const { emailEncryption, emailEncryptionProperties } = load(resolve(root, 'configuration/emailSettings.ts'))
+const { emailSmtpEndpoints, emailBrandForHost } = load(resolve(root, 'configuration/emailSmtpCatalog.ts'))
 const { useChannelConfiguration } = load(resolve(root, 'useChannelConfiguration.ts'))
 const { useChannelWorkspace } = load(resolve(root, 'useChannelWorkspace.ts'))
 const { createChannelConfigDraft, channelConfigPayload, validateChannelDraft } = load(resolve(root, 'channelSchema.ts'))
@@ -433,7 +434,7 @@ const renderer = vue.createRenderer({
 const control = name => vue.defineComponent({ name, props: ['value', 'disabled', 'placeholder'], setup: (_, { slots }) => () => vue.h('control', slots.default?.()) })
 function mount(component, props = {}) {
   const app = renderer.createApp({ setup: () => () => vue.h(component, props) })
-  for (const name of ['a-form', 'a-form-item', 'a-input', 'a-input-password', 'a-input-number', 'a-typography-text', 'Editable', 'a-modal', 'a-alert', 'a-button', 'a-select', 'a-collapse', 'a-collapse-panel', 'a-textarea', 'AIcon']) app.component(name, control(name))
+  for (const name of ['a-form', 'a-form-item', 'a-input', 'a-input-password', 'a-input-number', 'a-typography-text', 'Editable', 'a-modal', 'a-alert', 'a-button', 'a-select', 'a-segmented', 'a-auto-complete', 'a-collapse', 'a-collapse-panel', 'a-textarea', 'AIcon']) app.component(name, control(name))
   app.mount({})
   return app
 }
@@ -848,6 +849,129 @@ test('SMTP presets and encryption retain custom properties and do not rewrite th
   editor.setPreset('other')
   assert.equal(editor.preset.value, 'other')
   assert.equal(entry.draft.configuration.host, 'smtp.office365.com')
+})
+
+test('SMTP brands combine personal, enterprise and regional delivery endpoints with localized labels', () => {
+  const expected = {
+    'smtp.qq.com': 'tencent', 'smtp.exmail.qq.com': 'tencent', 'gz-smtp.qcloudmail.com': 'tencent',
+    'smtp.aliyun.com': 'aliyun', 'smtp.xc.aliyun.com': 'aliyun', 'smtpdm-eu-central-1.aliyuncs.com': 'aliyun',
+    'smtp.163.com': 'netease', 'smtp.126.com': 'netease', 'smtp.yeah.net': 'netease', 'smtp.qiye.163.com': 'netease',
+    'smtp.office365.com': 'exchange', 'smtp.partner.outlook.cn': 'exchange', 'smtp-mail.outlook.com': 'exchange', 'smtp.azurecomm.net': 'exchange',
+    'smtp.gmail.com': 'other', 'smtp.mail.yahoo.com': 'other', 'smtp.mail.me.com': 'other', 'smtp.feishu.cn': 'other',
+  }
+  for (const [host, brand] of Object.entries(expected)) assert.equal(emailBrandForHost(host), brand, host)
+  assert.equal(emailBrandForHost(' SMTP.QQ.COM '), 'tencent')
+  assert.equal(emailBrandForHost('smtp.private.example.test'), 'other')
+  assert.equal(new Set(emailSmtpEndpoints.map(item => item.host)).size, emailSmtpEndpoints.length)
+  for (const lang of ['zh', 'en', 'ja']) {
+    const messages = JSON.parse(readFileSync(resolve(moduleRoot, `locales/lang/${lang}.json`), 'utf8'))
+    for (const endpoint of emailSmtpEndpoints) {
+      assert.ok(messages[endpoint.labelKey], `${lang}: ${endpoint.host}`)
+      assert.ok(!/^(pop|imap|mx)[.-]/.test(endpoint.host), endpoint.host)
+    }
+  }
+})
+
+test('opening and reselecting a known SMTP brand preserve exact saved values and cancellation restores them', async () => {
+  const record = email()
+  record.configuration.host = ' SMTP.QQ.COM '
+  record.configuration.port = 2525
+  const io = testApi([record])
+  const workspace = useChannelWorkspace({ api: io.api, permissions: permissions(), loadDefinition: async channel => channelDefinition(channel, channelMetadata[channel.id]) })
+  await workspace.activate('email:embedded')
+  const model = useChannelConfiguration(configurationProps(workspace), workspace.changeField)
+  const initial = clone(workspace.entry.value.draft.configuration)
+  assert.equal(model.preset.value, 'tencent')
+  assert.equal(model.formGroups.value[0].fields[0].displayValue, 'messageNotification.channels.email.presets.tencent')
+  workspace.startEditing()
+  model.setPreset('tencent')
+  assert.deepEqual(workspace.entry.value.draft.configuration, initial)
+  model.setPreset('aliyun')
+  assert.equal(workspace.entry.value.draft.configuration.host, 'smtp.qiye.aliyun.com')
+  model.changeValue('config:host', 'smtpdm-eu-central-1.aliyuncs.com')
+  assert.equal(workspace.entry.value.draft.configuration.host, 'smtpdm-eu-central-1.aliyuncs.com')
+  assert.equal(workspace.entry.value.draft.configuration.port, 465)
+  assert.equal(emailEncryption(workspace.entry.value.draft.configuration), 'ssl')
+  workspace.cancelEditing()
+  assert.equal(model.preset.value, 'tencent')
+  assert.equal(workspace.dirty.value, false)
+  assert.equal(workspace.entry.value.draft.configuration.host, record.configuration.host)
+  assert.equal(workspace.entry.value.draft.configuration.port, 2525)
+  assert.equal(io.calls.some(([method]) => method === 'updateConfig'), false)
+})
+
+test('Other filters branded endpoints, keeps the current address and never applies defaults while typing', async () => {
+  const record = email()
+  record.configuration.host = 'smtp.office365.com'
+  record.configuration.port = 2525
+  const io = testApi([record])
+  const workspace = useChannelWorkspace({ api: io.api, permissions: permissions(), loadDefinition: async channel => channelDefinition(channel, channelMetadata[channel.id]) })
+  await workspace.activate('email:embedded')
+  workspace.startEditing()
+  const model = useChannelConfiguration(configurationProps(workspace), workspace.changeField)
+  model.setPreset('other')
+  assert.equal(workspace.entry.value.draft.configuration.host, 'smtp.office365.com')
+  assert.deepEqual(model.smtpOptions.value.map(item => item.value), ['smtp.gmail.com', 'smtp.mail.yahoo.com', 'smtp.mail.me.com', 'smtp.feishu.cn'])
+  const properties = clone(workspace.entry.value.draft.configuration.properties)
+  model.changeValue('config:host', 'smtp.qq.com')
+  assert.equal(model.preset.value, 'other')
+  assert.equal(workspace.entry.value.draft.configuration.port, 2525)
+  assert.deepEqual(workspace.entry.value.draft.configuration.properties, properties)
+  model.changeValue('config:host', 'smtp.private.example.test')
+  assert.equal(workspace.entry.value.draft.configuration.host, 'smtp.private.example.test')
+  model.selectSmtpHost('smtp.mail.me.com')
+  assert.equal(workspace.entry.value.draft.configuration.port, 587)
+  assert.equal(emailEncryption(workspace.entry.value.draft.configuration), 'starttls')
+  assert.equal(workspace.entry.value.draft.configuration.properties.find(item => item.name === 'mail.smtp.auth').value, 'true')
+  model.selectSmtpHost('smtp.qq.com')
+  assert.equal(workspace.entry.value.draft.configuration.host, 'smtp.mail.me.com')
+  assert.equal(io.calls.some(([method]) => method === 'updateConfig'), false)
+  workspace.cancelEditing()
+  assert.equal(model.preset.value, 'exchange')
+})
+
+test('an initially unknown SMTP host remains in Other when a known brand address is typed', async () => {
+  const io = testApi()
+  const workspace = useChannelWorkspace({ api: io.api, permissions: permissions(), loadDefinition: async channel => channelDefinition(channel, channelMetadata[channel.id]) })
+  await workspace.activate('email:embedded')
+  workspace.startEditing()
+  const model = useChannelConfiguration(configurationProps(workspace), workspace.changeField)
+  const port = workspace.entry.value.draft.configuration.port
+  model.changeValue('config:host', 'smtp.qq.com')
+  assert.equal(model.preset.value, 'other')
+  assert.equal(workspace.entry.value.draft.configuration.port, port)
+  assert.equal(await workspace.save(), true)
+  assert.equal(model.preset.value, 'tencent')
+  assert.equal(io.records.get('smtp-real').configuration.password, 'saved-password')
+  assert.equal(Object.hasOwn(io.records.get('smtp-real').configuration, 'brand'), false)
+})
+
+test('SMTP selections are locked in view mode, while busy or disabled and outside matching brand options', async () => {
+  const io = testApi()
+  const workspace = useChannelWorkspace({ api: io.api, permissions: permissions(), loadDefinition: async channel => channelDefinition(channel, channelMetadata[channel.id]) })
+  await workspace.activate('email:embedded')
+  const props = vue.reactive({ ...configurationProps(workspace), busy: false })
+  const model = useChannelConfiguration(props, workspace.changeField)
+  const initial = clone(workspace.entry.value.draft.configuration)
+  model.setPreset('tencent')
+  assert.deepEqual(workspace.entry.value.draft.configuration, initial)
+  workspace.startEditing()
+  for (const flag of ['busy', 'disabled']) {
+    props[flag] = true
+    model.setPreset('exchange')
+    model.changeValue('config:host', 'smtp.custom.test')
+    model.selectSmtpHost('smtp.gmail.com')
+    model.changeValue('email:encryption', 'ssl')
+    assert.deepEqual(workspace.entry.value.draft.configuration, initial)
+    props[flag] = false
+  }
+  model.setPreset('exchange')
+  model.changeValue('config:host', 'smtp.qq.com')
+  assert.equal(workspace.entry.value.draft.configuration.host, 'smtp.office365.com')
+  model.changeValue('config:host', 'smtp-mail.outlook.com')
+  const hostField = model.formGroups.value.flatMap(group => group.fields).find(field => field.key === 'config:host')
+  assert.equal(hostField.hint, 'messageNotification.channels.email.outlookAuthentication')
+  assert.equal(io.calls.some(([method]) => method === 'updateConfig'), false)
 })
 
 test('first configuration renders business fields without identity inputs and preserves typed select values', () => {

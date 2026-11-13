@@ -3,7 +3,14 @@
     <a-alert v-if="editing && hiddenErrors.length" type="error" show-icon :message="hiddenErrors.join('；')" class="channel-configuration__error" />
     <InlineEditForm :key="`${entry.key}:${editing}`" :groups="formGroups" :mode="editing ? 'form' : 'detail'" :disabled="disabled || !editing" :busy="busy" :messages="formMessages" @change="changeValue" @focus="emit('focus', $event)">
       <template #editor="{ field, value, update, disabled: fieldDisabled }">
-        <div v-if="field.key === 'config:testTemplate'">
+        <div v-if="field.key === 'email:preset'" class="channel-configuration__brands">
+          <a-segmented :value="String(value)" :options="field.options" size="small" :disabled="fieldDisabled" :aria-label="field.label" @change="update" />
+        </div>
+        <template v-else-if="emailOptionsVisible && field.key === 'config:host'">
+          <a-auto-complete v-if="preset === 'other'" :value="typeof value === 'string' ? value : ''" :options="smtpOptions" :filter-option="filterSmtpOption" :disabled="fieldDisabled" :aria-label="field.label" class="channel-configuration__host" @change="update" @select="selectSmtpHost" />
+          <a-select v-else :value="typeof value === 'string' ? value : undefined" :options="smtpOptions" show-search :filter-option="filterSmtpOption" :disabled="fieldDisabled" :aria-label="field.label" class="channel-configuration__host" @change="update" />
+        </template>
+        <div v-else-if="field.key === 'config:testTemplate'">
           <ChannelTestSettings :channel-id="`${entry.draft.type}:${entry.draft.provider}`" :value="value" :disabled="fieldDisabled" @change="update" />
         </div>
         <div v-else-if="customPairModel(field.key, value, fieldDisabled)"><ConfigurationPairs :model="customPairModel(field.key, value, fieldDisabled)!" @change="update" /></div>
@@ -34,6 +41,7 @@ const props = defineProps({
 const emit = defineEmits<{ (event: 'field', key: string, value: unknown, topLevel?: boolean): void; (event: 'focus', key: string): void }>()
 const {
   t, editing, hiddenErrors, formGroups, formMessages, changeValue, metadataField, customPairModel,
+  preset, emailOptionsVisible, smtpOptions, selectSmtpHost, filterSmtpOption,
   canClearSigningSecret, clearSecretOpen, clearSecretPending, clearSecretError, requestClearSigningSecret, cancelClearSigningSecret, clearSigningSecret,
 } = useChannelConfiguration(props, (key, value, topLevel) => emit('field', key, value, topLevel))
 </script>
@@ -41,4 +49,9 @@ const {
 <style scoped>
 .channel-configuration { min-width: 0; width: 100%; max-width: 55rem; }
 .channel-configuration__error { margin-bottom: var(--space-4); }
+.channel-configuration__brands { max-width: 100%; overflow-x: auto; }
+.channel-configuration__host { width: 100%; }
+@media (max-width: 640px) {
+  .channel-configuration__brands :deep(.ant-segmented) { font-size: var(--fs-sm); }
+}
 </style>
