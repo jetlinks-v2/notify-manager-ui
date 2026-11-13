@@ -27,7 +27,9 @@
 
 实现提交：`8dc19ca`（本地 `2.20`）；未推送。
 
-`/system/notification/channels?channel=dingTalk:dingTalkRobotWebHook` 使用紧凑机器人列表：每行展示名称、脱敏 Webhook 地址、“测试”和“更多 → 编辑 / 删除”。右侧标题保留“添加”入口，无数据复用 `CloudEmpty`。仅调整 `runtime-ui/modules/notify-manager-ui`；其他渠道、后端接口、菜单路由和共享组件沿用现有实现。
+`/system/notification/channels?channel=dingTalk:dingTalkRobotWebHook` 使用紧凑机器人列表：每行展示名称、脱敏 Webhook 地址、“测试”和“更多 → 编辑 / 删除”。右侧标题保留“添加群机器人”和“配置说明”入口，无数据复用 `CloudEmpty`。列表与空状态均显示原有配置说明侧栏，默认展开，支持收起和重新展开；窄屏沿用单列布局。仅调整 `runtime-ui/modules/notify-manager-ui`；其他渠道、后端接口、菜单路由和共享组件沿用现有实现。
+
+配置说明与按钮修正（2026-11-13）：`Channels/index.vue` 复用同一个 `ChannelHelp` 和说明按钮，机器人列表及空状态恢复说明侧栏；`messageNotification.channels.robot.add` 提供“添加群机器人”的中英日文案。沿用下方命令验证：`robotSigning.mjs` 8 组、渠道 `smoke.mjs` 10 组通过，覆盖默认展开、收起 / 重开、空列表、添加弹窗和三语 390px 布局，浏览器无页面错误或业务请求；定向样式检查 1 个 Vue 文件、三语资源及 `git diff --check` 通过。模块构建通过（23.59 秒，保留既有告警）；类型检查仍为 195 项既有诊断，无新增或移除，完整类型检查尚未通过，无独立 lint 脚本。报告与截图位于 `/tmp/jetlinks-robot-help/`，命令日志前缀 `/tmp/jetlinks-robot-help-`；未操作真实配置或发送真实消息。
 
 添加 / 编辑弹窗只展示名称与 Webhook 地址，没有加签输入或列表加签栏。取消丢弃当前弹窗草稿，失败保留输入，保存成功关闭并刷新列表；刷新失败仅重试读取。编辑时 Webhook 输入保持空白，留空保留保存值，列表和占位符不暴露 access_token。历史隐藏加签密钥继续保留，原凭据只有掩码、无法安全保留时明确提示并阻止更新。
 

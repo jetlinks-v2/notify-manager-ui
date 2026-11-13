@@ -856,6 +856,7 @@
   "messageNotification.templates.configureChannel": "送信チャネルを設定",
   "messageNotification.templates.channelEnabled": "この業務チャネルを有効にする",
   "messageNotification.templates.importTemplate": "既存テンプレートから内容をコピー",
+  "messageNotification.channels.robot.add": "グループロボットを追加",
   "messageNotification.channels.robot.addTitle": "グループロボットを追加 · DingTalk",
   "messageNotification.channels.robot.editTitle": "グループロボットを編集 · DingTalk",
   "messageNotification.channels.robot.name": "名前",

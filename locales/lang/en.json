@@ -856,6 +856,7 @@
   "messageNotification.templates.configureChannel": "Configure sending channel",
   "messageNotification.templates.channelEnabled": "Enable this business channel",
   "messageNotification.templates.importTemplate": "Copy content from an existing template",
+  "messageNotification.channels.robot.add": "Add group robot",
   "messageNotification.channels.robot.addTitle": "Add group robot · DingTalk",
   "messageNotification.channels.robot.editTitle": "Edit group robot · DingTalk",
   "messageNotification.channels.robot.name": "Name",

@@ -45,11 +45,11 @@
                 <div class="notification-channels__title-row"><h2>{{ channelTitle(channel) }}</h2><StatusPill v-if="!isRobot && ['ready', 'empty'].includes(state)" :status="t(state === 'empty' ? 'messageNotification.channels.unconfigured' : dirty || entry?.isNew ? 'messageNotification.channels.draft' : 'messageNotification.channels.configured')" /></div>
                 <p>{{ help.description }}</p>
               </div>
-              <j-permission-button v-if="isRobot" type="primary" :has-permission="[notificationPermissions.channels.add]" :disabled="!robotCanAdd" @click="robot.add"><template #icon><PlusOutlined aria-hidden="true" /></template>{{ t('messageNotification.common.add') }}</j-permission-button>
-              <div v-else-if="entry" class="notification-page__actions">
-                <j-permission-button v-if="configurationVisible && trialSupported" :has-permission="[notificationPermissions.channels.action]" :disabled="!canTrial || operationBusy" @click="showSend"><template #icon><SendOutlined aria-hidden="true" /></template>{{ t('messageNotification.channels.test') }}</j-permission-button>
+              <div v-if="isRobot || entry" class="notification-page__actions">
+                <j-permission-button v-if="isRobot" type="primary" :has-permission="[notificationPermissions.channels.add]" :disabled="!robotCanAdd" @click="robot.add"><template #icon><PlusOutlined aria-hidden="true" /></template>{{ t('messageNotification.channels.robot.add') }}</j-permission-button>
+                <j-permission-button v-else-if="configurationVisible && trialSupported" :has-permission="[notificationPermissions.channels.action]" :disabled="!canTrial || operationBusy" @click="showSend"><template #icon><SendOutlined aria-hidden="true" /></template>{{ t('messageNotification.channels.test') }}</j-permission-button>
                 <a-button :type="helpOpen ? 'primary' : 'default'" :ghost="helpOpen" :aria-expanded="helpOpen" aria-controls="notification-channel-help" @click="toggleHelp()"><template #icon><AIcon type="ReadOutlined" /></template>{{ t('messageNotification.channels.helpTitle') }}</a-button>
-                <a-dropdown v-if="configurationVisible && !entry.isNew" :trigger="['click']" :disabled="operationBusy">
+                <a-dropdown v-if="!isRobot && entry && configurationVisible && !entry.isNew" :trigger="['click']" :disabled="operationBusy">
                   <a-button style="padding: 0 0.5rem"
                       :aria-label="t('messageNotification.channels.more')"><AIcon type="MoreOutlined" /></a-button>
                   <template #overlay><a-menu class="notification-channels__menu">
@@ -67,17 +67,17 @@
             </div>
             <div v-if="state === 'loading' || (!isRobot && detailState === 'loading')" class="notification-page__feedback" role="status"><a-spin :tip="t('messageNotification.common.loading')" /></div>
             <CloudEmpty v-else-if="['unavailable', 'forbidden', 'error'].includes(state)" class="notification-page__feedback" :description="t(`messageNotification.state.${state}`)"><a-button v-if="canQuery && channel" @click="refresh">{{ t('messageNotification.common.retry') }}</a-button></CloudEmpty>
-            <div v-else-if="isRobot" class="notification-page__body">
-              <a-alert v-if="['unavailable', 'forbidden', 'error'].includes(detailState)" type="error" show-icon :message="t(`messageNotification.state.${detailState}`)" class="notification-channels__alert"><template #action><a-button :disabled="operationBusy" @click="refresh">{{ t('messageNotification.common.retry') }}</a-button></template></a-alert>
-              <RobotConfigurationList v-if="configs.length" :items="robotRows" :disabled="operationBusy || robotModal.open" @action="robot.act" />
-              <CloudEmpty v-else :description="t('messageNotification.channels.empty')" />
-            </div>
-            <CloudEmpty v-else-if="['unavailable', 'forbidden', 'error'].includes(detailState)" class="notification-page__feedback" :description="t(`messageNotification.state.${detailState}`)"><a-button v-if="canQuery && selectedConfigId" @click="workspace.selectConfig(selectedConfigId)">{{ t('messageNotification.common.retry') }}</a-button></CloudEmpty>
-            <template v-else-if="entry">
+            <CloudEmpty v-else-if="!isRobot && ['unavailable', 'forbidden', 'error'].includes(detailState)" class="notification-page__feedback" :description="t(`messageNotification.state.${detailState}`)"><a-button v-if="canQuery && selectedConfigId" @click="workspace.selectConfig(selectedConfigId)">{{ t('messageNotification.common.retry') }}</a-button></CloudEmpty>
+            <template v-else-if="isRobot || entry">
               <div class="notification-page__body notification-channels__body">
-                <a-alert v-if="entry.refreshFailure" type="warning" show-icon :message="t('messageNotification.channels.savedRefreshFailed')" class="notification-channels__alert"><template #action><a-button :disabled="operationBusy" @click="workspace.refreshSaved()">{{ t('messageNotification.common.retry') }}</a-button></template></a-alert>
+                <a-alert v-if="!isRobot && entry?.refreshFailure" type="warning" show-icon :message="t('messageNotification.channels.savedRefreshFailed')" class="notification-channels__alert"><template #action><a-button :disabled="operationBusy" @click="workspace.refreshSaved()">{{ t('messageNotification.common.retry') }}</a-button></template></a-alert>
                 <div class="notification-channels__content" :class="{ 'notification-channels__content--help': helpOpen }">
-                  <div>
+                  <div v-if="isRobot">
+                    <a-alert v-if="['unavailable', 'forbidden', 'error'].includes(detailState)" type="error" show-icon :message="t(`messageNotification.state.${detailState}`)" class="notification-channels__alert"><template #action><a-button :disabled="operationBusy" @click="refresh">{{ t('messageNotification.common.retry') }}</a-button></template></a-alert>
+                    <RobotConfigurationList v-if="configs.length" :items="robotRows" :disabled="operationBusy || robotModal.open" @action="robot.act" />
+                    <CloudEmpty v-else :description="t('messageNotification.channels.empty')" />
+                  </div>
+                  <div v-else-if="entry">
                     <ChannelConfiguration :entry="entry" :disabled="!canEdit || !editing || sending" :busy="busy" :submit="saveFields" @field="workspace.changeField" @focus="focusField" />
                     <WebhookRequestPreview v-if="channelId === 'webhook:http'" :model="webhookPreviewModel" />
                     <section v-if="channelId === 'weixin:corpMessage'" class="notification-channels__members" :aria-label="t('messageNotification.members.section')">
@@ -95,7 +95,7 @@
                   <ChannelHelp v-if="helpOpen" :model="help" :active-step="activeHelpStep" @close="toggleHelp(false)" />
                 </div>
               </div>
-              <StickyActionBar v-if="editing" position="inline" class="notification-page__footer notification-channels__footer">
+              <StickyActionBar v-if="!isRobot && entry && editing" position="inline" class="notification-page__footer notification-channels__footer">
                 <a-button v-if="!entry.isNew" :disabled="operationBusy" @click="workspace.cancelEditing">{{ t('messageNotification.common.cancel') }}</a-button>
                 <j-permission-button type="primary" :has-permission="[entry.isNew ? notificationPermissions.channels.add : notificationPermissions.channels.update]" :loading="busy" :disabled="(!entry.isNew && !dirty) || !canEdit || operationBusy" @click="save">{{ t('messageNotification.common.save') }}</j-permission-button>
               </StickyActionBar>

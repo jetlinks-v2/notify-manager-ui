@@ -856,6 +856,7 @@
   "messageNotification.templates.configureChannel": "配置发送渠道",
   "messageNotification.templates.channelEnabled": "启用此业务渠道",
   "messageNotification.templates.importTemplate": "从已有模板复制内容",
+  "messageNotification.channels.robot.add": "添加群机器人",
   "messageNotification.channels.robot.addTitle": "添加群机器人 · 钉钉",
   "messageNotification.channels.robot.editTitle": "编辑群机器人 · 钉钉",
   "messageNotification.channels.robot.name": "名称",
