@@ -1,5 +1,10 @@
 <template>
   <div class="wechat-template-editor">
+    <a-form-item v-for="field in advancedFields" :key="field.key" :label="t(field.labelKey)" :required="field.required">
+      <div @focusin="captureProviderCaret($event, field.path)" @click="captureProviderCaret($event, field.path)" @keyup="captureProviderCaret($event, field.path)" @input="captureProviderCaret($event, field.path)">
+        <TemplateFieldRenderer :field="field" :value="fieldValue(field)" @update="changeField(field, $event)" @activate="activateProviderField" @load-options="loadRemoteOptions" />
+      </div>
+    </a-form-item>
     <template v-if="messageField">
       <a-form-item :label="t('messageNotification.templates.visual.title')">
         <a-input :value="title" :disabled="disabled" @update:value="changeTitle" @focus="captureTitleCaret" @click="captureTitleCaret" @keyup="captureTitleCaret" @input="captureTitleCaret" />
@@ -8,15 +13,6 @@
         <a-textarea :value="body" :rows="6" :disabled="disabled" @update:value="changeBody" @focus="captureBodyCaret" @click="captureBodyCaret" @keyup="captureBodyCaret" @input="captureBodyCaret" />
       </a-form-item>
     </template>
-    <a-collapse v-if="advancedFields.length" ghost class="wechat-template-editor__advanced">
-      <a-collapse-panel key="advanced" :header="t('messageNotification.templates.visual.advancedFields')">
-        <a-form-item v-for="field in advancedFields" :key="field.key" :label="t(field.labelKey)" :required="field.required">
-          <div @focusin="captureProviderCaret($event, field.path)" @click="captureProviderCaret($event, field.path)" @keyup="captureProviderCaret($event, field.path)" @input="captureProviderCaret($event, field.path)">
-            <TemplateFieldRenderer :field="field" :value="fieldValue(field)" @update="changeField(field, $event)" @activate="activateProviderField" @load-options="loadRemoteOptions" />
-          </div>
-        </a-form-item>
-      </a-collapse-panel>
-    </a-collapse>
   </div>
 </template>
 
@@ -38,5 +34,4 @@ const { title, body, messageField, advancedFields, changeTitle, changeBody, capt
 
 <style scoped>
 .wechat-template-editor { min-width: 0; }
-.wechat-template-editor__advanced { border-top: 1px solid var(--line); }
 </style>

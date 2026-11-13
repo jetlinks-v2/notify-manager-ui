@@ -30,11 +30,11 @@ const safeBody = computed(() => sanitizeEmailPreview(text.value || t('messageNot
 <style scoped>
 .email-template { width: 100%; max-width: 40rem; margin-inline: auto; border: 1px solid var(--line); border-radius: var(--r-2); background: var(--jet-theme-bg-container); overflow: hidden; }
 .email-template__header { padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--line); }
-.email-template__header h4 { margin: 0 0 var(--space-3); color: var(--jet-theme-text); font-size: var(--fs-14); font-weight: 600; line-height: 1.6; overflow-wrap: anywhere; }
-.email-template__metadata { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-1) var(--space-4); margin: 0; font-size: var(--fs-12); line-height: 1.6; }
+.email-template__header h4 { margin: 0 0 var(--space-3); color: var(--jet-theme-text); font-weight: 600; line-height: 1.6; overflow-wrap: anywhere; }
+.email-template__metadata { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-1) var(--space-4); margin: 0; line-height: 1.6; }
 .email-template__metadata dt { color: var(--text-color-secondary); font-weight: 400; }
 .email-template__metadata dd { margin: 0; color: var(--jet-theme-text-secondary); overflow-wrap: anywhere; }
-.email-template__body { padding: var(--space-4) var(--space-5) var(--space-5); color: var(--jet-theme-text); font-size: var(--fs-12); }
+.email-template__body { padding: var(--space-4) var(--space-5) var(--space-5); color: var(--jet-theme-text); }
 .email-template__content { line-height: 1.8; overflow-wrap: anywhere; }
 .email-template__content :deep(p) { margin: 0 0 var(--space-3); }
 .email-template__content :deep(p:last-child) { margin-bottom: 0; }

@@ -105,6 +105,14 @@
 
 ### 业务节点联动与模板预览
 
+渠道模板配置平铺（2026-11-13）：`Templates/components/channels/{DingTalk,Wechat,Voice,Sms}TemplateEditor.vue` 已移除“更多模板字段 / 发送选项”的折叠包装，将原有配置字段直接放在标题、正文或服务商模板内容之前；`components/TemplateEditor.vue` 的缺绑定必要选择项也前移到渠道编辑器之前。字段值、必填 / 禁用条件、远程选项及变量插入沿用现有实现，邮件和 Webhook 已平铺，无须增加配置项；不恢复已移除的通用“更多设置”。
+
+平铺验证：从 `runtime-ui/` 执行 `node --test modules/notify-manager-ui/tests/messageNotification{Templates,BusinessWorkspace,TemplatePresentation,VoiceVisual,SmsVisual,DingTalkVisual,WechatVisual}.test.mjs`，113/113 通过；上述 5 个 Vue 文件的定向样式检查及模块 `git diff --check` 通过。沿用本节构建命令、输出至 `/tmp/notification-template-flat-fields-build`，构建通过（1 分 28 秒，保留既有 chunk 告警）；沿用类型命令仍有 194 条既有诊断，对比上一轮基线忽略行列后新增 0、移除 0，完整类型检查尚未通过，修复既有问题后重跑。模块无独立 lint 脚本。浏览器在独立临时标签中核对语音、企业微信、钉钉工作 / 群消息及短信，配置先于正文显示且无渠道折叠项，未修改字段、保存真实配置或发送消息。语音截图：`/Users/fuhao/.codex/visualizations/2026/11/11/01a1caae-7901-7753-a763-5ff87ae35585/notification-template-flat-fields.jpg`；日志前缀 `/tmp/notification-template-flat-fields-`。
+
+统一移除模板“更多设置”（2026-11-13）：`Templates/components/TemplateEditor.vue` 已删除各渠道通用折叠区、固定配置及变量定义的常驻编辑入口，`hooks/useTemplateEditor.ts` 清理对应的配置清空方法；保留已有 `configId`、渠道绑定、变量元数据和正文插入时的自动登记。缺少有效渠道绑定时沿用必要的配置选择，多配置不自动任选；不修改后端或各渠道正文编辑字段，实际服务商字段保留并按本节“渠道模板配置平铺”展示。
+
+本次验证：`node --test modules/notify-manager-ui/tests/messageNotificationTemplates.test.mjs` 51/51 通过；`node --test modules/notify-manager-ui/tests/messageNotificationBusinessWorkspace.test.mjs modules/notify-manager-ui/tests/messageNotificationTemplatePresentation.test.mjs` 52/52 通过，覆盖各渠道已绑定、空绑定与失效绑定、渲染不改草稿及单渠道保存。`node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/system/MessageNotification/Templates/components/TemplateEditor.vue` 和模块 `git diff --check` 通过；模块无独立 lint 脚本。沿用本节构建命令、输出至 `/tmp/notification-remove-template-settings-build`，构建通过（2 分 10 秒，保留既有 chunk 告警）。沿用本节类型命令检查仍有 194 条诊断，对比最新 `/tmp/notification-style-types-after.log` 忽略行列后无新增或移除，完整类型检查尚未通过，既有问题修复后重跑。企业微信真实页面进入编辑后确认折叠区已移除，未修改正文、保存真实配置或发送通知。验证日志前缀 `/tmp/notification-remove-template-settings-`。
+
 基于最新 `2.20`（`6dfceb8`）的交付验证：消息通知回归按有效切片覆盖 337 项，其中最终渠道回归 40/40 通过，其余 297 项沿用本轮联合回归成功结果；内置模板校验同时保证草稿保留原文、保存正文转换 HTML 换行。模块构建通过（1 分 2 秒），6 个变更 Vue 的 SFC 编译和定向样式检查、浏览器夹具语法及 `git diff --check` 通过；中英日各 1030 个键一致，其中消息通知各 646 个。模块类型检查未通过，共 213 条诊断：原有 211 条，加上远端基线已有的 `useTemplatePage.ts` 对当前 core `useNotificationConfigNavigation` 的两处调用签名不匹配；本次不修改 core，需同步 core 契约后重跑本节类型命令。日志前缀 `/tmp/notify-email-delivery-`。
 
 模板保存反馈：`Templates/index.vue` 已移除保存成功的页面横幅，`hooks/useTemplatePage.ts` 删除对应 `saved` 状态，保存及路由同步完成后使用 `onlyMessage(t('messageNotification.templates.saved'), 'success')`。保留失败反馈、草稿和路由同步逻辑。现有模板回归 36/36 通过，覆盖保存失败无成功提示、首次保存和已有模板保存成功提示；页面样式门禁通过，模块构建通过（1 分 13 秒，保留既有 chunk 告警）。类型检查仍有 211 条既有诊断，忽略行号后与上一轮基线一致，无新增；模块没有独立 lint 脚本。本轮未调用真实保存接口。
@@ -136,6 +144,16 @@ Quill 验证（2026-11-12）：统一消息通知回归 **254/254 通过**，其
 渠道状态验证（2026-11-12）：统一消息通知回归 **213/213 通过**，新增覆盖精确 type/provider 及枚举值匹配、跨渠道快照复用、机器人分组、响应式刷新和读取失败状态；模块构建通过（55.09 秒），两个变更 Vue 文件定向样式检查及 `git diff --check` 通过。模块 `vue-tsc` 仍为 211 条既有诊断，相比上次按文件 / 错误码 / 消息忽略行号后无新增或移除，不能视为类型检查通过。9200 登录页已验证真实 `ant-btn-group`、六类渠道状态点、语音切换及选中态，1212px 视口无页面横向溢出；当前账号可见六类渠道均有配置，均显示绿点，未配置及失败状态由自动回归覆盖。沿用下文验证命令，日志前缀 `/tmp/notification-template-channel-status-`，截图 `notification-template-channel-status.jpg` 与下文效果图在同一目录；未写入真实配置或发送通知。
 
 截图样式已对齐用户提供的邮件、钉钉、企业微信、语音、短信、Webhook 共 12 张查看 / 编辑截图。六类渠道分别由 `components/channels/` 下的独立编辑、预览组件承载；编辑区采用内容表单、可用变量、实时预览三栏，复用 `TemplateVariablePanel.vue` 和 `TemplatePhoneFrame.vue`，按工作区实际宽度收为两栏或单栏。顶部 `TemplateChannelNavigation.vue` 将钉钉、企业微信按大类组织，子项仍使用后端真实 provider。动态目录、权限、草稿与保存契约沿用下文约定。
+
+模板样式统一：字体调整仅限 `views/system/MessageNotification/Templates/` 内，模板文本继承项目与组件库默认字号，清理模板局部字号覆盖；图标尺寸与用户编写的邮件富文本格式保持各自语义。`Templates/components/channels/EmailTemplateEditor.vue` 的 Quill 容器通过 `font: inherit` 沿用项目字体，避免回退到编辑器自带字号。模板查看态由 `Templates/index.vue` 的内容容器、`components/TemplatePreview.vue` 的预览容器和画布逐层分配剩余高度，填满工作区，内容超长时在详情区滚动；保留编辑态分栏及底部操作栏。渠道、记录、弹窗和共享样式中的越界字号调整已精确撤回，其他功能修改保留；不修改接口、数据或权限。
+
+原样式验证（2026-11-13，范围纠正前）：27 个 Vue 文件的模板及脚本与修改前一致，定向样式门禁与 `git diff --check` 通过；在 `runtime-ui/jetlinks-web-core/` 执行 `node --max_old_space_size=16384 ../node_modules/vite/bin/vite.js build --outDir /tmp/notification-style-build -- --module-name notify-manager-ui` 构建通过（57.53 秒，保留既有构建警告）。在 `runtime-ui/` 执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，修改前后均为 194 项既有诊断，无新增或移除；完整类型检查未通过，修复既有问题后需重跑，当前没有独立 lint 脚本。日志前缀 `/tmp/notification-style-`。
+
+字体范围纠正验证（2026-11-13）：精确恢复 `Channels/` 下 7 个 Vue、`Records/components/RecordDetail.vue` 和 `shared/layout.css` 的 20 条字号声明及一条空样式规则；这 9 个文件与 HEAD 一致且不再有未提交差异，快照校验确认其余 24 个已修改文件内容未变。8 个恢复 Vue 的 SFC / 样式编译、定向样式门禁和 `git diff --check` 通过；沿用上述构建命令、输出至 `/tmp/notification-font-scope-build`，构建通过（50.11 秒，保留既有 chunk 告警）。本轮只恢复 CSS，脚本与类型契约无变化，类型结果沿用最近的 194 条既有诊断；完整类型检查仍需修复既有问题后重跑。恢复清单与保护校验记录为 `/tmp/notification-font-scope-restoration.json`，构建日志为 `/tmp/notification-font-scope-build.log`。
+
+交付复核（2026-11-13）：当前模板回归 51/51、菜单集成回归 10/10 通过，20 个变更 Vue 的 SFC / 脚本 / 样式编译及附件区、模板页的定向样式检查通过，`git diff --check` 通过。沿用上述构建命令、输出至 `/tmp/notify-template-delivery-build`，最终模块构建通过（1 分 48 秒，保留既有 chunk 告警）；完整类型检查仍有 194 项既有诊断，对比字段平铺验证记录忽略行列后无新增或移除，修复既有问题后需重跑。日志前缀 `/tmp/notify-template-delivery-`；模块没有独立 lint 脚本，本轮未重新执行真实页面交互验证。
+
+9200 实际页面验证：1511×898 下六类渠道预览底边均与详情区底边对齐，无横向溢出，正文及渠道标签为项目默认 14px；邮件富文本编辑器继承 14px，底部操作栏可见，1024×768 下单栏编辑无横向溢出。390px 视口仍被项目固定侧栏挤压，内容区只剩 94px，未通过手机布局验收；本次未调整共享壳层，也未逐一打开渠道弹窗和记录详情进行视觉回归。验证仅切换页面与查看编辑布局，未保存模板或发送通知。
 
 消息模板入口为 `views/system/MessageNotification/Templates/index.vue`，owning module 为 `runtime-ui/modules/notify-manager-ui`。页面沿用左侧 `TemplateDirectory.vue` 的树结构、样式、搜索和展开规则，所有非文件夹业务节点均可选择，包括尚未绑定模板的业务；首次进入默认选择树中的首个业务，显式业务 / templateId 深链优先。设备告警和告警解除仍是独立业务及模板，展示层保持父子排列。
 

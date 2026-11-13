@@ -21,11 +21,33 @@ const { t, groups, activeGroup, subChannels, selectGroup, selectChannel } = useT
 </script>
 
 <style scoped>
-.template-channel-navigation { min-width: 0; }
-.template-channel-navigation__primary { display: flex; width: max-content; max-width: 100%; overflow-x: auto; padding-bottom: var(--space-1); }
-.template-channel-navigation__primary .ant-btn { display: inline-flex; align-items: center; gap: var(--space-2); flex-shrink: 0; font-size: var(--fs-12); }
-.template-channel-navigation__primary .is-active { z-index: 1; color: var(--accent); background: var(--accent-soft, var(--bg-sunken)); }
-.template-channel-navigation :deep(.ant-tabs-nav) { margin: var(--space-2) 0 0; }
-.template-channel-navigation :deep(.ant-tabs-tab) { padding: var(--space-2) 0; font-size: var(--fs-12); }
-.template-channel-navigation :deep(.ant-tabs-content-holder) { display: none; }
+.template-channel-navigation {
+	min-width: 0;
+}
+
+.template-channel-navigation__primary {
+	display: flex;
+	width: max-content;
+	max-width: 100%;
+	overflow-x: auto;
+	padding-bottom: var(--space-1);
+}
+
+.template-channel-navigation__primary .is-active {
+	z-index: 1;
+	color: var(--accent);
+	background: var(--accent-soft, var(--bg-sunken));
+}
+
+.template-channel-navigation :deep(.ant-tabs-nav) {
+	margin: var(--space-2) 0 0;
+}
+
+.template-channel-navigation :deep(.ant-tabs-tab) {
+	padding: var(--space-2) 0;
+}
+
+.template-channel-navigation :deep(.ant-tabs-content-holder) {
+	display: none;
+}
 </style>
