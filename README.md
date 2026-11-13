@@ -25,7 +25,7 @@
 
 ### 群机器人弹窗与列表
 
-实现提交：`8dc19ca`（本地 `2.20`）；未推送。
+实现提交：`8dc19ca`；配置说明与按钮修正：`48553f4`（本地 `2.20`）；未推送。
 
 `/system/notification/channels?channel=dingTalk:dingTalkRobotWebHook` 使用紧凑机器人列表：每行展示名称、脱敏 Webhook 地址、“测试”和“更多 → 编辑 / 删除”。右侧标题保留“添加群机器人”和“配置说明”入口，无数据复用 `CloudEmpty`。列表与空状态均显示原有配置说明侧栏，默认展开，支持收起和重新展开；窄屏沿用单列布局。仅调整 `runtime-ui/modules/notify-manager-ui`；其他渠道、后端接口、菜单路由和共享组件沿用现有实现。
 
