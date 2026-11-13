@@ -25,6 +25,8 @@
 
 ### 群机器人弹窗与列表
 
+实现提交：`8dc19ca`（本地 `2.20`）；未推送。
+
 `/system/notification/channels?channel=dingTalk:dingTalkRobotWebHook` 使用紧凑机器人列表：每行展示名称、脱敏 Webhook 地址、“测试”和“更多 → 编辑 / 删除”。右侧标题保留“添加”入口，无数据复用 `CloudEmpty`。仅调整 `runtime-ui/modules/notify-manager-ui`；其他渠道、后端接口、菜单路由和共享组件沿用现有实现。
 
 添加 / 编辑弹窗只展示名称与 Webhook 地址，没有加签输入或列表加签栏。取消丢弃当前弹窗草稿，失败保留输入，保存成功关闭并刷新列表；刷新失败仅重试读取。编辑时 Webhook 输入保持空白，留空保留保存值，列表和占位符不暴露 access_token。历史隐藏加签密钥继续保留，原凭据只有掩码、无法安全保留时明确提示并阻止更新。
