@@ -324,24 +324,46 @@ test('actual editor setup restores focus and inserts a variable over the selecte
   assert.deepEqual(selection, [18, 18])
 })
 
-test('email editing hides advanced settings and retains configuration, recipients and declarations', async () => {
+test('all channel editors hide advanced settings and retain configuration, recipients and declarations', async () => {
   const Editor = load(resolve(templatesRoot, 'components/TemplateEditor.vue')).default
-  const draft = model.createTemplateDraft(record('stored-email', { template: { subject: 'Subject', text: 'Body', sendTo: ['existing@example.test'], attachments: [] } }))
-  const baseline = model.templateDraftFingerprint(draft)
-  const render = async configs => {
+  const render = async (draft, configs) => {
     const app = vue.createSSRApp(Editor, { draft, existing: true, businessMode: true, configs, configState: 'ready' })
     app.config.warnHandler = () => {}
     return renderToString(app)
   }
-  const html = await render([{ id: 'smtp-one', name: 'SMTP', type: 'email', provider: 'embedded' }])
-  assert.ok(!html.includes('template-editor__advanced'))
-  assert.ok(!html.includes('messageNotification.templates.recipients'))
-  assert.ok(!html.includes('messageNotification.templates.configPlaceholder'))
-  assert.equal(model.templateDraftFingerprint(draft), baseline)
-  draft.configId = ''
-  const unconfigured = await render([{ id: 'smtp-one', name: 'SMTP', type: 'email', provider: 'embedded' }, { id: 'smtp-two', name: 'SMTP 2', type: 'email', provider: 'embedded' }])
-  assert.ok(!unconfigured.includes('template-editor__advanced'))
-  assert.ok(unconfigured.includes('messageNotification.templates.configPlaceholder'))
+  const channels = [
+    ['email', 'embedded', { subject: 'Subject', text: 'Body', sendTo: ['existing@example.test'], attachments: [] }],
+    ['dingTalk', 'dingTalkMessage', { agentId: 'agent-one', message: 'Title\nBody' }],
+    ['dingTalk', 'dingTalkRobotWebHook', { messageType: 'markdown', markdown: { title: 'Title', text: 'Body' } }],
+    ['weixin', 'corpMessage', { agentId: 'agent-one', message: 'Title\nBody' }],
+    ['voice', 'aliyun', { templateType: 'tts', message: 'Body', playTimes: 1 }],
+    ['sms', 'aliyunSms', { code: 'SMS_1', signName: 'Alarm', message: 'Body' }],
+    ['webhook', 'http', { contextAsBody: false, body: '{"message":"Body"}' }],
+    ['extension', 'custom', { content: 'Body' }],
+  ]
+  for (const [type, provider, template] of channels) {
+    const draft = model.createTemplateDraft(record(`stored-${type}-${provider}`, { type, provider, configId: 'config-one', template,
+      variableDefinitions: [{ id: 'detail.alarmTime', name: 'Alarm time', type: 'date', format: 'yyyy-MM-dd', required: true, defaultValue: '2026-01-01', expands: { preserved: true } }],
+    }))
+    const configs = ['config-one', 'config-two'].map(id => ({ id, name: id, type, provider }))
+    const baseline = model.templateDraftFingerprint(draft)
+    const html = await render(draft, configs)
+    assert.ok(!html.includes('class="template-editor__advanced"'), `${type}:${provider}`)
+    assert.ok(!html.includes('messageNotification.templates.visual.advancedSettings'))
+    assert.ok(!html.includes('messageNotification.templates.addVariable'))
+    assert.ok(!html.includes('messageNotification.templates.recipients'))
+    assert.ok(!html.includes('messageNotification.templates.configPlaceholder'))
+    assert.equal(model.templateDraftFingerprint(draft), baseline)
+    for (const configId of ['', 'unavailable-config']) {
+      draft.configId = configId
+      const unconfiguredBaseline = model.templateDraftFingerprint(draft)
+      const unconfigured = await render(draft, configs)
+      assert.ok(!unconfigured.includes('class="template-editor__advanced"'))
+      assert.ok(!unconfigured.includes('messageNotification.templates.addVariable'))
+      assert.ok(unconfigured.includes('messageNotification.templates.configPlaceholder'))
+      assert.equal(model.templateDraftFingerprint(draft), unconfiguredBaseline)
+    }
+  }
 })
 
 test('actual preview renders escaped example text without executable HTML', async () => {

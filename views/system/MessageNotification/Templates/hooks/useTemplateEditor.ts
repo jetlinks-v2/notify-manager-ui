@@ -75,7 +75,6 @@ export function useTemplateEditor(props: EditorProps, emit: (event: 'uploading',
   watch(() => providerEditor.fields.value.map(field => field.path.join('.')).join('|')
     + providerEditor.metadataFields.value.map(field => field.id).join('|'), resetCaret, { immediate: true })
 
-  function clearConfiguration() { props.draft.configId = '' }
   const uploadSources = new Set<string>()
   /** Attachments and inline images can upload together; completion releases only its own source. */
   function setUploading(value: boolean, source = 'attachments') {
@@ -141,6 +140,6 @@ export function useTemplateEditor(props: EditorProps, emit: (event: 'uploading',
     target.element?.setSelectionRange(nextCaret, nextCaret)
   }
 
-  return { t, emailDraft, builtinOptions, selectBuiltin, insertableVariables, canInsertVariable, configFailure, configOptions, clearConfiguration, setUploading,
+  return { t, emailDraft, builtinOptions, selectBuiltin, insertableVariables, canInsertVariable, configFailure, configOptions, setUploading,
     captureCaret, captureProviderCaret, captureCustomCaret, activateProviderField, insertVariable, registerVariable, ...providerEditor }
 }

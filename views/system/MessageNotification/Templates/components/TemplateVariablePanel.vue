@@ -22,11 +22,11 @@ const { t, groups } = useTemplateVariablePanel(props)
 
 <style scoped>
 .template-variables { min-width: 0; border: 1px solid var(--line); border-radius: var(--r-2); background: var(--jet-theme-bg-container); overflow: hidden; }
-.template-variables header { padding: var(--space-3); border-bottom: 1px solid var(--line); font-size: var(--fs-12); }
+.template-variables header { padding: var(--space-3); border-bottom: 1px solid var(--line); }
 .template-variables header p { margin: var(--space-1) 0 0; color: var(--text-color-secondary); }
 .template-variables section { padding-block: var(--space-2); }
-.template-variables__group { padding: 0 var(--space-3) var(--space-1); color: var(--text-color-secondary); font-size: var(--fs-12); }
-.template-variables button { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); width: 100%; min-height: 1.875rem; padding: var(--space-1) var(--space-3); border: 0; background: transparent; font-size: var(--fs-12); text-align: left; cursor: pointer; }
+.template-variables__group { padding: 0 var(--space-3) var(--space-1); color: var(--text-color-secondary); }
+.template-variables button { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); width: 100%; min-height: 1.875rem; padding: var(--space-1) var(--space-3); border: 0; background: transparent; text-align: left; cursor: pointer; }
 .template-variables button:hover, .template-variables button:focus-visible { background: var(--bg-sunken); }
 .template-variables button:disabled { cursor: default; opacity: .6; }
 .template-variables__name { min-width: 0; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

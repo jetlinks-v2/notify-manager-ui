@@ -88,17 +88,18 @@ setImageUploadHandler((files, selection) => { void uploadImageFiles(files, selec
 <style scoped>
 .email-editor { min-width: 0; }
 .email-editor :deep(.ant-form-item-label) { width: 100%; padding-bottom: var(--space-1); }
-.email-editor :deep(.ant-form-item-label > label) { width: 100%; color: var(--jet-theme-text-secondary); font-size: var(--fs-12); }
+.email-editor :deep(.ant-form-item-label > label) { width: 100%; color: var(--jet-theme-text-secondary); }
 .email-editor__label { display: flex; width: 100%; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
-.email-editor__count { color: var(--text-color-secondary); font-size: var(--fs-12); font-weight: 400; }
+.email-editor__count { color: var(--text-color-secondary); font-weight: 400; }
 .email-editor :deep(.ant-form-item) { margin-bottom: var(--space-4); }
 .email-editor__rich-text { border: 1px solid var(--line); border-radius: var(--r-2); background: var(--jet-theme-bg-container); overflow: hidden; }
 .email-editor__rich-text:focus-within { border-color: var(--jet-theme-primary); }
 .email-editor__toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); padding: var(--space-2); border-bottom: 1px solid var(--line); }
 .email-editor__toolbar :deep(.ant-btn) { display: inline-flex; align-items: center; justify-content: center; }
-.email-editor__content :deep(.ql-editor) { min-height: 17rem; max-height: 30rem; padding: var(--space-3); outline: none; color: var(--jet-theme-text); font-size: var(--fs-12); line-height: 1.75; overflow-y: auto; overflow-wrap: anywhere; }
+.email-editor__content { font: inherit; }
+.email-editor__content :deep(.ql-editor) { min-height: 17rem; max-height: 30rem; padding: var(--space-3); outline: none; color: var(--jet-theme-text); line-height: 1.75; overflow-y: auto; overflow-wrap: anywhere; }
 .email-editor__content :deep(p) { margin: 0 0 var(--space-2); }
-.email-editor__content :deep(h2) { margin: var(--space-3) 0 var(--space-2); font-size: var(--fs-16); font-weight: 600; }
+.email-editor__content :deep(h2) { margin: var(--space-3) 0 var(--space-2); font-weight: 600; }
 .email-editor__content :deep(ul), .email-editor__content :deep(ol) { padding-inline-start: var(--space-6); }
 .email-editor__content :deep(img) { max-width: 100%; height: auto; }
 .email-editor__content :deep(img[data-email-template-src]) { min-width: 8rem; min-height: 3rem; border: 1px dashed var(--line); }
@@ -107,6 +108,6 @@ setImageUploadHandler((files, selection) => { void uploadImageFiles(files, selec
 .email-editor__image-title { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .email-editor__image-form { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
 .email-editor__link-form { display: flex; align-items: center; gap: var(--space-2); width: 20rem; max-width: 70vw; }
-.email-editor__error { margin-top: var(--space-1); color: var(--jet-theme-error); font-size: var(--fs-12); }
-.email-editor__hint { margin-top: var(--space-1); color: var(--text-color-secondary); font-size: var(--fs-12); }
+.email-editor__error { margin-top: var(--space-1); color: var(--jet-theme-error); }
+.email-editor__hint { margin-top: var(--space-1); color: var(--text-color-secondary); }
 </style>
