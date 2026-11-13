@@ -60,6 +60,8 @@ const { emailEncryption, emailEncryptionProperties } = load(resolve(root, 'confi
 const { emailSmtpEndpoints, emailBrandForHost } = load(resolve(root, 'configuration/emailSmtpCatalog.ts'))
 const { useChannelConfiguration } = load(resolve(root, 'useChannelConfiguration.ts'))
 const { useChannelWorkspace } = load(resolve(root, 'useChannelWorkspace.ts'))
+const { useRobotConfigurations } = load(resolve(root, 'robot/useRobotConfigurations.ts'))
+const { robotWebhookSummary } = load(resolve(root, 'robot/robotPresentation.ts'))
 const { createChannelConfigDraft, channelConfigPayload, validateChannelDraft } = load(resolve(root, 'channelSchema.ts'))
 const { useChannelLeaveGuard } = load(resolve(root, 'useChannelLeaveGuard.ts'))
 const { useChannelsPage } = load(resolve(root, 'useChannelsPage.ts'))
@@ -1421,4 +1423,198 @@ test('new robots hide signing while email and SMS retain their credential editor
     await other.activate(`${record.type}:${record.provider}`)
     assert.equal(robotEditor(other).formGroups.value.flatMap(group => group.fields).some(field => field.key === `config:${key}`), true)
   }
+})
+
+
+function robotDialogFixture(records, navigate) {
+  const io = testApi(records)
+  const perms = permissions()
+  const pending = vue.ref(false)
+  const workspace = useChannelWorkspace({ api: io.api, permissions: perms, navigate })
+  const blocked = vue.computed(() => pending.value || workspace.busy.value)
+  const actions = []
+  pageContext = { messages: [] }
+  let dialog
+  const app = mount(vue.defineComponent({ setup() {
+    dialog = useRobotConfigurations({ workspace, permissions: perms, blocked, pending,
+      test: () => actions.push(['test', workspace.entry.value.baseline.id]),
+      remove: () => actions.push(['delete', workspace.entry.value.baseline.id]),
+    })
+    return () => null
+  } }))
+  return { io, workspace, dialog, perms, pending, actions, dispose() { app.unmount(); pageContext = undefined } }
+}
+
+test('robot rows redact all query credentials, URL passwords and fragments, including invalid URLs', () => {
+  assert.equal(robotWebhookSummary('https://user:password@oapi.dingtalk.com/robot/send?access_token=secret-1234&sign=signature#private'),
+    'https://oapi.dingtalk.com/robot/send?access_token=…1234&sign=…')
+  assert.equal(robotWebhookSummary('https://oapi.dingtalk.com/robot/send?access_token=1234'), 'https://oapi.dingtalk.com/robot/send?access_token=…')
+  assert.equal(robotWebhookSummary('https://oapi.dingtalk.com/robot/send?access_token=********1234'), 'https://oapi.dingtalk.com/robot/send?access_token=…')
+  assert.equal(robotWebhookSummary('invalid secret URL'), '••••••••')
+  assert.equal(robotWebhookSummary('javascript:secret'), '••••••••')
+  assert.equal(robotWebhookSummary(undefined), '')
+})
+
+test('canceling a new robot dialog removes its draft and reopening creates a fresh identity', async () => {
+  const f = robotDialogFixture([])
+  try {
+    await f.workspace.activate('dingTalk:dingTalkRobotWebHook')
+    f.dialog.add()
+    const id = f.workspace.entry.value.draft.id
+    assert.equal(f.dialog.modal.value.open, true)
+    f.dialog.change('name', 'Unsaved group')
+    f.dialog.change('url', 'https://oapi.dingtalk.com/robot/send?access_token=cancelled')
+    f.dialog.close()
+    assert.equal(f.dialog.modal.value.open, false)
+    assert.equal(f.workspace.entry.value, undefined)
+    assert.equal(f.workspace.hasUnsavedChanges.value, false)
+    f.dialog.add()
+    assert.notEqual(f.workspace.entry.value.draft.id, id)
+    assert.notEqual(f.dialog.modal.value.name, 'Unsaved group')
+    assert.equal(f.dialog.modal.value.url, '')
+    assert.equal(f.io.calls.some(([method]) => method === 'createConfig'), false)
+  } finally { f.dispose() }
+})
+
+test('robot row actions target the exact record and modal editing preserves hidden signing keys', async () => {
+  const first = robot('first'), second = robot('second')
+  first.configuration.secret = 'SEC-first'
+  second.configuration.secret = 'SEC-second'
+  const f = robotDialogFixture([first, second])
+  try {
+    await f.workspace.activate('dingTalk:dingTalkRobotWebHook', 'first')
+    await f.dialog.act('second', 'test')
+    await f.dialog.act('first', 'delete')
+    assert.deepEqual(f.actions, [['test', 'second'], ['delete', 'first']])
+    await f.dialog.act('second', 'edit')
+    f.dialog.change('name', 'Second group')
+    f.dialog.change('url', 'https://oapi.dingtalk.com/robot/send?access_token=replacement')
+    await f.dialog.save()
+    assert.equal(f.dialog.modal.value.open, false)
+    assert.equal(f.io.records.get('second').name, 'Second group')
+    assert.equal(f.io.records.get('second').configuration.secret, 'SEC-second')
+    assert.equal(f.io.records.get('first').configuration.secret, 'SEC-first')
+    assert.equal(f.io.calls.filter(([method]) => method === 'updateConfig').length, 1)
+    await f.dialog.act('first', 'edit')
+    f.dialog.change('name', 'Cancel this edit')
+    f.dialog.close()
+    assert.equal(f.workspace.dirty.value, false)
+    assert.equal(f.workspace.entry.value.draft.name, first.name)
+  } finally { f.dispose() }
+})
+
+test('robot dialog retains failed input and blocks masked-key updates with a visible error', async () => {
+  const original = robot('masked')
+  original.configuration.secret = '********'
+  const f = robotDialogFixture([original, robot('unsigned')])
+  try {
+    await f.workspace.activate('dingTalk:dingTalkRobotWebHook')
+    await f.dialog.act('masked', 'edit')
+    f.dialog.change('name', 'Masked name')
+    await f.dialog.save()
+    assert.equal(f.dialog.modal.value.open, true)
+    assert.equal(f.dialog.modal.value.error, 'messageNotification.channels.robot.protectedCredential')
+    assert.equal(f.io.calls.some(([method]) => method === 'updateConfig'), false)
+    f.dialog.close()
+    await f.dialog.act('unsigned', 'edit')
+    f.dialog.change('name', 'Retry name')
+    const update = f.io.api.updateConfig
+    f.io.api.updateConfig = async () => { throw new Error('offline') }
+    await f.dialog.save()
+    assert.equal(f.dialog.modal.value.open, true)
+    assert.equal(f.dialog.modal.value.name, 'Retry name')
+    f.io.api.updateConfig = update
+    await f.dialog.save()
+    assert.equal(f.dialog.modal.value.open, false)
+    assert.equal(f.io.records.get('unsigned').configuration.secret, undefined)
+  } finally { f.dispose() }
+})
+
+test('robot dialog permissions and pending selection prevent wrong-row actions and late reopening', async () => {
+  const f = robotDialogFixture([robot('first'), robot('second'), email()])
+  try {
+    await f.workspace.activate('dingTalk:dingTalkRobotWebHook', 'first')
+    f.perms.action.value = false
+    await f.dialog.act('second', 'test')
+    assert.deepEqual(f.actions, [])
+    f.perms.add.value = false
+    f.dialog.add()
+    assert.equal(f.dialog.modal.value.open, false)
+    let resolveDetail
+    const get = f.io.api.getConfig
+    f.io.api.getConfig = id => id === 'second' ? new Promise(resolve => { resolveDetail = resolve }) : get(id)
+    const selecting = f.dialog.act('second', 'edit')
+    assert.equal(f.pending.value, true)
+    await f.dialog.act('first', 'delete')
+    assert.deepEqual(f.actions, [])
+    await f.workspace.activate('email:embedded')
+    resolveDetail(robot('second'))
+    await selecting
+    assert.equal(f.dialog.modal.value.open, false)
+    assert.equal(f.pending.value, false)
+    assert.equal(f.workspace.entry.value.baseline.id, 'smtp-real')
+    await f.workspace.activate('dingTalk:dingTalkRobotWebHook', 'first')
+    await f.dialog.act('first', 'edit')
+    f.dialog.change('name', 'Discard after permission loss')
+    f.perms.update.value = false
+    await vue.nextTick()
+    assert.equal(f.dialog.modal.value.open, false)
+    assert.equal(f.workspace.hasUnsavedChanges.value, false)
+  } finally { f.dispose() }
+})
+
+test('robot save refresh failure does not replay the confirmed write', async () => {
+  const f = robotDialogFixture([])
+  try {
+    await f.workspace.activate('dingTalk:dingTalkRobotWebHook')
+    f.dialog.add()
+    f.dialog.change('name', 'Saved robot')
+    f.dialog.change('url', 'https://oapi.dingtalk.com/robot/send?access_token=saved-token')
+    const query = f.io.api.queryConfigs
+    f.io.api.queryConfigs = async () => { throw new Error('offline') }
+    await f.dialog.save()
+    assert.equal(f.dialog.modal.value.open, false)
+    assert.equal(f.workspace.state.value, 'error')
+    assert.equal(f.io.calls.filter(([method]) => method === 'createConfig').length, 1)
+    f.io.api.queryConfigs = query
+    await f.workspace.activate('dingTalk:dingTalkRobotWebHook', undefined, true)
+    assert.equal(f.dialog.rows.value.length, 1)
+    assert.equal(f.dialog.rows.value[0].name, 'Saved robot')
+    assert.equal(f.io.calls.filter(([method]) => method === 'createConfig').length, 1)
+  } finally { f.dispose() }
+})
+
+
+test('robot actions wait for asynchronous navigation before opening the trial', async () => {
+  let pause = false
+  let navigated
+  const f = robotDialogFixture([robot('first'), robot('second')], () => pause ? new Promise(resolve => { navigated = resolve }) : undefined)
+  try {
+    await f.workspace.activate('dingTalk:dingTalkRobotWebHook', 'first')
+    pause = true
+    const action = f.dialog.act('second', 'test')
+    for (let index = 0; index < 4; index++) await Promise.resolve()
+    assert.equal(typeof navigated, 'function')
+    assert.deepEqual(f.actions, [], 'the route-change watcher must run before opening a new trial')
+    assert.equal(f.pending.value, true)
+    navigated()
+    await action
+    assert.deepEqual(f.actions, [['test', 'second']])
+  } finally { f.dispose() }
+})
+
+test('external robot deep links discard the replaced modal draft without changing another robot', async () => {
+  const f = robotDialogFixture([robot('first'), robot('second')])
+  try {
+    await f.workspace.activate('dingTalk:dingTalkRobotWebHook', 'first')
+    await f.dialog.act('first', 'edit')
+    f.dialog.change('name', 'Discard replaced dialog')
+    await f.workspace.activate('dingTalk:dingTalkRobotWebHook', 'second')
+    await vue.nextTick()
+    assert.equal(f.dialog.modal.value.open, false)
+    assert.equal(f.workspace.hasUnsavedChanges.value, false)
+    assert.equal(f.workspace.entry.value.baseline.id, 'second')
+    await f.dialog.act('first', 'edit')
+    assert.equal(f.dialog.modal.value.name, '群机器人')
+  } finally { f.dispose() }
 })

@@ -19,6 +19,7 @@ import { useChannelLeaveGuard } from './useChannelLeaveGuard'
 import { channelHelp, channelHelpStep } from './configuration/channelHelp'
 import { classifyNotificationFailure, notificationFailureMessage } from '../../../../api/notice/messageNotificationState'
 import { useWebhookPreview } from './webhook/useWebhookPreview'
+import { useRobotConfigurations } from './robot/useRobotConfigurations'
 
 /** Own backend directory, routing, permissions and draft effects outside rendering components. */
 export function useChannelsPage() {
@@ -68,7 +69,7 @@ export function useChannelsPage() {
     return status && !['ready', 'loading'].includes(status) ? [{ id: type.id, name: typeTitle(type.id, type.name), state: status }] : []
   }))
   const directoryState = catalog.state
-  function navigate(navigation: NotificationNavigation) { void router.replace({ query: notificationQuery(navigation, route.query, catalog.channels.value) }) }
+  function navigate(navigation: NotificationNavigation) { return router.replace({ query: notificationQuery(navigation, route.query, catalog.channels.value) }) }
   const trial = useChannelTest()
   const members = useWechatMembers()
   const sending = trial.sending
@@ -79,11 +80,14 @@ export function useChannelsPage() {
     onMutationError: error => onlyMessage(notificationFailureMessage(error) || t(`messageNotification.state.${classifyNotificationFailure(error)}`), 'error'),
   })
   const { channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId, busy, dirty, hasUnsavedChanges, canEdit, editing } = workspace
-  const operationBusy = computed(() => busy.value || externalBusy.value)
+  const robotPending = ref(false)
+  const operationBusy = computed(() => busy.value || externalBusy.value || robotPending.value)
+  const robot = useRobotConfigurations({ workspace, permissions, blocked: operationBusy, pending: robotPending, test: showSend, remove: requestRemove })
   const deleteOpen = ref(false)
   const clearChannelName = computed(() => {
     if (!channel.value) return ''
-    if (!findNotificationChannel(channelId.value) || ['weixin:corpMessage', 'dingTalk:dingTalkRobotWebHook'].includes(channelId.value)) return channelTitle(channel.value)
+    if (robot.isRobot.value) return entry.value?.baseline?.name || channelTitle(channel.value)
+    if (!findNotificationChannel(channelId.value) || channelId.value === 'weixin:corpMessage') return channelTitle(channel.value)
     // The confirmation names the notification method, matching personal settings rather than the vendor.
     return t(`messageNotification.records.type.${channel.value.type}`)
   })
@@ -216,6 +220,7 @@ export function useChannelsPage() {
     const target = pendingTestField.value
     pendingTestField.value = undefined
     if (!target || target.configId !== selectedConfigId.value || !canEdit.value || operationBusy.value) return
+    if (robot.isRobot.value) { robot.editSelected(); return }
     helpChoices.set(channelId.value, true)
     focusedField.value = target.key
     workspace.startEditing()
@@ -241,6 +246,7 @@ export function useChannelsPage() {
   })
 
   return {
+    robot, isRobot: robot.isRobot, robotRows: robot.rows, robotModal: robot.modal, robotCanAdd: robot.canAdd,
     webhookPreviewModel,
     t, notificationPermissions, isNarrow, channelOptions, channelSearch, filteredChannelTree, openChannelKeys, selectChannel, configurationOptions,
     canQuery, channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId,

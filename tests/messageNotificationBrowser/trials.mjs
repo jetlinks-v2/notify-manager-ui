@@ -36,16 +36,16 @@ async function open(extra = '', record = trialRecords[0]) {
   })
   await page.goto(`${entry.href}?unifiedTests&permission=no-template&writeDelay=900${extra}#/channels?channel=${record.type}:${record.provider}&configId=${record.id}`)
   await page.waitForFunction(() => document.documentElement.dataset.notificationSmoke === 'ready')
-  await page.locator('.channel-configuration').waitFor()
+  await page.locator(record.provider === 'dingTalkRobotWebHook' ? '.robot-configurations' : '.channel-configuration').waitFor()
   return page
 }
 async function choose(page, record) {
   await page.evaluate(record => window.__notificationSmoke.router.push({ name: 'system/MessageNotification/Channels', query: { channel: `${record.type}:${record.provider}`, configId: record.id } }), record)
-  await page.locator('.channel-configuration').waitFor()
-  await eventually(async () => assert.equal(await button(page, '发送测试消息').isEnabled(), true))
+  await page.locator(record.provider === 'dingTalkRobotWebHook' ? '.robot-configurations' : '.channel-configuration').waitFor()
+  await eventually(async () => assert.equal(await button(page, record.provider === 'dingTalkRobotWebHook' ? '测试' : '发送测试消息').isEnabled(), true))
 }
 async function show(page) {
-  await button(page, '发送测试消息').click()
+  await button(page, await page.locator('.robot-configurations').count() ? '测试' : '发送测试消息').click()
   const dialog = page.getByRole('dialog')
   await dialog.waitFor()
   await eventually(async () => assert.match(await dialog.innerText(), /发给自己|发送到当前配置/))
@@ -63,7 +63,7 @@ try {
       await choose(page, record)
       await beginChannelEdit(page)
       assert.equal(await page.locator('.inline-edit-field__trigger').count(), 0)
-      assert.ok(await page.locator('.inline-edit-field__editor').count() > 0)
+      assert.ok(await page.locator(record.provider === 'dingTalkRobotWebHook' ? '.robot-configuration-modal input' : '.inline-edit-field__editor').count() > 0)
       await cancelChannelEdit(page)
       assert.equal(await page.evaluate(() => window.__notificationSmoke.calls.filter(([method]) => method === 'updateConfig').length), 0)
       await page.getByRole('button', { name: '更多操作' }).click()

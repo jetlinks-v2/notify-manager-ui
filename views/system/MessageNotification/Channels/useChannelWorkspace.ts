@@ -36,7 +36,7 @@ export interface ChannelFieldChange { key: string; value: unknown; topLevel?: bo
 interface ChannelWorkspaceOptions {
   permissions: ChannelPermissions
   api?: MessageNotificationApi
-  navigate?: (navigation: NotificationNavigation) => void
+  navigate?: (navigation: NotificationNavigation) => void | Promise<unknown>
   blocked?: Ref<boolean>
   channels?: Ref<readonly NotificationChannel[]>
   loadConfigs?: (force?: boolean) => Promise<NotifierConfig[]>
@@ -81,9 +81,30 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
     entry.value.editing = false
   }
 
+  /** A dismissed dialog discards only its own draft, including after navigation changes the active entry. */
+  function discardConfig(key = activeKey.value) {
+    const current = drafts.get(key)
+    if (!current || busy.value || options.blocked?.value) return
+    if (!current.isNew) {
+      current.draft = JSON.parse(current.snapshot) as NotifierConfigPayload
+      current.issues = []
+      current.fieldFailures = {}
+      current.editing = false
+      return
+    }
+    drafts.delete(key)
+    remembered.delete(key.split('\0')[0])
+    if (activeKey.value !== key) return
+    ++detailVersion
+    activeKey.value = ''
+    selectedConfigId.value = undefined
+    detailState.value = 'idle'
+    syncNavigation()
+  }
+
   /** Keep query state shareable while excluding ephemeral draft IDs and credentials. */
   function syncNavigation() {
-    options.navigate?.({ channel: channelId.value, ...(selectedConfigId.value ? { configId: selectedConfigId.value } : {}) })
+    return options.navigate?.({ channel: channelId.value, ...(selectedConfigId.value ? { configId: selectedConfigId.value } : {}) })
   }
 
   /** Resolve by explicit ID and validate its provider before exposing it in this channel's editor. */
@@ -93,9 +114,9 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
     const version = ++detailVersion
     activeKey.value = selected ? `${channelId.value}\0record:${selected}` : ''
     selectedConfigId.value = selected
-    if (!selected) { detailState.value = 'idle'; syncNavigation(); return }
+    if (!selected) { detailState.value = 'idle'; await syncNavigation(); return }
     remembered.set(channelId.value, { id: selected })
-    if (drafts.has(activeKey.value)) { detailState.value = 'ready'; syncNavigation(); return }
+    if (drafts.has(activeKey.value)) { detailState.value = 'ready'; await syncNavigation(); return }
     detailState.value = 'loading'
     const expectedChannel = channelId.value
     const key = activeKey.value
@@ -109,7 +130,8 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
     } catch (error) {
       if (version === detailVersion) detailState.value = classifyNotificationFailure(error)
     }
-    if (version === detailVersion) syncNavigation()
+    // Row actions run after route watchers settle, so a new test dialog is not closed by this selection.
+    if (version === detailVersion) await syncNavigation()
   }
 
   /** Ignore late query/detail responses after channel changes; a denied query makes no request. */
@@ -331,5 +353,5 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
     drafts.clear(); remembered.clear(); state.value = 'forbidden'; detailState.value = 'idle'
   }
 
-  return { channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId, busy, dirty, hasUnsavedChanges, canEdit, editing, startEditing, cancelEditing, activate, selectConfig, createConfig, changeField, save, saveFields, refreshSaved, deleteConfig, resetDraft, clear }
+  return { channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId, busy, dirty, hasUnsavedChanges, canEdit, editing, startEditing, cancelEditing, discardConfig, activate, selectConfig, createConfig, changeField, save, saveFields, refreshSaved, deleteConfig, resetDraft, clear }
 }

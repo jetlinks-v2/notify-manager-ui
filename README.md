@@ -23,9 +23,34 @@
 
 ## 钉钉机器人可选加签
 
+### 群机器人弹窗与列表
+
+`/system/notification/channels?channel=dingTalk:dingTalkRobotWebHook` 使用紧凑机器人列表：每行展示名称、脱敏 Webhook 地址、“测试”和“更多 → 编辑 / 删除”。右侧标题保留“添加”入口，无数据复用 `CloudEmpty`。仅调整 `runtime-ui/modules/notify-manager-ui`；其他渠道、后端接口、菜单路由和共享组件沿用现有实现。
+
+添加 / 编辑弹窗只展示名称与 Webhook 地址，没有加签输入或列表加签栏。取消丢弃当前弹窗草稿，失败保留输入，保存成功关闭并刷新列表；刷新失败仅重试读取。编辑时 Webhook 输入保持空白，留空保留保存值，列表和占位符不暴露 access_token。历史隐藏加签密钥继续保留，原凭据只有掩码、无法安全保留时明确提示并阻止更新。
+
+实现入口为 `views/system/MessageNotification/Channels/robot/`：`RobotConfigurationList.vue` 负责行展示和操作事件，`RobotConfigurationModal.vue` 负责两字段表单，`useRobotConfigurations.ts` 负责弹窗生命周期、权限与逐行操作，`robotPresentation.ts` 负责 URL 脱敏。`Channels/index.vue`、`useChannelsPage.ts` 接入机器人分支；`useChannelWorkspace.ts` 复用现有读写、校验与凭据合并，增加按草稿标识取消，并在选择配置后等待地址栏导航完成，避免路由监听误关闭测试弹窗。测试、编辑和删除始终使用点击行的配置 ID，删除确认展示机器人名称；切换渠道、外部配置深链接或权限失效会释放对应弹窗草稿。新增 Vue 文件均低于 300 行，中英日文案沿用模块资源。
+
+验证（2026-11-13）：渠道、契约、试发与装配集成共 116/116 通过，覆盖取消新建、历史密钥保留、失败重试、按行目标、权限和异步选择、外部深链接、导航完成时序与保存后刷新失败。`robotSigning.mjs` 的 7 组浏览器检查通过，覆盖两字段新增 / 编辑、名称和 URL 校验、逐行测试 / 删除、脱敏、三语和 390px 布局、旧元数据及权限；`smoke.mjs` 的渠道回归 10 组通过。浏览器使用内存夹具，页面错误和业务网络请求均为空，未写入真实通知配置或发送真实消息。模块类型检查前后均为 195 项既有诊断，无新增或移除；完整类型检查尚未通过，工作区没有独立 lint 脚本。三个变更 Vue 文件的定向样式检查、中英日机器人文案键一致性和 `git diff --check` 通过；统一试发浏览器回归 10 组通过，最终模块构建通过（20.78 秒），保留既有大 chunk、CSS 等构建警告。
+
+复验命令（从 `runtime-ui/` 执行）：
+
+```sh
+node --test modules/notify-manager-ui/tests/messageNotification{Channels,Contracts,Trial,Integration}.test.mjs
+SMOKE_PLAYWRIGHT_MODULE="$PWD/../ui/node_modules/playwright" node modules/notify-manager-ui/tests/messageNotificationBrowser/robotSigning.mjs
+SMOKE_CHANNELS_ONLY=1 SMOKE_PLAYWRIGHT_MODULE="$PWD/../ui/node_modules/playwright" node modules/notify-manager-ui/tests/messageNotificationBrowser/smoke.mjs
+SMOKE_PLAYWRIGHT_MODULE="$PWD/../ui/node_modules/playwright" node modules/notify-manager-ui/tests/messageNotificationBrowser/trials.mjs
+node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/system/MessageNotification/Channels/index.vue modules/notify-manager-ui/views/system/MessageNotification/Channels/robot/RobotConfigurationList.vue modules/notify-manager-ui/views/system/MessageNotification/Channels/robot/RobotConfigurationModal.vue
+./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json
+```
+
+模块构建从 `runtime-ui/jetlinks-web-core/` 执行 `node --max_old_space_size=16384 ../node_modules/vite/bin/vite.js build --outDir /tmp/jetlinks-robot-dialog/build -- --module-name notify-manager-ui`。日志、浏览器报告和截图位于 `/tmp/jetlinks-robot-dialog/`；真实账号授权与钉钉服务商投递仍需联调。
+
+### 现有加签兼容行为
+
 实现提交：前端 `7eba75d`（本地 `2.20`），后端 `8444cd9ee`；后端评审见 [PR #1717](https://github.com/jetlinks-v2/jetlinks-components/pull/1717)（目标 `2.20`，草稿，待恢复 Maven 私服访问后验证）。
 
-当前暂时屏蔽钉钉机器人的加签密钥输入与清除入口，即使服务端元数据声明 `secret` 也不显示。仅在 `Channels/useChannelConfiguration.ts` 的显示字段中过滤机器人 `secret`；保留已保存密钥、元数据能力与密钥合并逻辑，修改 Webhook 时继续保留原密钥，邮件、短信等渠道不受影响。后续恢复入口时仍以服务端元数据声明为前提。
+当前暂时屏蔽钉钉机器人的加签密钥输入与清除入口，即使服务端元数据声明 `secret` 也不显示。`Channels/robot/RobotConfigurationModal.vue` 只展示名称和 Webhook 地址，通用表单 `Channels/useChannelConfiguration.ts` 仍过滤机器人 `secret`；保留已保存密钥、元数据能力与密钥合并逻辑，修改 Webhook 时继续保留原密钥，邮件、短信等渠道不受影响。后续恢复入口时仍以服务端元数据声明为前提。
 
 `views/system/MessageNotification/shared/configuration.ts` 通过字段策略区分可选密钥和明确清除意图，不硬编码钉钉判断；原本没有可选密钥的配置允许修改。掩码密钥无法安全回传，当前入口屏蔽期间继续拒绝此类配置的普通更新，避免丢失已存密钥。清除使用 `configuration.secret: ""`，前端意图标记不进入 API，配置 ID 间不复用密钥。后端 owning module 为 `modules/jetlinks-components/notify-component/notify-dingtalk`，先升级通知服务再发布前端；不修改 `ui/` 或增加数据库列。
 
@@ -304,7 +329,7 @@ AgentId 浏览器复核：9200 实际企业微信页已显示新字段和默认�
 
 质量检查：从 `runtime-ui/` 执行 `node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/system/MessageNotification/Channels/ChannelConfiguration.vue` 通过；三语 JSON / SMTP 文案键及 `git diff --check` 通过，修改的 Vue 文件低于 300 行。`./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json` 修改前后均为 195 条既有诊断，忽略行列比较无新增 / 移除；完整类型检查仍未通过，需修复基线后重跑。工作区无独立 lint 脚本。在 `runtime-ui/jetlinks-web-core/` 执行 `node --max_old_space_size=16384 ../node_modules/vite/bin/vite.js build --outDir /tmp/notification-smtp-build -- --module-name notify-manager-ui` 通过（21.43 秒），保留既有分块等构建告警。日志前缀 `/tmp/notification-smtp-`；浏览器报告及截图位于 `/tmp/notification-smtp-browser/` 与 `/tmp/notification-smtp-smoke/`。未保存真实配置或发送邮件，各供应商账号认证及实际投递仍需测试环境联调。
 
-渠道表单精简：短信顶部“发送测试消息”保持原样；短信的“渠道测试”区和邮件的“SMTP 扩展属性”在新建、查看及编辑时均移除，已有配置值继续保留；邮件预设和加密方式仍通过内部 `properties` 联动。群机器人空配置先显示“添加”入口，点击后创建草稿，已有配置继续支持多套选择与新增。更多菜单中的编辑按钮铺满菜单项宽度。实现范围为本模块的 `Channels/index.vue`、表单适配和 workspace，配套更新说明文案及现有内存夹具；验证字段可见性、历史值保留、群机器人新增/删除/草稿隔离、权限和窄屏菜单。
+渠道表单精简：短信顶部“发送测试消息”保持原样；短信的“渠道测试”区和邮件的“SMTP 扩展属性”在新建、查看及编辑时均移除，已有配置值继续保留；邮件预设和加密方式仍通过内部 `properties` 联动。群机器人空配置先显示“添加”入口，点击后打开两字段弹窗；已有配置以紧凑列表逐行展示并支持新增，详见上方“群机器人弹窗与列表”。更多菜单中的编辑按钮铺满菜单项宽度。实现范围为本模块的 `Channels/index.vue`、表单适配和 workspace，配套更新说明文案及现有内存夹具；验证字段可见性、历史值保留、群机器人新增/删除/草稿隔离、权限和窄屏菜单。
 
 精简验证：渠道 / 试发 / 契约定向测试 90/90 通过，`smoke.mjs`（`SMOKE_CHANNELS_ONLY=1`）10 项和 `trials.mjs` 9 项通过。内存夹具覆盖新建/查看/编辑字段移除、短信凭据保存后原有试发正常、邮件加密联动、群机器人显式添加及清除后回到空态、权限限制、编辑按钮右侧空白点击和 390px 布局；无页面错误或真实配置写入。定向样式检查、三语资源键与 JSON、`git diff --check` 和生产构建通过（24.28 秒）；模块类型检查仍有 193 项既有诊断，无新增或移除，无独立 lint 脚本。验证命令沿用下方质量检查，日志及浏览器报告前缀为 `/tmp/notification-form-cleanup-`。
 
@@ -329,11 +354,11 @@ AgentId 浏览器复核：9200 实际企业微信页已显示新字段和默认�
 
 分组详情和整表保存覆盖动态后端目录中的全部提供商。公共表单为 `runtime-ui/jetlinks-web-core/src/components/InlineEditForm/`，通过 core 根入口或目录公开入口导出；API、事件、插槽和示例见组件 README。通知模块通过 `Channels/useChannelConfiguration.ts` / `ChannelConfiguration.vue` 映射业务元数据，`useChannelWorkspace.ts` 承载草稿、校验与提交，`useChannelsPage.ts` / `index.vue` 管理操作入口。
 
-已有配置展示保存值和凭据掩码，字段自身不响应点击或键盘进入编辑；“编辑”同时展开所有可见的普通字段和请求头，服务商等固有只读字段保持只读；短信“渠道测试”和邮件“SMTP 扩展属性”均不显示。本页不接入字段 submit，失焦、Enter、选择下拉及元数据控件完成事件均不保存。取消仅还原当前配置快照和校验错误，退出编辑，不发送请求；保存整表校验后仅调用一次既有创建或更新接口，成功回到只读，失败保留输入。无修改时禁用保存，提交期间锁定取消、重复保存和配置切换。单配置渠道首次进入时直接填写，群机器人首次填写由“添加”入口开启；新建配置在左下角保存，不增加取消入口。
+已有配置展示保存值和凭据掩码，字段自身不响应点击或键盘进入编辑；“编辑”同时展开所有可见的普通字段和请求头，服务商等固有只读字段保持只读；短信“渠道测试”和邮件“SMTP 扩展属性”均不显示。本页不接入字段 submit，失焦、Enter、选择下拉及元数据控件完成事件均不保存。取消仅还原当前配置快照和校验错误，退出编辑，不发送请求；保存整表校验后仅调用一次既有创建或更新接口，成功回到只读，失败保留输入。无修改时禁用保存，提交期间锁定取消、重复保存和配置切换。单配置渠道首次进入时直接填写，群机器人首次填写由“添加”入口开启独立弹窗，在弹窗右下角添加 / 保存并支持取消；其余渠道新建配置继续在左下角保存。
 
-非机器人渠道每个 `type/provider` 只提供一套配置入口：没有配置选择器和新增入口，已存在记录时 workspace 也禁止创建第二套。机器人由 `shared/catalog.ts` 的 `multipleConfigurations` 标记，动态目录继承该展示能力；当前后端机器人提供商为 `dingTalk:dingTalkRobotWebHook`，保留选择、增加、自动重名编号和删除。未知提供商默认单套，不影响动态渠道或字段发现。历史重复数据不自动删除：默认进入后端第一条，仍兼容明确配置 ID 的原有跳转，防止已引用模板错绑。此限制作用于本页面，不新增后端唯一约束或执行历史数据迁移。
+非机器人渠道每个 `type/provider` 只提供一套配置入口：没有配置选择器和新增入口，已存在记录时 workspace 也禁止创建第二套。机器人由 `shared/catalog.ts` 的 `multipleConfigurations` 标记，动态目录继承该展示能力；当前后端机器人提供商为 `dingTalk:dingTalkRobotWebHook`，以多行列表及新增 / 编辑弹窗管理多套配置，保留自动重名编号和删除。未知提供商默认单套，不影响动态渠道或字段发现。历史重复数据不自动删除：默认进入后端第一条，仍兼容明确配置 ID 的原有跳转，防止已引用模板错绑。此限制作用于本页面，不新增后端唯一约束或执行历史数据迁移。
 
-整表提交只包含当前配置的草稿，不夹带其他渠道的修改。切换渠道或机器人配置时保留各自草稿及编辑状态；离开页面沿用未保存提醒。保存成功后即使列表读取失败，也只重试读取，不重复写入；权限丢失后清理的配置不会被迟到响应恢复。密码与 HTTP 请求头保持掩码、空值保留及禁止提交掩码的规则；无法安全保留的凭据要求重新输入，校验涉及暂时隐藏的字段时展示表单级错误，避免无反馈。元数据新增字段和未编辑参数保留。状态显示“已配置”，不推断服务可用性；配置名称与 ID 仅在内部继续用于保存和关联。清除配置仍经独立弹窗确认。
+整表提交只包含当前配置的草稿，不夹带其他渠道的修改。单配置渠道切换时保留各自草稿及编辑状态；机器人弹窗关闭或被外部渠道 / 配置切换替换时丢弃对应草稿，离开页面仍沿用未保存提醒。保存成功后即使列表读取失败，也只重试读取，不重复写入；权限丢失后清理的配置不会被迟到响应恢复。密码与 HTTP 请求头保持掩码、空值保留及禁止提交掩码的规则；无法安全保留的凭据要求重新输入，校验涉及暂时隐藏的字段时展示表单级错误，避免无反馈。元数据新增字段和未编辑参数保留。状态显示“已配置”，不推断服务可用性；单配置渠道的名称与 ID 仅在内部继续用于保存和关联；机器人名称在列表和弹窗中展示，ID 继续仅用于内部关联。清除配置仍经独立弹窗确认。
 
 配置信息移除验证（2026-11-11）：渠道测试 37/37、单文件定向样式检查、模块构建（24.34 秒）和 `git diff --check` 通过；模块类型检查保持 235 项既有诊断，无新增或移除，工作区无独立 lint 脚本。隔离浏览器确认邮件仅展示“邮箱服务商”“发件账号”，没有配置名称或 ID 区块，页面错误日志为空。日志前缀 `/tmp/notification-remove-config-information-`；未操作真实配置。
 
