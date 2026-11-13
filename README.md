@@ -43,25 +43,32 @@
 
 ## 通知渠道统一试发
 
-阿里云语音页不提供渠道测试分组、测试模板 / 样例参数或顶部试发入口。`Channels/testing/channelTestConfig.ts`、`channelTestAdapter.ts` 不注册 `voice:aliyun` 测试能力，`ChannelTestSettings.vue` 与 `useChannelTestSettings.ts` 已清理语音专用编辑逻辑；`locales/lang/{zh,en,ja}.json` 同步移除简介中的试发说明。沿用当前配置表单，保留地域、AccessKey 凭据、历史保存值及业务消息模板；后端接口与其他渠道行为不变。
+阿里云语音页保留顶部“发送测试消息”，仅隐藏配置表单中的“渠道测试”分组、测试模板及样例参数编辑。试发读取已保存的 `configuration.testTemplate`，沿用统一弹窗和发送接口；缺少模板类型、模板编号或样例参数无效时提示缺项并禁止发送。编辑地域、AccessKey 等字段时原样保留历史测试配置，不要求补齐隐藏字段。
 
-语音入口移除验证（2026-11-12）：模块内运行 `node --test tests/messageNotificationChannels.test.mjs tests/messageNotificationTrial.test.mjs`，57/57 通过；定向样式门禁和 `git diff --check` 通过，工作区无独立 lint 脚本。从 `jetlinks-web-core/` 执行 `node --max_old_space_size=16384 ../node_modules/vite/bin/vite.js build --outDir /tmp/notification-voice-remove-final-build -- --module-name notify-manager-ui`，构建通过（29.74 秒，保留既有构建告警）。在 `runtime-ui/` 执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，修改前后均为 213 项既有诊断，无新增或移除；修复既有问题后需重跑。构建后仅删除三语简介中的试发提示，JSON 解析与实际 i18n 加载检查通过。
+本次 S 级修复已落实（2026-11-13）：仅在 `runtime-ui/modules/notify-manager-ui` 恢复 `Channels/testing/channelTestAdapter.ts` 的 `voice:aliyun` 适配，在 `channelTestConfig.ts` 恢复发送前校验但不注册语音配置编辑能力；`useChannelConfiguration.ts` 同时过滤服务端可能返回的语音 `testTemplate` 字段。复用当前页面和弹窗，不修改后端接口、业务模板、权限、运营端 `ui/` 或测试设置编辑组件。
+
+恢复验证（2026-11-13）：模块内执行 `node --test tests/messageNotificationChannels.test.mjs tests/messageNotificationTrial.test.mjs`，65/65 通过，覆盖 TTS / 语音文件参数、无效模板拦截、接收人保护、隐藏字段及普通保存保留历史值。执行 `SMOKE_PLAYWRIGHT_MODULE="$PWD/../../../ui/node_modules/playwright" SMOKE_OUTPUT=/tmp/voice-trial-restore-browser node tests/messageNotificationBrowser/trials.mjs`，10 组浏览器验证通过，包含七类渠道试发、语音三语查看 / 编辑隐藏设置、保存凭据保留模板、390px 窄屏其他接收人试发、缺少模板禁发；报告页面错误与业务网络请求均为空。测试仅使用内存夹具，未拨打真实电话，真实账号与服务商投递仍需联调。
+
+从 `runtime-ui/jetlinks-web-core/` 执行 `node --max_old_space_size=16384 ../node_modules/vite/bin/vite.js build --outDir /tmp/voice-trial-restore-build -- --module-name notify-manager-ui`，构建通过（21.70 秒），保留既有构建告警。工作区无独立 lint 脚本；从 `runtime-ui/` 执行 `node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/system/MessageNotification/Channels/index.vue modules/notify-manager-ui/views/system/MessageNotification/Channels/ChannelConfiguration.vue modules/notify-manager-ui/views/system/MessageNotification/Channels/testing/ChannelTestModal.vue`，关联页面样式门禁通过；模块 `git diff --check` 通过。`./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json` 修改前后均为 195 项既有诊断，按文件、错误码和消息比较无新增或移除；完整类型检查尚未通过，修复既有错误后需重跑。日志前缀 `/tmp/voice-trial-restore-`。
+
+语音入口移除的历史验证（2026-11-12，入口行为已由上文恢复方案替代）：模块内运行 `node --test tests/messageNotificationChannels.test.mjs tests/messageNotificationTrial.test.mjs`，57/57 通过；定向样式门禁和 `git diff --check` 通过，工作区无独立 lint 脚本。从 `jetlinks-web-core/` 执行 `node --max_old_space_size=16384 ../node_modules/vite/bin/vite.js build --outDir /tmp/notification-voice-remove-final-build -- --module-name notify-manager-ui`，构建通过（29.74 秒，保留既有构建告警）。在 `runtime-ui/` 执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，修改前后均为 213 项既有诊断，无新增或移除；修复既有问题后需重跑。构建后仅删除三语简介中的试发提示，JSON 解析与实际 i18n 加载检查通过。
 
 浏览器使用隔离内存夹具：模块内执行 `SMOKE_PLAYWRIGHT_MODULE="$PWD/../../../ui/node_modules/playwright" node tests/messageNotificationBrowser/trials.mjs`，完整回归通过，覆盖六类支持渠道、语音和服务号隐藏入口、历史值保留、短信参数保存、三语及 390px 窄屏。简介调整后以 `TRIAL_SETTINGS_ONLY=1` 复验相关页面通过，页面错误与业务网络请求均为空；日志前缀 `/tmp/notification-voice-remove-final-`，最终截图与报告位于 `/tmp/notification-voice-remove-copy-browser/`。未修改真实配置或发送通知，真实后端投递不在本次验证范围。
 
-统一入口为 `Channels/testing/ChannelTestModal.vue` 与 `useChannelTest.ts`。邮件、钉钉工作通知 / 群机器人、企业微信、阿里云短信、Webhook 共用「发一条测试 · 渠道名称」弹窗、发送锁定、失败重试及结果反馈。渠道更多菜单依次提供编辑和清除配置，独立模板页面及其内置邮件内容继续保留。
+统一入口为 `Channels/testing/ChannelTestModal.vue` 与 `useChannelTest.ts`。邮件、钉钉工作通知 / 群机器人、企业微信、阿里云短信 / 语音、Webhook 共用「发一条测试 · 渠道名称」弹窗、发送锁定、失败重试及结果反馈。渠道更多菜单依次提供编辑和清除配置，独立模板页面及其内置邮件内容继续保留。
 
 - 默认发给自己，可选择其他单个接收人；校验邮箱、手机或渠道成员 ID / OpenID，禁止列表和广播目标。本人邮箱沿用主邮箱身份、首个邮箱身份、资料邮箱的优先级；手机读取账号资料；第三方绑定必须同时匹配 `type_provider` 与当前通知器 ID。加载失败支持重试，与确实未绑定分开显示。群机器人 / Webhook 直接使用当前配置的群 / 地址。
-- 邮件、钉钉、企业微信、机器人和 Webhook 使用固定测试消息，系统名称读取 `useSystemStore().layout.title`。短信只读渠道中保存的服务商测试模板和样例参数，提示实际内容以服务商模板为准。
-- `channelTestAdapter.ts` 集中管理六类提供商的配置条件、接收人规则及内联参数。发送仅调用 `POST /notifier/{configId}/_send`，参数为 `{ template, context }`，不查询或写入业务模板；Webhook 页面的业务模板导航保持独立。阿里云语音、微信服务号及未支持的提供商不显示渠道试发入口。
+- 邮件、钉钉、企业微信、机器人和 Webhook 使用固定测试消息，系统名称读取 `useSystemStore().layout.title`。短信和语音只读渠道中保存的服务商测试模板和样例参数，提示实际内容以服务商模板为准。
+- `channelTestAdapter.ts` 集中管理七类提供商的配置条件、接收人规则及内联参数。发送仅调用 `POST /notifier/{configId}/_send`，参数为 `{ template, context }`，不查询或写入业务模板；Webhook 页面的业务模板导航保持独立。微信服务号及未支持的提供商不显示渠道试发入口。
 - 只允许已保存、无未保存修改且具有渠道查询 / 发送权限的配置试发。弹窗使用保存值的快照；发送期间锁定重复操作，失败保留输入。关闭、配置切换、保存值刷新、权限变化或组件卸载后忽略过期响应。缺配置时等待测试弹窗关闭，再进入整表编辑并联动对应帮助步骤。成功仅表示「已提交，请检查接收端」。
 
-短信配置页不再展示或编辑“渠道测试”区域；已有 `configuration.testTemplate` 继续原样保留。顶部“发送测试消息”的入口、参数读取及发送逻辑保持不变，试发弹窗不编辑配置、不选择业务模板、不输入 JSON。
+短信和语音配置页不再展示或编辑“渠道测试”区域；已有 `configuration.testTemplate` 继续原样保留。顶部“发送测试消息”的入口、参数读取及发送逻辑保持不变，试发弹窗不编辑配置、不选择业务模板、不输入 JSON。
 
 | 提供商 | 保存路径与字段 |
 | --- | --- |
 | 钉钉工作通知 / 企业微信 | `configuration.agentId`；企微复用已有字段，钉钉补充同名字段，试发显式传入内联模板 |
 | 阿里云短信 | `configuration.testTemplate`：`signName`、`code`、`parameters` |
+| 阿里云语音 | `configuration.testTemplate`：`templateType`（`tts` / `voice`）、`templateCode`、可选 `calledShowNumbers`、`parameters` |
 
 `parameters` 为 `{ name, value }[]`；无变量时可省略或为空数组，有变量时名称唯一、值非空，禁止覆盖接收人或路由字段。旧配置可以缺少这些设置，仍可读取和编辑；缺少试发条件时禁用发送并列出缺项。测试设置不改变业务模板规则或历史模板数据，无后端接口 / 数据库变更。仅修改 `runtime-ui/modules/notify-manager-ui`，保留工作区既有变更，不修改运营端 `ui/`。
 

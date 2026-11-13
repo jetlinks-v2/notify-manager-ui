@@ -4,11 +4,14 @@ export interface ChannelTestParameter { name: string; value: string }
 export interface ChannelTestSettings extends NotificationObject {
   signName?: string
   code?: string
+  templateType?: 'tts' | 'voice'
+  templateCode?: string
+  calledShowNumbers?: string
   wxTemplateId?: string
   parameters?: ChannelTestParameter[]
 }
 export type ChannelTestSettingsKind = 'sms'
-export interface ChannelTestSettingField { key: 'signName' | 'code' | 'wxTemplateId'; required?: boolean }
+export interface ChannelTestSettingField { key: 'signName' | 'code' | 'templateType' | 'templateCode' | 'wxTemplateId'; required?: boolean }
 
 export const channelTestSettingsKinds: Readonly<Record<string, ChannelTestSettingsKind>> = {
   'sms:aliyunSms': 'sms',
@@ -24,10 +27,14 @@ export function readTestSettings(value: unknown): ChannelTestSettings {
 
 /** Test-only settings never inherit a business template or its recipients. Optional empty settings remain saveable. */
 export function testSettingsIssues(channelId: string, value: unknown, forSend = false): string[] {
-  if (value === undefined || value === null) return forSend ? testSettingFields(channelId).filter(field => field.required).map(field => field.key) : []
+  // Voice trials validate saved settings without registering hidden fields in the configuration form.
+  const validationFields: ChannelTestSettingField[] = forSend && channelId === 'voice:aliyun'
+    ? [{ key: 'templateType', required: true }, { key: 'templateCode', required: true }] : testSettingFields(channelId)
+  if (value === undefined || value === null) return forSend ? validationFields.filter(field => field.required).map(field => field.key) : []
   if (!value || typeof value !== 'object' || Array.isArray(value)) return ['testTemplate']
   const settings = readTestSettings(value)
-  const missing = testSettingFields(channelId).filter(field => field.required && !testText(settings[field.key])).map(field => field.key as string)
+  const missing = validationFields.filter(field => field.required && !testText(settings[field.key])).map(field => field.key as string)
+  if (forSend && channelId === 'voice:aliyun' && settings.templateType && !['tts', 'voice'].includes(settings.templateType)) missing.push('templateType')
   if (settings.parameters !== undefined) {
     const rows = settings.parameters
     // Recipient and routing keys cannot be replaced by vendor sample data.

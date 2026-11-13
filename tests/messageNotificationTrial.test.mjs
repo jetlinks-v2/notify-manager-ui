@@ -66,8 +66,8 @@ function apiFixture() {
   }
 }
 
-test('six provider payloads use explicit single recipients and saved configuration without mutating either', () => {
-  assert.equal(Object.keys(channelTestAdapters).length, 6)
+test('seven provider payloads use explicit single recipients and saved configuration without mutating either', () => {
+  assert.equal(Object.keys(channelTestAdapters).length, 7)
   const expected = {
     'email:embedded': { subject: 'Test title', text: 'Test message', sendTo: ['target@example.test'] },
     'dingTalk:dingTalkMessage': { agentId: '1001', message: 'Test message', userIdList: 'member', toAllUser: false },
@@ -75,6 +75,7 @@ test('six provider payloads use explicit single recipients and saved configurati
     'dingTalk:dingTalkRobotWebHook': { messageType: 'text', text: { content: 'Test message' }, at: { atAll: false } },
     'webhook:http': { method: 'POST', url: '', contextAsBody: false, body: '{"message":"Test message"}' },
     'sms:aliyunSms': { signName: '测试签名', code: 'SMS_REAL', phoneNumber: '13800138000' },
+    'voice:aliyun': { templateType: 'tts', templateCode: 'TTS_REAL', ttsCode: 'TTS_REAL', calledShowNumbers: '01012345678', calledNumber: '13800138000', playTimes: 1 },
   }
   for (const [id, adapter] of Object.entries(channelTestAdapters)) {
     const record = config(id), before = clone(record)
@@ -87,6 +88,8 @@ test('six provider payloads use explicit single recipients and saved configurati
     assert.deepEqual(record, before)
     assert.equal(JSON.stringify(result).includes('secret'), false)
   }
+  const voice = config('voice:aliyun'); voice.configuration.testTemplate.templateType = 'voice'
+  assert.equal(buildChannelTest({ config: voice, recipient: '13800138000', title: 'T', message: 'M' }).template.template.templateType, 'voice')
 })
 
 for (const id of Object.keys(channelTestAdapters)) test(`${id}: unified lifecycle uses account/config target and inline sending only`, async () => {
@@ -157,14 +160,14 @@ test('single-recipient validation rejects lists, broadcasts, malformed addresses
 })
 
 test('legacy configurations and unknown providers expose reasons and cannot send', async () => {
-  for (const id of ['dingTalk:dingTalkMessage', 'weixin:corpMessage', 'sms:aliyunSms']) {
+  for (const id of ['dingTalk:dingTalkMessage', 'weixin:corpMessage', 'sms:aliyunSms', 'voice:aliyun']) {
     const api = apiFixture(), trial = useChannelTest(api), record = config(id)
     record.configuration = {}
     trial.show(context(record)); await flush()
     assert.ok(trial.model.value.missing.length)
     assert.equal(await trial.send(), false); assert.deepEqual(api.calls, [])
   }
-  for (const id of ['extension:custom', 'weixin:officialMessage', 'voice:aliyun']) {
+  for (const id of ['extension:custom', 'weixin:officialMessage']) {
     const api = apiFixture(), trial = useChannelTest(api)
     trial.show(context(config(id)))
     assert.equal(trial.model.value.supported, false)
@@ -227,10 +230,20 @@ test('saved configuration is snapshotted and sample parameters cannot redirect a
   const api = apiFixture(), trial = useChannelTest(api), record = config('weixin:corpMessage')
   trial.show(context(record)); await flush(); record.configuration.agentId = 'modified-draft'
   await trial.send(); assert.equal(api.calls[0][1].template.agentId, '1002')
-  for (const parameters of [[{ name: 'phoneNumber', value: 'another-recipient' }], [{ name: 'name', value: 'x' }, { name: ' name ', value: 'y' }], [{ name: '', value: 'x' }], [null], 'invalid']) {
-    const sms = config('sms:aliyunSms'); sms.configuration.testTemplate.parameters = parameters
-    assert.ok(testSettingsIssues('sms:aliyunSms', sms.configuration.testTemplate).includes('parameters'))
-    assert.throws(() => buildChannelTest({ config: sms, recipient: '13800138000', title: 'T', message: 'M' }))
+  for (const id of ['sms:aliyunSms', 'voice:aliyun']) for (const parameters of [[{ name: 'phoneNumber', value: 'another-recipient' }], [{ name: 'calledNumber', value: 'another-recipient' }], [{ name: 'name', value: 'x' }, { name: ' name ', value: 'y' }], [{ name: '', value: 'x' }], [null], 'invalid']) {
+    const record = config(id); record.configuration.testTemplate.parameters = parameters
+    assert.ok(testSettingsIssues(id, record.configuration.testTemplate, true).includes('parameters'))
+    assert.throws(() => buildChannelTest({ config: record, recipient: '13800138000', title: 'T', message: 'M' }))
+  }
+})
+
+test('voice trials reject incomplete or invalid saved templates without requiring hidden fields on ordinary saves', () => {
+  for (const testTemplate of [undefined, {}, { templateType: 'tts' }, { templateType: 'invalid', templateCode: 'TTS_REAL' }]) {
+    const record = config('voice:aliyun'); record.configuration.testTemplate = testTemplate
+    assert.ok(testSettingsIssues('voice:aliyun', testTemplate, true).length)
+    assert.throws(() => buildChannelTest({ config: record, recipient: '13800138000', title: 'T', message: 'M' }))
+    const definition = channelDefinition(notificationChannels.find(item => item.id === 'voice:aliyun'), channelMetadata['voice:aliyun'])
+    assert.deepEqual(validateChannelDraft(createChannelConfigDraft(record, definition), record, definition), [])
   }
 })
 

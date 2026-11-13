@@ -1024,12 +1024,19 @@ test('inline password updates keep blank input and unknown metadata false/zero v
 })
 
 
-test('SMS hides test settings in every form mode and preserves them when saving credentials', async () => {
-  const record = sms()
-  record.configuration.testTemplate = { signName: 'Saved', code: 'SMS_SAVED', parameters: [{ name: 'code', value: '123456' }] }
+for (const [channelId, testTemplate] of [
+  ['sms:aliyunSms', { signName: 'Saved', code: 'SMS_SAVED', parameters: [{ name: 'code', value: '123456' }] }],
+  ['voice:aliyun', { templateType: 'tts', templateCode: 'TTS_SAVED', parameters: [{ name: 'name', value: '测试' }] }],
+]) test(`${channelId} hides test settings in every form mode and preserves them when saving credentials`, async () => {
+  const [type, provider] = channelId.split(':')
+  const record = { ...sms(), id: `${type}-real`, type, provider }
+  record.configuration.testTemplate = testTemplate
+  const loadDefinition = async channel => channelDefinition(channel, { ...channelMetadata[channel.id], properties: [
+    ...channelMetadata[channel.id].properties, { id: 'testTemplate', name: 'testTemplate', valueType: { type: 'object' } },
+  ] })
   const io = testApi([record])
-  const workspace = useChannelWorkspace({ api: io.api, permissions: permissions(), loadDefinition: async channel => channelDefinition(channel, channelMetadata[channel.id]) })
-  await workspace.activate('sms:aliyunSms')
+  const workspace = useChannelWorkspace({ api: io.api, permissions: permissions(), loadDefinition })
+  await workspace.activate(channelId)
   const editor = useChannelConfiguration(configurationProps(workspace), workspace.changeField)
   for (const edit of [false, true]) {
     if (edit) workspace.startEditing()
@@ -1041,8 +1048,8 @@ test('SMS hides test settings in every form mode and preserves them when saving 
   assert.deepEqual(io.records.get(record.id).configuration.testTemplate, record.configuration.testTemplate)
   assert.equal(io.records.get(record.id).configuration.secret, 'saved-secret')
   assert.equal(io.calls.filter(([method]) => method === 'updateConfig').length, 1)
-  const fresh = useChannelWorkspace({ api: testApi([]).api, permissions: permissions(), loadDefinition: async channel => channelDefinition(channel, channelMetadata[channel.id]) })
-  await fresh.activate('sms:aliyunSms')
+  const fresh = useChannelWorkspace({ api: testApi([]).api, permissions: permissions(), loadDefinition })
+  await fresh.activate(channelId)
   const newForm = useChannelConfiguration(configurationProps(fresh), fresh.changeField)
   assert.equal(newForm.formGroups.value.some(group => group.key === 'test'), false)
   assert.equal(newForm.formGroups.value.flatMap(group => group.fields).some(field => field.key === 'config:testTemplate'), false)

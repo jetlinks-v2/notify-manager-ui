@@ -26,7 +26,7 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
   const fields = computed(() => configuredFields.value.filter(field => {
     const { type, provider } = props.entry.draft
     if (type === 'dingTalk' && provider === 'dingTalkRobotWebHook') return field.key !== 'secret'
-    if (type === 'sms' && provider === 'aliyunSms') return field.key !== 'testTemplate'
+    if (type === 'sms' && provider === 'aliyunSms' || type === 'voice' && provider === 'aliyun') return field.key !== 'testTemplate'
     if (type === 'email' && provider === 'embedded') return field.key !== 'properties'
     return true
   }))
