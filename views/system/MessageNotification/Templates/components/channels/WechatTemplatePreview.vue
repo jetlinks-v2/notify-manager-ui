@@ -25,9 +25,9 @@ const { messageTitle, messageBody } = useWechatTemplatePreview(props.preview)
 </script>
 
 <style scoped>
-.wechat-template__time { margin: var(--space-1) 0 var(--space-4); color: var(--text-color-secondary); text-align: center; font-size: var(--fs-12); }
+.wechat-template__time { margin: var(--space-1) 0 var(--space-4); color: var(--text-color-secondary); text-align: center; }
 .wechat-template__card { padding: var(--space-4); border-radius: var(--r-2); background: var(--jet-theme-bg-container); }
-.wechat-template__card h4 { margin: 0 0 var(--space-2); color: var(--text-color); font-size: var(--fs-14); font-weight: 600; overflow-wrap: anywhere; }
-.wechat-template__card-time { margin: 0 0 var(--space-2); color: var(--text-color-secondary); font-size: var(--fs-12); }
-.wechat-template__body { color: var(--text-color-secondary); font-size: var(--fs-14); }
+.wechat-template__card h4 { margin: 0 0 var(--space-2); color: var(--text-color); font-weight: 600; overflow-wrap: anywhere; }
+.wechat-template__card-time { margin: 0 0 var(--space-2); color: var(--text-color-secondary); }
+.wechat-template__body { color: var(--text-color-secondary); }
 </style>

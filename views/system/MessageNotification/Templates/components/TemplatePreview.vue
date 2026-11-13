@@ -47,14 +47,14 @@ const channelPreview = computed(() => channelPreviews[preview.kind.value])
 </script>
 
 <style scoped>
-.template-preview { min-width: 0; }
-.template-preview__label { margin: 0 0 var(--space-2); font-size: var(--fs-12); }
-.template-preview__canvas { min-height: 30rem; padding: var(--space-6); background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--r-2); }
+.template-preview { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.template-preview__label { margin: 0 0 var(--space-2); }
+.template-preview__canvas { flex: 1; min-height: 30rem; padding: var(--space-6); background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--r-2); }
 .template-preview__payload { width: 100%; max-width: 47.5rem; margin-inline: auto; border: 1px solid var(--line); border-radius: var(--r-2); background: var(--jet-theme-bg-container); overflow: hidden; }
 .template-preview__payload-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-4); border-bottom: 1px solid var(--line); }
 .template-preview__payload > h3, .template-preview__payload > h4, .template-preview__payload > .template-preview__body { margin: var(--space-4); }
-.template-preview pre { margin: var(--space-4); white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-12); color: var(--text-color-secondary); }
-.template-preview__fields { display: grid; grid-template-columns: minmax(5rem, 1fr) minmax(0, 2fr); gap: var(--space-2) var(--space-3); margin: var(--space-4); font-size: var(--fs-12); }
+.template-preview pre { margin: var(--space-4); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-color-secondary); }
+.template-preview__fields { display: grid; grid-template-columns: minmax(5rem, 1fr) minmax(0, 2fr); gap: var(--space-2) var(--space-3); margin: var(--space-4); }
 .template-preview__fields dt { color: var(--text-color-secondary); overflow-wrap: anywhere; }
 .template-preview__fields dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .template-preview--editing .template-preview__canvas { padding: var(--space-4); }

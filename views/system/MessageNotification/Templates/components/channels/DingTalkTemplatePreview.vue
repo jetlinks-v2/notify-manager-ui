@@ -23,13 +23,13 @@ const { robot, title, body, statusTime } = useDingTalkTemplateView(props.preview
 </script>
 
 <style scoped>
-.ding-preview__time { margin: 0 0 var(--space-3); color: var(--text-color-secondary); font-size: var(--fs-12); text-align: center; }
+.ding-preview__time { margin: 0 0 var(--space-3); color: var(--text-color-secondary); text-align: center; }
 .ding-preview__card { min-width: 0; padding: var(--space-3); border-radius: var(--r-2); background: var(--jet-theme-bg-container); }
-.ding-preview__sender { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); color: var(--text-color-secondary); font-size: var(--fs-12); overflow-wrap: anywhere; }
+.ding-preview__sender { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); color: var(--text-color-secondary); overflow-wrap: anywhere; }
 .ding-preview__icon { display: inline-flex; align-items: center; justify-content: center; width: var(--space-5); height: var(--space-5); flex-shrink: 0; border-radius: var(--r-1); color: var(--jet-theme-bg-container); background: var(--primary-color, var(--accent)); }
-.ding-preview__title { margin: 0 0 var(--space-2); color: var(--text-color); font-size: var(--fs-14); font-weight: 600; line-height: 1.6; overflow-wrap: anywhere; }
-.ding-preview__body { color: var(--text-color-secondary); font-size: var(--fs-12); }
+.ding-preview__title { margin: 0 0 var(--space-2); color: var(--text-color); font-weight: 600; line-height: 1.6; overflow-wrap: anywhere; }
+.ding-preview__body { color: var(--text-color-secondary); }
 .ding-preview__body :deep(strong), .ding-preview__body :deep(h4) { color: var(--text-color); }
-.ding-preview__empty { margin: 0; color: var(--text-color-secondary); font-size: var(--fs-12); }
-.ding-preview__link { margin-top: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--line); color: var(--accent); font-size: var(--fs-12); overflow-wrap: anywhere; }
+.ding-preview__empty { margin: 0; color: var(--text-color-secondary); }
+.ding-preview__link { margin-top: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--line); color: var(--accent); overflow-wrap: anywhere; }
 </style>

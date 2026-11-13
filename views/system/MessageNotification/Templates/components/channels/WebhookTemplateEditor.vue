@@ -26,8 +26,8 @@ const { modeField, bodyField, contextAsBody, body, changeBody, captureBody } = u
 <style scoped>
 .webhook-editor { min-width: 0; }
 .webhook-editor :deep(.ant-form-item) { margin-bottom: var(--space-4); }
-.webhook-editor :deep(.ant-form-item-label > label) { color: var(--jet-theme-text-secondary); font-size: var(--fs-12); }
-.webhook-editor__body { min-height: 22rem; padding: var(--space-3); font-family: var(--font-family-mono, monospace); font-size: var(--fs-12); line-height: 1.75; tab-size: 2; }
-.webhook-editor__hint { margin: var(--space-1) 0 0; color: var(--text-color-secondary); font-size: var(--fs-12); line-height: 1.6; }
-.webhook-editor__context { background: var(--bg-sunken); border-color: var(--line); font-size: var(--fs-12); }
+.webhook-editor :deep(.ant-form-item-label > label) { color: var(--jet-theme-text-secondary); }
+.webhook-editor__body { min-height: 22rem; padding: var(--space-3); font-family: var(--font-family-mono, monospace); line-height: 1.75; tab-size: 2; }
+.webhook-editor__hint { margin: var(--space-1) 0 0; color: var(--text-color-secondary); line-height: 1.6; }
+.webhook-editor__context { background: var(--bg-sunken); border-color: var(--line); }
 </style>

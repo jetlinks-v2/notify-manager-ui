@@ -3,10 +3,11 @@
     <div class="template-attachments__actions">
       <FileUpload
         :value="files" :disabled="disabled" :size="10" :max-count="5"
-        :btn-text="t('messageNotification.templates.uploadAttachment')"
         :before-upload="beforeUpload" @upload-change="uploadChanged" @remove="removeAttachment"
-      />
-      <a-button :disabled="disabled" @click="openVariable()"><template #icon><AIcon type="CodeOutlined" /></template>{{ t('messageNotification.templates.variableAttachment.useVariable') }}</a-button>
+      >
+        <a-button :disabled="disabled"><template #icon><AIcon type="UploadOutlined" /></template>{{ t('messageNotification.templates.uploadAttachment') }}</a-button>
+        <a-button type="link" :disabled="disabled" @click.stop="openVariable()" @keydown.stop>{{ t('messageNotification.templates.variableAttachment.useVariable') }}</a-button>
+      </FileUpload>
     </div>
     <div v-for="row in variableAttachments" :key="row.index" class="template-attachments__variable">
       <div class="template-attachments__reference">
@@ -66,8 +67,8 @@ const { t, error, files, beforeUpload, uploadChanged, removeAttachment, variable
 .template-attachments__actions > :first-child { min-width: 0; flex: 1; }
 .template-attachments__variable { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); padding: var(--space-2); border: 1px solid var(--line); border-radius: var(--r-2); }
 .template-attachments__reference { min-width: 0; flex: 1; display: flex; flex-direction: column; overflow-wrap: anywhere; }
-.template-attachments__reference code { color: var(--jet-theme-text-secondary); font-size: var(--fs-12); }
+.template-attachments__reference code { color: var(--jet-theme-text-secondary); }
 .template-attachments__name { color: var(--jet-theme-text); }
 .template-attachments__row-actions { display: flex; align-items: center; flex-wrap: wrap; }
-.template-attachments__hint { margin: 0; color: var(--text-color-secondary); font-size: var(--fs-12); }
+.template-attachments__hint { margin: 0; color: var(--text-color-secondary); }
 </style>

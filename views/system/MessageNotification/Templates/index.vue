@@ -89,7 +89,7 @@
         </section>
       </template>
     </EqualHeightColumns>
-    <JlConfirmDialog :open="confirmation.open" :title="t('messageNotification.templates.unsavedTitle')" :message="t('messageNotification.templates.leaveMessage')" :confirm-text="t('messageNotification.templates.leave')" :cancel-text="t('messageNotification.templates.keepEditing')" @confirm="resolveConfirmation(true)" @cancel="resolveConfirmation(false)" />
+    <JlConfirmDialog :open="confirmation.open" tone="info" :title="t('messageNotification.templates.unsavedTitle')" :message="t('messageNotification.templates.leaveMessage')" :confirm-text="t('messageNotification.templates.leave')" :cancel-text="t('messageNotification.templates.keepEditing')" @confirm="resolveConfirmation(true)" @cancel="resolveConfirmation(false)" />
   </FullPage>
 </template>
 
@@ -127,7 +127,7 @@ const {
 .message-templates__detail :deep(.ant-spin-container > *) { flex-shrink: 0; }
 .message-templates__mobile-picker { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .message-templates__mobile-picker :deep(.ant-select) { width: 100%; }
-.message-templates__content { min-width: 0; }
+.message-templates__content { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .message-templates__source { min-width: 12rem; max-width: 100%; }
 .message-templates__workspace { container-type: inline-size; }
 .message-templates__content--editing { display: grid; grid-template-columns: minmax(15rem, 1.15fr) minmax(10rem, .55fr) minmax(17rem, 1fr); align-items: start; gap: var(--space-4); }

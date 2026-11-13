@@ -19,9 +19,9 @@ const { t, webhookMethod, webhookUrl, webhookBody, contextAsBody } = props.previ
 <style scoped>
 .webhook-preview { min-width: 0; width: 100%; max-width: 47.5rem; margin-inline: auto; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-2); background: var(--jet-theme-bg-container); }
 .webhook-preview__request-line { display: flex; align-items: baseline; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); }
-.webhook-preview__request-line .ant-tag { flex-shrink: 0; margin: 0; border: 0; font-family: var(--font-family-mono, monospace); font-size: var(--fs-12); font-weight: 600; }
-.webhook-preview__url { min-width: 0; color: var(--text-color); font-family: var(--font-family-mono, monospace); font-size: var(--fs-12); overflow-wrap: anywhere; }
-.webhook-preview__headers { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); color: var(--text-color-secondary); font-family: var(--font-family-mono, monospace); font-size: var(--fs-12); line-height: 1.75; }
-.webhook-preview__context { margin: var(--space-3) var(--space-4) 0; color: var(--text-color-secondary); font-size: var(--fs-12); }
-.webhook-preview pre { margin: 0; padding: var(--space-3) var(--space-4); color: var(--text-color); font-family: var(--font-family-mono, monospace); font-size: var(--fs-12); line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+.webhook-preview__request-line .ant-tag { flex-shrink: 0; margin: 0; border: 0; font-family: var(--font-family-mono, monospace); font-weight: 600; }
+.webhook-preview__url { min-width: 0; color: var(--text-color); font-family: var(--font-family-mono, monospace); overflow-wrap: anywhere; }
+.webhook-preview__headers { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); color: var(--text-color-secondary); font-family: var(--font-family-mono, monospace); line-height: 1.75; }
+.webhook-preview__context { margin: var(--space-3) var(--space-4) 0; color: var(--text-color-secondary); }
+.webhook-preview pre { margin: 0; padding: var(--space-3) var(--space-4); color: var(--text-color); font-family: var(--font-family-mono, monospace); line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
 </style>

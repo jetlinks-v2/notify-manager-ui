@@ -16,5 +16,5 @@ const { blocks } = useTemplateMessageText(props)
 
 <style scoped>
 .template-message-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.75; }
-.template-message-text__heading { margin: 0 0 var(--space-2); font-size: var(--fs-16); font-weight: 600; line-height: 1.5; }
+.template-message-text__heading { margin: 0 0 var(--space-2); font-weight: 600; line-height: 1.5; }
 </style>
