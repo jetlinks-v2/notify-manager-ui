@@ -37,7 +37,7 @@ let hostField
 const selectHost = async host => {
   await hostField.locator('.ant-select-selector').click()
   await hostField.getByRole('combobox').fill(host)
-  const option = page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: ` · ${host}` })
+  const option = page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: `${host}(` })
   await option.first().click()
 }
 

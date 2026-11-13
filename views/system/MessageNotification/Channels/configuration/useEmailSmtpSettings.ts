@@ -1,4 +1,4 @@
-import { computed, ref, watch, type ComputedRef } from 'vue'
+import { computed, h, ref, watch, type ComputedRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ChannelConfigurationProps } from '../useChannelConfiguration'
 import { emailEncryption, emailEncryptionChanges, emailEncryptionProperties, type EmailEncryption } from './emailSettings'
@@ -14,7 +14,14 @@ export function useEmailSmtpSettings(props: ChannelConfigurationProps, enabled: 
   const preset = computed(() => explicitBrand.value || emailBrandForHost(props.entry.draft.configuration.host))
   const presetOptions = computed(() => emailBrands.map(value => ({ value, label: t(`messageNotification.channels.email.presets.${value}`) })))
   const endpoints = computed(() => emailSmtpEndpoints.filter(endpoint => endpoint.brand === preset.value))
-  const smtpOptions = computed(() => endpoints.value.map(endpoint => ({ value: endpoint.host, label: `${t(endpoint.labelKey)} · ${endpoint.host}` })))
+  const smtpOptions = computed(() => endpoints.value.map(endpoint => {
+    const description = `(${t(endpoint.labelKey)})`
+    return {
+      value: endpoint.host,
+      searchText: `${endpoint.host}${description}`,
+      label: () => h('span', [endpoint.host, h('span', { style: { color: 'var(--text-color-secondary)' } }, description)]),
+    }
+  }))
   const smtpHint = computed(() => {
     const endpoint = findEmailSmtpEndpoint(props.entry.draft.configuration.host)
     return endpoint?.hintKey ? t(endpoint.hintKey) : t(`messageNotification.channels.email.${preset.value === 'other' ? 'customHostHint' : 'hostHint'}`)
@@ -53,8 +60,8 @@ export function useEmailSmtpSettings(props: ChannelConfigurationProps, enabled: 
     if (locked.value || !['ssl', 'starttls', 'none'].includes(String(value))) return
     for (const [key, next] of Object.entries(emailEncryptionChanges(props.entry.draft.configuration, value as EmailEncryption))) change?.(key, next)
   }
-  function filterSmtpOption(input: string, option?: { label?: unknown; value?: unknown }): boolean {
-    return `${option?.label ?? ''} ${option?.value ?? ''}`.toLowerCase().includes(input.trim().toLowerCase())
+  function filterSmtpOption(input: string, option?: { searchText?: string; value?: unknown }): boolean {
+    return `${option?.searchText ?? ''} ${option?.value ?? ''}`.toLowerCase().includes(input.trim().toLowerCase())
   }
   return { preset, presetOptions, smtpOptions, smtpHint, encryption, encryptionOptions, setPreset, setSmtpHost, selectSmtpHost, setEncryption, filterSmtpOption }
 }
