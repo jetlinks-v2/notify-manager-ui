@@ -1,0 +1,75 @@
+.notification-page {
+  min-width: 0;
+  gap: var(--space-4);
+  overflow: hidden;
+}
+
+.notification-page__layout {
+  flex: 1;
+  min-height: 0;
+}
+
+.notification-page__sidebar,
+.notification-page__workspace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.notification-page__title {
+  flex: 0 0 auto;
+  margin: 0;
+  color: var(--jet-theme-text-title);
+  font-size: var(--fs-18);
+  font-weight: 600;
+  line-height: var(--lh-snug);
+}
+
+.notification-page__toolbar,
+.notification-page__actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.notification-page__toolbar {
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.notification-page__body {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.notification-page__feedback {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* 保存栏占据独立行，表单滚动到末尾时不会被操作按钮遮挡。 */
+.notification-page__footer {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.notification-page__sidebar :deep(.ant-menu) {
+  background: transparent;
+  border-inline-end: 0;
+}

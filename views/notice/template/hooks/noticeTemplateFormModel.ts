@@ -640,9 +640,10 @@ export const getTemplateFieldSchemas = (
         key: 'agentId',
         path: ['agentId'],
         labelKey: 'NoticeCenter.template.field.agentId',
-        placeholderKey: 'NoticeCenter.template.placeholder.agentId',
+        placeholderKey: 'NoticeCenter.template.placeholder.corpAgentId',
         kind: 'input',
-        required: true,
+        // Channels own AgentId; this optional field preserves historical templates.
+        required: false,
       },
       {
         key: 'toParty',
