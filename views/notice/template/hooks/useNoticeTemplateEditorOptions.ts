@@ -61,7 +61,6 @@ export const useNoticeTemplateEditorOptions = (
   )
   const isSms = computed(() => context.type === 'sms')
   const isCorpWeixin = computed(() => context.type === 'weixin' && context.provider === 'corpMessage')
-  const agentId = computed(() => asText(form.template.agentId).trim())
   const selectedDepartmentId = computed(() => asText(form.template.toParty).trim())
 
   const loadSmsTemplates = async () => {
@@ -95,13 +94,12 @@ export const useNoticeTemplateEditorOptions = (
 
   const loadWechatDepartments = async () => {
     const currentConfigId = configId.value
-    const currentAgentId = agentId.value
-    if (!isCorpWeixin.value || !currentConfigId || !currentAgentId) {
+    if (!isCorpWeixin.value || !currentConfigId) {
       wechatDepartments.options = []
       return
     }
     const response = await queryWechatCorpDepartments_api(currentConfigId)
-    if (!isCorpWeixin.value || configId.value !== currentConfigId || agentId.value !== currentAgentId) {
+    if (!isCorpWeixin.value || configId.value !== currentConfigId) {
       return
     }
     wechatDepartments.options = normalizeDepartments(asList<NoticeCorpDepartment>(response))
@@ -109,13 +107,12 @@ export const useNoticeTemplateEditorOptions = (
 
   const loadWechatTags = async () => {
     const currentConfigId = configId.value
-    const currentAgentId = agentId.value
-    if (!isCorpWeixin.value || !currentConfigId || !currentAgentId) {
+    if (!isCorpWeixin.value || !currentConfigId) {
       wechatTags.options = []
       return
     }
     const response = await queryWechatCorpTags_api(currentConfigId)
-    if (!isCorpWeixin.value || configId.value !== currentConfigId || agentId.value !== currentAgentId) {
+    if (!isCorpWeixin.value || configId.value !== currentConfigId) {
       return
     }
     wechatTags.options = normalizeWechatTags(asList<NoticeCorpTag>(response))
@@ -123,9 +120,8 @@ export const useNoticeTemplateEditorOptions = (
 
   const loadWechatUsers = async () => {
     const currentConfigId = configId.value
-    const currentAgentId = agentId.value
     const currentDepartmentId = selectedDepartmentId.value
-    if (!isCorpWeixin.value || !currentConfigId || !currentAgentId || !currentDepartmentId) {
+    if (!isCorpWeixin.value || !currentConfigId || !currentDepartmentId) {
       wechatUsers.options = []
       return
     }
@@ -133,7 +129,6 @@ export const useNoticeTemplateEditorOptions = (
     if (
       !isCorpWeixin.value
       || configId.value !== currentConfigId
-      || agentId.value !== currentAgentId
       || selectedDepartmentId.value !== currentDepartmentId
     ) {
       return
@@ -151,7 +146,6 @@ export const useNoticeTemplateEditorOptions = (
     form,
     { smsTemplates, smsSigns, wechatDepartments, wechatUsers, wechatTags },
     () => configId.value,
-    () => agentId.value,
     () => selectedDepartmentId.value,
     code => smsTemplateMap.value.get(code),
   )
@@ -181,11 +175,11 @@ export const useNoticeTemplateEditorOptions = (
   )
 
   watch(
-    () => [context.type, context.provider, configId.value, agentId.value],
+    () => [context.type, context.provider, configId.value],
     async () => {
       const version = wechatConfigVersion.value + 1
       wechatConfigVersion.value = version
-      if (isCorpWeixin.value && configId.value && agentId.value) {
+      if (isCorpWeixin.value && configId.value) {
         wechatDepartments.loading = true
         wechatTags.loading = true
         try {
@@ -206,11 +200,11 @@ export const useNoticeTemplateEditorOptions = (
   )
 
   watch(
-    () => [context.type, context.provider, configId.value, agentId.value, selectedDepartmentId.value],
+    () => [context.type, context.provider, configId.value, selectedDepartmentId.value],
     async () => {
       const version = wechatUserVersion.value + 1
       wechatUserVersion.value = version
-      if (isCorpWeixin.value && configId.value && agentId.value && selectedDepartmentId.value) {
+      if (isCorpWeixin.value && configId.value && selectedDepartmentId.value) {
         wechatUsers.loading = true
         try {
           await loadWechatUsers()

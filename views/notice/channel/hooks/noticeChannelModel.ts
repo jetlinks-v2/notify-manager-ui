@@ -43,7 +43,7 @@ type CredentialField = NoticeMetadataProperty & {
   group?: 'emailServer'
 }
 
-const aliyunRegionElements: NonNullable<NoticeMetadataProperty['valueType']>['elements'] = [
+export const aliyunRegionElements: NonNullable<NoticeMetadataProperty['valueType']>['elements'] = [
   { value: 'cn-qingdao', label: 'NoticeCenter.channel.credential.region.cnQingdao' },
   { value: 'cn-beijing', label: 'NoticeCenter.channel.credential.region.cnBeijing' },
   { value: 'cn-zhangjiakou', label: 'NoticeCenter.channel.credential.region.cnZhangjiakou' },

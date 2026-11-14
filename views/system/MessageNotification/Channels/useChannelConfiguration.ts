@@ -1,0 +1,222 @@
+import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { notificationSecretMask, type NotifierConfigPayload } from '../shared'
+import type { InlineEditFieldDefinition, InlineEditGroup, InlineEditMessages } from '@jetlinks-web-core/components/InlineEditForm'
+import { channelConfigFields, type ChannelField } from './channelSchema'
+import type { ChannelDraftEntry, ChannelFieldChange } from './useChannelWorkspace'
+import type { ConfigurationPairsModel } from './useConfigurationPairs'
+import { propertyRules } from './configuration/channelMetadata'
+import { readTestSettings, testText } from './testing/channelTestConfig'
+import { emailEncryption, emailEncryptionChanges, emailEncryptionProperties, emailPresets, type EmailEncryption } from './configuration/emailSettings'
+
+export interface ChannelConfigurationProps {
+  entry: ChannelDraftEntry
+  disabled: boolean
+  busy?: boolean
+  submit?: (changes: ChannelFieldChange[], errorPath: string) => Promise<boolean>
+}
+
+/** Adapt metadata into controls and semantic groups, keeping all draft writes in the workspace. */
+export function useChannelConfiguration(props: ChannelConfigurationProps, change?: (key: string, value: unknown, topLevel?: boolean) => void) {
+  const { t } = useI18n()
+  const editing = computed(() => props.entry.isNew || !!props.entry.editing)
+  const isAliyunVoice = computed(() => props.entry.draft.type === 'voice' && props.entry.draft.provider === 'aliyun')
+  const configuredFields = computed(() => props.entry.definition?.fields ?? channelConfigFields[`${props.entry.draft.type}:${props.entry.draft.provider}`] ?? [])
+  // Hidden settings remain in the draft and metadata so saving visible fields preserves existing values.
+  const fields = computed(() => configuredFields.value.filter(field => {
+    const { type, provider } = props.entry.draft
+    if (type === 'dingTalk' && provider === 'dingTalkRobotWebHook') return field.key !== 'secret'
+    if (type === 'sms' && provider === 'aliyunSms') return field.key !== 'testTemplate'
+    if (type === 'email' && provider === 'embedded') return field.key !== 'properties'
+    return true
+  }))
+  const groups = computed(() => [...new Set(fields.value.map(field => field.group || 'configuration'))].map(key => ({
+    key, fields: fields.value.filter(field => (field.group || 'configuration') === key),
+  })))
+  const pairKind = computed(() => props.entry.draft.type === 'email' && props.entry.draft.provider === 'embedded' && fields.value.some(field => field.key === 'properties') ? 'properties' : props.entry.draft.type === 'webhook' && props.entry.draft.provider === 'http' && fields.value.some(field => field.key === 'headers') ? 'headers' : undefined)
+  const savedHeaderKeys = computed(() => {
+    const rows = props.entry.baseline?.configuration.headers
+    return Array.isArray(rows) ? rows.filter(row => row && typeof row.key === 'string').map(row => row.key.toLowerCase()) : []
+  })
+  const emailOptionsVisible = computed(() => props.entry.draft.type === 'email' && props.entry.draft.provider === 'embedded' && ['host', 'port', 'properties'].every(key => configuredFields.value.some(field => field.key === key)))
+  const encryption = computed(() => emailEncryption(props.entry.draft.configuration))
+  const customPreset = ref(false)
+  watch([() => props.entry.key, editing], () => { customPreset.value = false })
+  const preset = computed(() => customPreset.value ? 'other' : emailPresets.find(item => item.host === props.entry.draft.configuration.host)?.id || 'other')
+  const presetOptions = computed(() => [...emailPresets.map(item => ({ value: item.id, label: t(`messageNotification.channels.email.presets.${item.id}`) })), { value: 'other', label: t('messageNotification.channels.email.presets.other') }])
+  const encryptionOptions = computed(() => ['ssl', 'starttls', 'none'].map(value => ({ value, label: t(`messageNotification.channels.email.encryption.${value}`) })))
+
+  function issue(path: string): string | undefined {
+    const value = props.entry.issues.find(item => item.path === path)
+    return value ? t(`messageNotification.channels.validation.${value.key}`) : undefined
+  }
+  function label(field: ChannelField): string {
+    if (field.key === 'testTemplate') return t('messageNotification.channelTest.fields.testTemplate')
+    if (props.entry.draft.type === 'webhook' && props.entry.draft.provider === 'http' && field.key === 'url') return t('messageNotification.channels.webhook.address')
+    if (props.entry.draft.type === 'dingTalk' && props.entry.draft.provider === 'dingTalkRobotWebHook' && field.key === 'secret') return t('messageNotification.channels.robot.secretLabel')
+    const known = channelConfigFields[`${props.entry.draft.type}:${props.entry.draft.provider}`]
+    const key = `messageNotification.channels.fields.${field.key}`
+    return known && (known.some(item => item.key === field.key) || ['properties', 'headers'].includes(field.key)) ? t(key) : field.property?.name || field.key
+  }
+  function hint(field: ChannelField): string | undefined {
+    if (field.key === 'testTemplate') return t('messageNotification.channelTest.settings.hint')
+    if (props.entry.draft.type === 'webhook' && props.entry.draft.provider === 'http' && field.key === 'url') return t('messageNotification.channels.webhook.addressHint')
+    if (props.entry.draft.type === 'dingTalk' && props.entry.draft.provider === 'dingTalkRobotWebHook' && field.key === 'secret') return t('messageNotification.channels.robot.secretHint')
+    const key = `messageNotification.channels.hints.${props.entry.draft.type}.${field.key}`
+    if (isAliyunVoice.value && ['accessKeyId', 'secret'].includes(field.key)) return t(key)
+    if (isAliyunVoice.value && field.key === 'regionId') return t('NoticeCenter.channel.credential.description.regionId')
+    if (props.entry.draft.type === 'weixin' && props.entry.draft.provider === 'corpMessage' && field.key === 'agentId') return t(key)
+    return props.entry.draft.type === 'email' && props.entry.draft.provider === 'embedded' && ['host', 'username', 'password', 'sender'].includes(field.key) ? t(key) : field.property?.description
+  }
+  function fieldType(field: ChannelField) { return field.options?.length ? 'enum' : field.property?.valueType.type || (field.kind === 'number' ? 'int' : 'string') }
+  function numberBounds(field: ChannelField) {
+    const smtpPort = props.entry.draft.type === 'email' && props.entry.draft.provider === 'embedded' && field.key === 'port'
+    return { min: field.property?.valueType.min ?? (smtpPort ? 1 : undefined), max: field.property?.valueType.max ?? (smtpPort ? 65535 : undefined) }
+  }
+  function rawSelectOptions(field: ChannelField) {
+    // Known provider options restore localized selectors even when metadata declares a string.
+    if (field.options?.length) return field.options.map(item => ({ value: item.value, label: item.label ? t(item.label) : item.text || String(item.value) }))
+    const type = field.property?.valueType
+    if (type?.type === 'boolean') return [{ value: type.trueValue ?? true, label: type.trueText || t('messageNotification.channels.boolean.true') }, { value: type.falseValue ?? false, label: type.falseText || t('messageNotification.channels.boolean.false') }]
+    return type?.elements?.map(item => ({ value: item.value, label: item.text || item.label || String(item.value) })) || []
+  }
+  // Ant Select accepts string/number option values; indices preserve backend booleans and numeric enums.
+  function selectOptions(field: ChannelField) { return rawSelectOptions(field).map((item, index) => ({ label: item.label, value: index })) }
+  function selectedValue(field: ChannelField): number | undefined {
+    const index = rawSelectOptions(field).findIndex(item => item.value === props.entry.draft.configuration[field.key])
+    return index === -1 ? undefined : index
+  }
+  function setSelectedValue(field: ChannelField, index: unknown) {
+    if (!props.disabled) change?.(field.key, typeof index === 'number' ? rawSelectOptions(field)[index]?.value : undefined)
+  }
+  function maxLength(field: ChannelField): number | undefined {
+    const value = propertyRules(field.property).maxLength
+    return typeof value === 'number' ? value : undefined
+  }
+  /** Transport presets update only the displayed SMTP fields and encryption properties. */
+  function setEncryption(value: unknown) {
+    if (!props.disabled && emailOptionsVisible.value && ['ssl', 'starttls', 'none'].includes(String(value))) {
+      for (const [key, next] of Object.entries(emailEncryptionChanges(props.entry.draft.configuration, value as EmailEncryption))) change?.(key, next)
+    }
+  }
+  function setPreset(id: string) {
+    if (props.disabled || !emailOptionsVisible.value) return
+    customPreset.value = id === 'other'
+    const selected = emailPresets.find(item => item.id === id)
+    if (!selected) return
+    change?.('host', selected.host); change?.('port', selected.port)
+    change?.('properties', emailEncryptionProperties(props.entry.draft.configuration, selected.encryption))
+  }
+
+  const initial = computed<NotifierConfigPayload>(() => JSON.parse(props.entry.snapshot))
+  const formMessages = computed<InlineEditMessages>(() => ({
+    save: t('messageNotification.common.save'), cancel: t('messageNotification.common.cancel'),
+    empty: t('messageNotification.channels.notFilled'), saving: t('messageNotification.channels.savingField'), failed: t('messageNotification.state.error'),
+  }))
+  function fieldError(key: string) {
+    const failure = props.entry.fieldFailures?.[key]
+    return issue(key) || (failure ? t(`messageNotification.state.${failure}`) : undefined)
+  }
+  // Whole-form validation can reject preserved credentials whose controls are intentionally hidden.
+  const hiddenErrors = computed(() => props.entry.issues.filter(item => !fields.value.some(field => field.key === item.path))
+    .map(item => `${label(props.entry.definition?.fields.find(field => field.key === item.path) || { key: item.path })}: ${issue(item.path)}`))
+  function metadataField(key: string) { return fields.value.find(field => `config:${field.key}` === key) }
+  const clearSecretOpen = ref(false)
+  const clearSecretPending = ref(false)
+  const clearSecretError = ref('')
+  const canClearSigningSecret = computed(() => !props.entry.isNew
+    && props.entry.draft.type === 'dingTalk' && props.entry.draft.provider === 'dingTalkRobotWebHook'
+    && fields.value.some(field => field.key === 'secret')
+    && !!props.entry.definition?.optionalSecretFields?.includes('secret')
+    && typeof props.entry.baseline?.configuration.secret === 'string' && !!props.entry.baseline.configuration.secret.trim())
+  watch([() => props.entry.key, () => props.disabled], () => { clearSecretOpen.value = false; clearSecretError.value = '' })
+  function requestClearSigningSecret() {
+    if (!canClearSigningSecret.value || props.disabled || props.busy || clearSecretPending.value) return
+    clearSecretError.value = ''
+    clearSecretOpen.value = true
+  }
+  function cancelClearSigningSecret() {
+    if (!clearSecretPending.value) { clearSecretOpen.value = false; clearSecretError.value = '' }
+  }
+  /** Explicit clearing is a field transaction; blank edits continue to retain the saved credential. */
+  async function clearSigningSecret() {
+    if (!clearSecretOpen.value || !canClearSigningSecret.value || props.disabled || props.busy || clearSecretPending.value || !props.submit) return
+    const key = props.entry.key
+    clearSecretPending.value = true
+    clearSecretError.value = ''
+    try {
+      const ok = await props.submit([{ key: 'secret', value: '', clearSecret: true }], 'secret')
+      if (props.entry.key !== key || props.disabled) return
+      if (ok) clearSecretOpen.value = false
+      else clearSecretError.value = fieldError('secret') || t('messageNotification.state.error')
+    } finally { clearSecretPending.value = false }
+  }
+  function mappedField(field: ChannelField): InlineEditFieldDefinition {
+    const type = fieldType(field)
+    const saved = initial.value.configuration[field.key]
+    const value = props.entry.draft.configuration[field.key]
+    const isSelect = ['boolean', 'enum'].includes(type)
+    const pairs = pairKind.value === field.key
+    const editor = field.kind === 'secret' ? 'password' : pairs || ['array', 'object', 'date', 'time'].includes(type) ? 'custom'
+      : isSelect ? 'select' : ['int', 'long', 'float', 'double'].includes(type) ? 'number' : 'text'
+    const pairDisplay = pairs && Array.isArray(saved) ? saved.map(row => `${row[pairKind.value === 'headers' ? 'key' : 'name']}: ${pairKind.value === 'headers' ? notificationSecretMask : row.value}`).join('\n') : undefined
+    const trialSettings = readTestSettings(saved)
+    // A legacy masked credential can block the transaction even when the test settings are valid.
+    const blockedSecret = field.key === 'testTemplate' ? props.entry.issues.find(item => item.key === 'secretRequired') : undefined
+    const preservationError = blockedSecret ? `${label(fields.value.find(item => item.key === blockedSecret.path) || { key: blockedSecret.path })}: ${issue(blockedSecret.path)}` : undefined
+    const testDisplay = field.key === 'testTemplate' ? testText(trialSettings.code || trialSettings.templateCode || trialSettings.wxTemplateId) : undefined
+    return {
+      key: `config:${field.key}`, label: label(field), editor, required: field.required,
+      value: isSelect ? selectedValue(field) : value,
+      initialValue: isSelect ? (() => { const index = rawSelectOptions(field).findIndex(option => option.value === saved); return index < 0 ? undefined : index })() : saved,
+      displayValue: testDisplay || pairDisplay, options: isSelect ? selectOptions(field) : undefined,
+      secretSet: !!props.entry.baseline?.configuration[field.key],
+      placeholder: field.kind === 'secret' ? t(props.entry.baseline ? 'messageNotification.channels.keepSecret' : 'messageNotification.channels.enterSecret') : undefined,
+      hint: hint(field), error: fieldError(field.key) || preservationError, fullWidth: !['port', 'password', 'sender'].includes(field.key),
+      ...numberBounds(field), precision: ['int', 'long'].includes(type) ? 0 : field.property?.valueType.scale, maxLength: maxLength(field),
+    }
+  }
+  const formGroups = computed<InlineEditGroup[]>(() => {
+    const result = groups.value.map(group => {
+      const mapped = group.fields.flatMap(field => {
+        const items = [mappedField(field)]
+        if (emailOptionsVisible.value && field.key === 'port') items.push({ key: 'email:encryption', label: t('messageNotification.channels.email.encryptionTitle'),
+          value: encryption.value, initialValue: emailEncryption(initial.value.configuration), editor: 'select', options: encryptionOptions.value,
+          hint: t('messageNotification.channels.email.encryptionHint'), error: fieldError('email:encryption') } as InlineEditFieldDefinition)
+        return items
+      })
+      if (emailOptionsVisible.value && group.key === 'server') mapped.unshift({ key: 'email:preset', label: t('messageNotification.channels.email.preset'),
+        value: preset.value, initialValue: emailPresets.find(item => item.host === initial.value.configuration.host)?.id || 'other', editor: 'select',
+        options: presetOptions.value, hint: t('messageNotification.channels.email.presetHint'), fullWidth: true, error: fieldError('email:preset') })
+      if (isAliyunVoice.value && group.key === 'credentials') {
+        mapped.unshift({ key: 'voice:provider', label: t('messageNotification.channels.voice.provider'),
+          value: props.entry.draft.provider, initialValue: props.entry.draft.provider, displayValue: t('messageNotification.channels.voice.aliyun'),
+          readonly: true, fullWidth: true, hint: t('messageNotification.channels.hints.voice.provider') })
+        return { key: group.key, title: t('messageNotification.channels.voice.credentials'), fields: mapped }
+      }
+      const titleKey = props.entry.draft.type === 'webhook' && props.entry.draft.provider === 'http' && group.key === 'connection'
+        ? 'messageNotification.channels.webhook.receiver' : `messageNotification.channels.groups.${group.key}`
+      return { key: group.key, title: t(titleKey), fields: mapped }
+    })
+    // View mode uses actual readonly fields, preventing click and keyboard entry into inline editing.
+    return editing.value ? result : result.map(group => ({ ...group, fields: group.fields.map(field => ({ ...field, readonly: true })) }))
+  })
+
+  /** Translate the public form's field keys into business-owned drafts; option indices never reach the API. */
+  function changeValue(key: string, value: unknown) {
+    if (key === 'email:preset') setPreset(String(value))
+    else if (key === 'email:encryption') setEncryption(value)
+    else {
+      const field = metadataField(key)
+      if (!field) return
+      if (['boolean', 'enum'].includes(fieldType(field))) setSelectedValue(field, value)
+      else change?.(field.key, value)
+    }
+  }
+  function customPairModel(key: string, value: unknown, disabled: boolean): ConfigurationPairsModel | undefined {
+    return key === `config:${pairKind.value}` && pairKind.value ? { kind: pairKind.value, value: value as Record<string, string>[] | undefined, disabled, savedKeys: savedHeaderKeys.value } : undefined
+  }
+  return { t, editing, hiddenErrors, numberBounds, selectedValue, setSelectedValue, preset, setPreset,
+    formGroups, formMessages, changeValue, metadataField, customPairModel,
+    canClearSigningSecret, clearSecretOpen, clearSecretPending, clearSecretError, requestClearSigningSecret, cancelClearSigningSecret, clearSigningSecret }
+}

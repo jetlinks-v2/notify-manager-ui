@@ -1,98 +1,93 @@
 [
   {
-    "code": "alarm-center",
-    "name": "告警中心",
-    "i18nMessages": {
-      "name": {
-        "zh_CN": "告警中心",
-        "en_US": "Alerts",
-        "en": "Alerts",
-        "ja": "アラームセンター",
-        "ja_JP": "アラームセンター"
-      }
-    },
+    "code": "system",
     "owner": "iot",
-    "id": "3c7dca6ea8b5828bbcc023ce905244f7",
-    "sortIndex": 3,
-    "url": "/alarms",
-    "icon": "icon-gaojingzhongxin",
-    "permissions": [],
-    "buttons": [],
-    "showPage": [],
     "children": [
       {
-        "code": "Notify",
+        "code": "system/MessageNotification",
         "name": "消息通知",
         "owner": "iot",
+        "id": "system-message-notification",
+        "url": "/system/notification",
+        "sortIndex": 40,
+        "icon": "BellOutlined",
         "i18nMessages": {
           "name": {
             "zh_CN": "消息通知",
-            "en_US": "Notify",
-            "en": "Notify",
-            "ja": "メッセージ通知",
-            "ja_JP": "メッセージ通知"
+            "zh": "消息通知",
+            "en_US": "Message notifications",
+            "en": "Message notifications",
+            "ja_JP": "メッセージ通知",
+            "ja": "メッセージ通知"
           }
         },
-        "id": "alarms-notify",
-        "url": "/alarms/notify",
-        "icon": "icon-xiaoxitongzhi",
-        "sortIndex": 40,
         "permissions": [],
         "buttons": [],
         "children": [
           {
-            "code": "notice/template",
-            "name": "消息模板",
+            "code": "system/MessageNotification/Channels",
+            "name": "通知渠道",
             "owner": "iot",
+            "id": "system-message-notification-channels",
+            "url": "/system/notification/channels",
+            "sortIndex": 10,
             "i18nMessages": {
               "name": {
-                "zh_CN": "消息模板",
-                "en_US": "Templates",
-                "en": "Templates",
-                "ja": "メッセージテンプレート",
-                "ja_JP": "メッセージテンプレート"
+                "zh_CN": "通知渠道",
+                "zh": "通知渠道",
+                "en_US": "Notification channels",
+                "en": "Notification channels",
+                "ja_JP": "通知チャネル",
+                "ja": "通知チャネル"
               }
             },
-            "id": "notice-template",
-            "url": "/alarms/notify/template",
-            "icon": "icon-yuandian",
-            "sortIndex": 11,
+            "options": {},
+            "showPage": [
+              "notifier"
+            ],
             "permissions": [
               {
-                "permission": "notify-channel",
+                "permission": "notifier",
                 "actions": [
-                  "query",
-                  "save"
+                  "query"
                 ]
               }
             ],
             "buttons": [
               {
-                "id": "view",
-                "name": "查看",
+                "id": "query",
+                "name": "查询",
                 "i18nMessages": {
-                  "zh_CN": "查看",
-                  "en_US": "View",
-                  "en": "View",
-                  "ja": "表示",
-                  "ja_JP": "表示"
+                  "zh_CN": "查询",
+                  "zh": "查询",
+                  "en_US": "Query",
+                  "en": "Query",
+                  "ja_JP": "照会",
+                  "ja": "照会"
                 },
                 "permissions": [
-                  {
-                    "permission": "notify-channel",
-                    "actions": [
-                      "query",
-                      "save"
-                    ]
-                  },
                   {
                     "permission": "notifier",
                     "actions": [
                       "query"
                     ]
-                  },
+                  }
+                ]
+              },
+              {
+                "id": "add",
+                "name": "新增",
+                "i18nMessages": {
+                  "zh_CN": "新增",
+                  "zh": "新增",
+                  "en_US": "Add",
+                  "en": "Add",
+                  "ja_JP": "追加",
+                  "ja": "追加"
+                },
+                "permissions": [
                   {
-                    "permission": "template",
+                    "permission": "notifier",
                     "actions": [
                       "query",
                       "save"
@@ -105,19 +100,76 @@
                 "name": "编辑",
                 "i18nMessages": {
                   "zh_CN": "编辑",
+                  "zh": "编辑",
                   "en_US": "Edit",
                   "en": "Edit",
-                  "ja": "編集",
-                  "ja_JP": "編集"
+                  "ja_JP": "編集",
+                  "ja": "編集"
                 },
                 "permissions": [
                   {
-                    "permission": "notify-channel",
+                    "permission": "notifier",
                     "actions": [
                       "query",
                       "save"
                     ]
-                  },
+                  }
+                ]
+              },
+              {
+                "id": "delete",
+                "name": "清除配置",
+                "i18nMessages": {
+                  "zh_CN": "清除配置",
+                  "zh": "清除配置",
+                  "en_US": "Clear configuration",
+                  "en": "Clear configuration",
+                  "ja_JP": "設定をクリア",
+                  "ja": "設定をクリア"
+                },
+                "permissions": [
+                  {
+                    "permission": "notifier",
+                    "actions": [
+                      "query",
+                      "delete"
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "action",
+                "name": "试发",
+                "i18nMessages": {
+                  "zh_CN": "试发",
+                  "zh": "试发",
+                  "en_US": "Send a test",
+                  "en": "Send a test",
+                  "ja_JP": "テスト送信",
+                  "ja": "テスト送信"
+                },
+                "permissions": [
+                  {
+                    "permission": "notifier",
+                    "actions": [
+                      "query",
+                      "send"
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "bind",
+                "name": "同步用户",
+                "i18nMessages": {
+                  "zh_CN": "同步用户",
+                  "zh": "同步用户",
+                  "en_US": "Sync users",
+                  "en": "Sync users",
+                  "ja_JP": "ユーザー同期",
+                  "ja": "ユーザー同期"
+                },
+                "permissions": [
                   {
                     "permission": "notifier",
                     "actions": [
@@ -125,7 +177,13 @@
                     ]
                   },
                   {
-                    "permission": "template",
+                    "permission": "user",
+                    "actions": [
+                      "query"
+                    ]
+                  },
+                  {
+                    "permission": "user-third-party-manager",
                     "actions": [
                       "query",
                       "save"
@@ -134,70 +192,64 @@
                 ]
               }
             ],
-            "showPage": [
-              "template",
-              "notifier"
-            ],
             "accessSupport": {
-              "text": "支持",
-              "value": "support"
+              "text": "不支持",
+              "value": "unsupported"
             },
-            "assetType": "notifySubscriberProvider",
-            "assetTypes":[
-              "notifyConfig",
-              "notifySubscriberProvider"
-            ],
-            "supportDataAccess": true
+            "supportDataAccess": false
           },
           {
-            "code": "notice/channel",
-            "name": "通知渠道",
+            "code": "system/MessageNotification/Templates",
+            "name": "消息模板",
             "owner": "iot",
+            "id": "system-message-notification-templates",
+            "url": "/system/notification/templates",
+            "sortIndex": 20,
             "i18nMessages": {
               "name": {
-                "zh_CN": "通知渠道",
-                "en_US": "Delivery",
-                "en": "Delivery",
-                "ja": "通知チャネル",
-                "ja_JP": "通知チャネル"
+                "zh_CN": "消息模板",
+                "zh": "消息模板",
+                "en_US": "Message templates",
+                "en": "Message templates",
+                "ja_JP": "メッセージテンプレート",
+                "ja": "メッセージテンプレート"
               }
             },
-            "id": "notice-channel",
-            "url": "/alarms/notify/delivery",
-            "icon": "icon-yuandian",
-            "sortIndex": 12,
+            "options": {},
+            "showPage": [
+              "template"
+            ],
             "permissions": [
               {
-                "permission": "notify-channel",
+                "permission": "template",
                 "actions": [
-                  "save"
+                  "query"
                 ]
               },
               {
                 "permission": "notifier",
                 "actions": [
-                  "query",
-                  "save",
-                  "send"
+                  "query"
                 ]
               }
             ],
             "buttons": [
               {
-                "id": "view",
-                "name": "查看",
+                "id": "query",
+                "name": "查询",
                 "i18nMessages": {
-                  "zh_CN": "查看",
-                  "en_US": "View",
-                  "en": "View",
-                  "ja": "表示",
-                  "ja_JP": "表示"
+                  "zh_CN": "查询",
+                  "zh": "查询",
+                  "en_US": "Query",
+                  "en": "Query",
+                  "ja_JP": "照会",
+                  "ja": "照会"
                 },
                 "permissions": [
                   {
-                    "permission": "notify-channel",
+                    "permission": "template",
                     "actions": [
-                      "save"
+                      "query"
                     ]
                   },
                   {
@@ -209,24 +261,32 @@
                 ]
               },
               {
-                "id": "update",
-                "name": "编辑",
+                "id": "add",
+                "name": "新增",
                 "i18nMessages": {
-                  "zh_CN": "编辑",
-                  "en_US": "Edit",
-                  "en": "Edit",
-                  "ja": "編集",
-                  "ja_JP": "編集"
+                  "zh_CN": "新增",
+                  "zh": "新增",
+                  "en_US": "Add",
+                  "en": "Add",
+                  "ja_JP": "追加",
+                  "ja": "追加"
                 },
                 "permissions": [
                   {
-                    "permission": "notify-channel",
+                    "permission": "template",
                     "actions": [
+                      "query",
                       "save"
                     ]
                   },
                   {
                     "permission": "notifier",
+                    "actions": [
+                      "query"
+                    ]
+                  },
+                  {
+                    "permission": "notify-channel",
                     "actions": [
                       "query",
                       "save"
@@ -235,38 +295,156 @@
                 ]
               },
               {
-                "id": "test",
-                "name": "测试",
+                "id": "update",
+                "name": "编辑",
                 "i18nMessages": {
-                  "zh_CN": "测试",
-                  "en_US": "Test",
-                  "en": "Test",
-                  "ja": "テスト",
-                  "ja_JP": "テスト"
+                  "zh_CN": "编辑",
+                  "zh": "编辑",
+                  "en_US": "Edit",
+                  "en": "Edit",
+                  "ja_JP": "編集",
+                  "ja": "編集"
+                },
+                "permissions": [
+                  {
+                    "permission": "template",
+                    "actions": [
+                      "query",
+                      "save"
+                    ]
+                  },
+                  {
+                    "permission": "notifier",
+                    "actions": [
+                      "query"
+                    ]
+                  },
+                  {
+                    "permission": "notify-channel",
+                    "actions": [
+                      "query",
+                      "save"
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "delete",
+                "name": "删除",
+                "i18nMessages": {
+                  "zh_CN": "删除",
+                  "zh": "删除",
+                  "en_US": "Delete",
+                  "en": "Delete",
+                  "ja_JP": "削除",
+                  "ja": "削除"
+                },
+                "permissions": [
+                  {
+                    "permission": "template",
+                    "actions": [
+                      "query",
+                      "delete"
+                    ]
+                  },
+                  {
+                    "permission": "notifier",
+                    "actions": [
+                      "query"
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "action",
+                "name": "通知操作",
+                "i18nMessages": {
+                  "zh_CN": "通知操作",
+                  "zh": "通知操作",
+                  "en_US": "Notification actions",
+                  "en": "Notification actions",
+                  "ja_JP": "通知操作",
+                  "ja": "通知操作"
                 },
                 "permissions": [
                   {
                     "permission": "notifier",
                     "actions": [
+                      "query",
                       "send"
+                    ]
+                  },
+                  {
+                    "permission": "template",
+                    "actions": [
+                      "query"
                     ]
                   }
                 ]
               }
             ],
             "accessSupport": {
-              "text": "支持",
-              "value": "support"
+              "text": "不支持",
+              "value": "unsupported"
             },
+            "supportDataAccess": false
+          },
+          {
+            "code": "system/MessageNotification/Records",
+            "name": "通知记录",
+            "owner": "iot",
+            "id": "system-message-notification-records",
+            "url": "/system/notification/records",
+            "sortIndex": 30,
+            "i18nMessages": {
+              "name": {
+                "zh_CN": "通知记录",
+                "zh": "通知记录",
+                "en_US": "Notification history",
+                "en": "Notification history",
+                "ja_JP": "通知履歴",
+                "ja": "通知履歴"
+              }
+            },
+            "options": {},
             "showPage": [
               "notifier"
             ],
-            "assetType": "notifySubscriberProvider",
-            "assetTypes":[
-              "notifyConfig",
-              "notifySubscriberProvider"
+            "permissions": [
+              {
+                "permission": "notifier",
+                "actions": [
+                  "query"
+                ]
+              }
             ],
-            "supportDataAccess": true
+            "buttons": [
+              {
+                "id": "query",
+                "name": "查询",
+                "i18nMessages": {
+                  "zh_CN": "查询",
+                  "zh": "查询",
+                  "en_US": "Query",
+                  "en": "Query",
+                  "ja_JP": "照会",
+                  "ja": "照会"
+                },
+                "permissions": [
+                  {
+                    "permission": "notifier",
+                    "actions": [
+                      "query"
+                    ]
+                  }
+                ]
+              }
+            ],
+            "accessSupport": {
+              "text": "不支持",
+              "value": "unsupported"
+            },
+            "supportDataAccess": false
           }
         ]
       }

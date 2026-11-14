@@ -13,6 +13,9 @@ const getComponents = () => ({})
 
 const getCoreRouteOverrides = () => []
 
+// 与产品列表一致，由项目布局提供唯一的内容面板。
+const getContentPanelOverrides = () => ({})
+
 const register = () => {
   moduleRegistry.register(name, registerSetting)
 }
@@ -22,5 +25,6 @@ export default {
   getExtraRoutesMap,
   getComponents,
   getCoreRouteOverrides,
+  getContentPanelOverrides,
   register
 }
