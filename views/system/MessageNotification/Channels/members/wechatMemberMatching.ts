@@ -48,12 +48,13 @@ export function bindingSignature(bindings: WechatMemberBinding[]): string {
   return JSON.stringify(bindings.map(({ id, userId, thirdPartyUserId }) => [id, userId, thirdPartyUserId]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))))
 }
 
-/** Only changed, explicitly assigned members are sent; omitted members are never implicitly unbound. */
+/** Drafts are keyed by platform user, matching the server's type/provider/user binding identity. */
 export function memberBindingChanges(members: WechatMember[], bindings: WechatMemberBinding[], assignments: ReadonlyMap<string, string>): WechatBindingChange[] {
-  const existing = new Map(bindings.map(binding => [binding.thirdPartyUserId, binding]))
-  return members.flatMap(member => {
-    const userId = assignments.get(member.id)
-    const binding = existing.get(member.id)
-    return userId && userId !== binding?.userId ? [{ ...(binding ? { id: binding.id } : {}), userId, thirdPartyUserId: member.id, providerName: member.name || member.id }] : []
+  const existing = new Map(bindings.map(binding => [binding.userId, binding]))
+  const available = new Map(members.map(member => [member.id, member]))
+  return [...assignments].flatMap(([userId, memberId]) => {
+    const member = available.get(memberId)
+    const binding = existing.get(userId)
+    return member && memberId !== binding?.thirdPartyUserId ? [{ ...(binding ? { id: binding.id } : {}), userId, thirdPartyUserId: memberId, providerName: member.name || memberId }] : []
   })
 }

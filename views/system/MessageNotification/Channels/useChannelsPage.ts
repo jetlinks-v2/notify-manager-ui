@@ -13,7 +13,7 @@ import { useChannelCatalog } from './useChannelCatalog'
 import { useChannelTest } from './testing/useChannelTest'
 import { channelTestSettingsKinds } from './testing/channelTestConfig'
 import { channelTestAdapters } from './testing/channelTestAdapter'
-import { useWechatMembers, type MemberStatusFilter } from './members/useWechatMembers'
+import { useWechatMembers, type MemberFilterTerm, type MemberStatusFilter } from './members/useWechatMembers'
 import type { WechatMembersDrawerModel } from './members/useWechatMembersDrawer'
 import { useChannelLeaveGuard } from './useChannelLeaveGuard'
 import { channelHelp, channelHelpStep } from './configuration/channelHelp'
@@ -119,14 +119,14 @@ export function useChannelsPage() {
   const canSyncMembers = computed(() => canQuery.value && permissions.bind.value && channelId.value === 'weixin:corpMessage' && !!entry.value?.baseline?.id && !entry.value?.isNew && !dirty.value)
   const configurationOptions = computed(() => configs.value.map(item => ({ value: item.id, label: `${item.name} · ${item.id}` })))
   const memberDrawer = computed<WechatMembersDrawerModel>(() => ({
-    open: members.open.value, state: members.state.value, busy: members.busy.value, error: members.error.value,
+    open: members.open.value, state: members.state.value, busy: members.busy.value, autoMatching: members.autoMatching.value, error: members.error.value,
     saved: members.saved.value, refreshRequired: members.refreshRequired.value, dirty: members.dirty.value, canSave: members.canSave.value,
-    departments: members.departments.value, rows: members.visibleRows.value, users: members.users.value,
-    departmentId: members.departmentId.value, search: members.search.value,
-    pendingCount: members.rows.value.filter(row => row.userId && row.userId !== row.binding?.userId).length,
-    canAutoMatch: canSyncMembers.value && !operationBusy.value && members.canAutoMatch.value,
+    departments: members.departments.value, rows: members.visibleRows.value, members: members.members.value,
+    filterTerms: members.filterTerms.value,
+    pendingCount: members.rows.value.filter(row => row.memberId && row.memberId !== row.binding?.thirdPartyUserId).length,
+    canAutoMatch: canSyncMembers.value && !operationBusy.value && (members.open.value ? members.canAutoMatch.value : members.canAutoMatchAndSave.value),
     stats: members.stats.value, filterCounts: members.filterCounts.value, statusFilter: members.statusFilter.value, matchCount: members.matchCount.value,
-    userUnavailable: members.userUnavailable,
+    memberUnavailable: members.memberUnavailable,
   }))
   const memberDiscardOpen = ref(false)
   let memberAfterDiscard: (() => void) | undefined
@@ -143,17 +143,23 @@ export function useChannelsPage() {
     if (discard) action?.()
   }
   function closeMembers() { withMemberDiscard(() => members.close()) }
-  function reloadMembers() { withMemberDiscard(() => { void members.reload() }) }
-  async function showMembers(automatic = false) {
+  function reloadMembers() {
+    // The closed manager has only automatic suggestions; recovery must not describe a completed write as unsaved.
+    if (!members.open.value && members.refreshRequired.value) { void members.reload(); return }
+    withMemberDiscard(() => { void members.reload() })
+  }
+  async function showMembers() {
     if (!canSyncMembers.value || operationBusy.value || members.state.value === 'loading') return
     const id = entry.value!.baseline!.id
     await members.show({ configId: id, permitted: () => canQuery.value && permissions.bind.value, clean: () => !dirty.value && !entry.value?.isNew && entry.value?.baseline?.id === id })
-    if (automatic && members.open.value && members.configId.value === id) members.autoMatch()
   }
-  function updateMemberDepartment(value: string) { members.departmentId.value = value }
-  function updateMemberSearch(value: string) { members.search.value = value }
+  async function autoMatchMembers() {
+    if (!canSyncMembers.value || operationBusy.value) return false
+    return members.autoMatchAndSave()
+  }
+  function updateMemberFilters(value: MemberFilterTerm[]) { if (!members.busy.value) members.filterTerms.value = value }
   function updateMemberStatus(value: MemberStatusFilter) { members.statusFilter.value = value }
-  function resetMemberFilters() { members.departmentId.value = ''; members.search.value = ''; members.statusFilter.value = 'all' }
+  function resetMemberFilters() { members.filterTerms.value = [] }
   const helpChoices = reactive(new Map<string, boolean>())
   const helpOpen = computed(() => helpChoices.get(channelId.value) ?? true)
   const help = computed(() => channelHelp(channel.value, entry.value?.definition, t))
@@ -253,6 +259,6 @@ export function useChannelsPage() {
     busy, dirty, canEdit, editing, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave,
     sending, workspace, trial, testModel: trial.model, fixTestConfiguration, afterTestClosed, refresh, save, remove, showSend, configurationVisible,
     catalog, directoryState, providerFeedback, channelTitle, help, helpOpen, toggleHelp, saveFields, focusField, activeHelpStep, deleteOpen, clearChannelName, clearMessage, requestRemove,
-    members, memberDrawer, canSyncMembers, showMembers, closeMembers, reloadMembers, memberDiscardOpen, decideMemberDiscard, updateMemberDepartment, updateMemberSearch, updateMemberStatus, resetMemberFilters,
+    members, memberDrawer, canSyncMembers, showMembers, autoMatchMembers, closeMembers, reloadMembers, memberDiscardOpen, decideMemberDiscard, updateMemberFilters, updateMemberStatus, resetMemberFilters,
   }
 }

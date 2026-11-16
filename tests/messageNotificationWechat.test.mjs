@@ -18,6 +18,7 @@ function load(filename) {
   const { code } = transformSync(readFileSync(filename, 'utf8'), { loader: 'ts', format: 'cjs' })
   const module = { exports: {} }
   const imports = name => name === 'vue' ? vue : name === '@jetlinks-web/core' ? { request }
+    : name === 'vue-i18n' ? { useI18n: () => ({ t: key => key }) }
     : name.startsWith('.') ? load(resolve(dirname(filename), name === '../../shared' || name === '../shared' ? `${name}/index` : name)) : require(name)
   new Function('require', 'module', 'exports', code)(imports, module, module.exports)
   cache.set(filename, module.exports)
@@ -26,6 +27,9 @@ function load(filename) {
 const base = resolve(root, 'views/system/MessageNotification/Channels')
 const { matchWechatMembers, memberBindingChanges, memberPhone, memberEmail } = load(resolve(base, 'members/wechatMemberMatching'))
 const { useWechatMembers } = load(resolve(base, 'members/useWechatMembers'))
+const { useWechatMembersDrawer } = load(resolve(base, 'members/useWechatMembersDrawer'))
+const { withMemberStatus } = load(resolve(base, 'members/wechatMemberFilters'))
+const { buildWechatMemberTree, wechatTreeExpandedKeys } = load(resolve(base, 'members/wechatMemberTree'))
 const { loadMemberPlatformUsers, wechatMemberApi } = load(resolve(root, 'api/notice/wechatMembers'))
 const { messageNotificationApi } = load(resolve(root, 'api/notice/messageNotification'))
 const corpChannel = { id: 'weixin:corpMessage', type: 'weixin', provider: 'corpMessage' }
@@ -57,8 +61,8 @@ test('existing bindings reserve accounts and are not rematched', () => {
   const result = matchWechatMembers([member('bound', '222'), member('new', '111')], [user('u1', '111'), user('u2', '222')], bindings)
   assert.equal(result.has('bound'), false)
   assert.equal(result.get('new').state, 'conflict')
-  assert.deepEqual(memberBindingChanges([member('bound'), member('new')], bindings, new Map([['bound', 'u2'], ['new', 'u3']])), [
-    { id: 'binding', userId: 'u2', thirdPartyUserId: 'bound', providerName: 'bound' }, { userId: 'u3', thirdPartyUserId: 'new', providerName: 'new' },
+  assert.deepEqual(memberBindingChanges([member('bound'), member('new')], bindings, new Map([['u1', 'new'], ['u3', 'bound']])), [
+    { id: 'binding', userId: 'u1', thirdPartyUserId: 'new', providerName: 'new' }, { userId: 'u3', thirdPartyUserId: 'bound', providerName: 'bound' },
   ])
   assert.deepEqual(memberBindingChanges([member('bound')], bindings, new Map()), [])
 })
@@ -101,45 +105,44 @@ test('summary and manager reads never match or write until explicitly requested'
   await workspace.prepare(io.context)
   assert.equal(workspace.open.value, false)
   assert.equal(workspace.dirty.value, false)
-  assert.deepEqual(workspace.stats.value, { total: 3, bound: 1, unbound: 2, invalid: 0 })
+  assert.deepEqual(workspace.stats.value, { total: 4, bound: 1, unbound: 3, invalid: 0 })
   const reads = io.calls.length
   await workspace.show(io.context)
   assert.equal(io.calls.length, reads)
   assert.equal(workspace.statusFilter.value, 'unbound')
-  assert.deepEqual(workspace.visibleRows.value.map(row => row.id), ['auto', 'manual'])
-  assert.equal(workspace.assignments.has('auto'), false)
+  assert.deepEqual(workspace.visibleRows.value.map(row => row.id), ['u2', 'u3', 'u4'])
+  assert.equal(workspace.assignments.has('u2'), false)
   assert.equal(await workspace.save(), false)
   workspace.autoMatch()
   assert.equal(workspace.matchCount.value, 1)
-  assert.equal(workspace.assignments.get('auto'), 'u2')
-  assert.equal(workspace.visibleRows.value.length, 2, 'suggestions stay visible until saved')
+  assert.equal(workspace.assignments.get('u2'), 'auto')
+  assert.equal(workspace.visibleRows.value.length, 3, 'suggestions stay visible until saved')
   assert.equal(io.calls.some(([action]) => ['bind', 'unbind'].includes(action)), false)
   workspace.close()
   assert.equal(workspace.dirty.value, false)
   assert.equal(workspace.stats.value.bound, 1)
   await workspace.show(io.context)
-  assert.equal(workspace.assignments.has('auto'), false)
+  assert.equal(workspace.assignments.has('u2'), false)
   assert.equal(workspace.matchCount.value, undefined)
 })
 
-test('explicit rematching preserves manually changed and cleared rows, including occupied candidates', async () => {
+test('explicit rematching preserves manually changed and cleared users, including occupied candidates', async () => {
   const io = memberFixture(); const workspace = useWechatMembers(io.api)
   await workspace.show(io.context)
-  workspace.assign('manual', 'u2')
+  workspace.assign('u3', 'auto')
   workspace.autoMatch()
   assert.equal(workspace.matchCount.value, 0)
-  assert.equal(workspace.assignments.has('auto'), false)
-  workspace.assign('manual', undefined)
+  assert.equal(workspace.assignments.has('u2'), false)
+  workspace.assign('u3', undefined)
   workspace.autoMatch()
-  assert.equal(workspace.assignments.get('auto'), 'u2')
-  workspace.assign('auto', 'u4')
+  assert.equal(workspace.assignments.get('u2'), 'auto')
+  workspace.assign('u2', 'manual')
   workspace.autoMatch()
-  assert.equal(workspace.assignments.get('auto'), 'u4')
-  workspace.assign('auto', undefined)
+  assert.equal(workspace.assignments.get('u2'), 'manual')
+  workspace.assign('u2', undefined)
   workspace.autoMatch()
-  assert.equal(workspace.assignments.has('auto'), false)
-  assert.equal(workspace.assignments.get('bound'), 'u1')
-  assert.equal(workspace.canAutoMatch.value, false)
+  assert.equal(workspace.assignments.has('u2'), false)
+  assert.equal(workspace.assignments.get('u1'), 'bound')
 })
 
 test('status counts respect search while summary includes unavailable saved counterparts', async () => {
@@ -149,14 +152,14 @@ test('status counts respect search while summary includes unavailable saved coun
     { id: 'orphan', userId: 'u1', thirdPartyUserId: 'missing-member', providerName: 'Unavailable member' },
   ])
   await workspace.show(io.context)
-  assert.deepEqual(workspace.stats.value, { total: 4, bound: 0, unbound: 2, invalid: 2 })
+  assert.deepEqual(workspace.stats.value, { total: 5, bound: 0, unbound: 3, invalid: 2 })
   workspace.statusFilter.value = 'invalid'
   assert.equal(workspace.visibleRows.value.length, 2)
-  workspace.search.value = 'Unavailable'
+  workspace.filterTerms.value = withMemberStatus([{ column: 'member', termType: 'like', value: 'Unavailable' }], 'invalid')
   assert.deepEqual(workspace.filterCounts.value, { all: 1, bound: 0, unbound: 0, invalid: 1 })
-  assert.equal(workspace.stats.value.total, 4)
+  assert.equal(workspace.stats.value.total, 5)
   assert.equal(workspace.visibleRows.value[0].memberAvailable, false)
-  workspace.assign('missing-member', 'u3')
+  workspace.assign('u3', 'missing-member')
   assert.equal(workspace.dirty.value, false)
   assert.equal(await workspace.unbind('orphan'), true)
   assert.equal(workspace.stats.value.invalid, 1)
@@ -178,34 +181,36 @@ test('summary responses cannot cross configuration changes and matching respects
   await workspace.show(io.context)
   io.permitted.value = false
   workspace.autoMatch()
-  assert.equal(workspace.assignments.has('auto'), false)
+  assert.equal(workspace.assignments.has('u2'), false)
   assert.equal(workspace.canAutoMatch.value, false)
   io.permitted.value = true
   io.clean.value = false
   workspace.autoMatch()
-  assert.equal(workspace.assignments.has('auto'), false)
+  assert.equal(workspace.assignments.has('u2'), false)
 })
 
-test('explicit matching previews suggestions, supports manual edits, and saves only explicit changes', async () => {
+test('platform-user rows preview changes and replacement updates the original user binding', async () => {
   const io = memberFixture(); const workspace = useWechatMembers(io.api)
   await workspace.show(io.context)
   workspace.autoMatch()
-  assert.equal(workspace.rows.value.length, 3)
-  assert.equal(workspace.assignments.get('auto'), 'u2')
+  assert.equal(workspace.rows.value.length, 4)
+  assert.equal(workspace.assignments.get('u2'), 'auto')
   assert.equal(io.calls.some(([action]) => action === 'bind'), false)
-  workspace.assign('manual', 'u2')
-  assert.equal(workspace.error.value, 'duplicate'); assert.equal(workspace.assignments.has('manual'), false)
-  workspace.assign('manual', 'u3'); workspace.assign('bound', 'u4')
+  workspace.assign('u3', 'auto')
+  assert.equal(workspace.error.value, 'duplicate'); assert.equal(workspace.assignments.has('u3'), false)
+  workspace.assign('u1', 'manual')
+  assert.equal(workspace.memberUnavailable('bound', 'u3'), true, 'saved member stays reserved until replacement is saved')
   assert.equal(await workspace.save(), true)
   const sent = io.calls.find(([action]) => action === 'bind')
-  assert.equal(sent[1], 'corp'); assert.equal(sent[2].length, 3)
-  assert.equal(sent[2].find(row => row.thirdPartyUserId === 'bound').id, 'old')
+  assert.equal(sent[1], 'corp'); assert.equal(sent[2].length, 2)
+  assert.deepEqual(sent[2].find(row => row.userId === 'u1'), { id: 'old', userId: 'u1', thirdPartyUserId: 'manual', providerName: 'manual' })
+  assert.equal(workspace.bindings.value.filter(row => row.userId === 'u1').length, 1)
+  assert.equal(workspace.memberUnavailable('bound', 'u3'), false)
   assert.equal(workspace.dirty.value, false)
-  workspace.statusFilter.value = 'all'
-  workspace.departmentId.value = '1'
-  assert.equal(workspace.visibleRows.value.length, 3)
-  workspace.search.value = 'manual'
-  assert.equal(workspace.visibleRows.value.length, 1)
+  workspace.filterTerms.value = [{ column: 'department', termType: 'in', value: ['1'] }]
+  assert.equal(workspace.visibleRows.value.length, 2)
+  workspace.filterTerms.value.push({ column: 'member', termType: 'like', value: 'manual' })
+  assert.deepEqual(workspace.visibleRows.value.map(row => row.id), ['u1'])
 })
 
 test('concurrent binding changes block saves and unbinds until refreshed', async () => {
@@ -225,24 +230,23 @@ test('save failures preserve preview and successful-write refresh failures canno
   workspace.autoMatch()
   const bind = io.api.bind
   io.api.bind = async () => { throw new Error('offline') }
-  assert.equal(await workspace.save(), false); assert.equal(workspace.assignments.get('auto'), 'u2')
+  assert.equal(await workspace.save(), false); assert.equal(workspace.assignments.get('u2'), 'auto')
   io.api.bind = async (...args) => { await bind(...args); io.api.bindings = async () => { throw new Error('read offline') } }
   assert.equal(await workspace.save(), false); assert.equal(workspace.error.value, 'refresh')
   assert.equal(workspace.canSave.value, false); assert.equal(await workspace.save(), false)
   assert.equal(io.calls.filter(([action]) => action === 'bind').length, 1)
 })
 
-test('explicit unbind preserves other pending edits and reserves existing assignments', async () => {
+test('explicit unbind preserves other pending edits and reserves existing members', async () => {
   const io = memberFixture(); const workspace = useWechatMembers(io.api)
   await workspace.show(io.context)
   workspace.autoMatch()
-  workspace.assign('bound', 'u4')
-  assert.equal(workspace.userUnavailable('u1', 'manual'), true)
-  workspace.assign('manual', 'u3')
+  workspace.assign('u1', 'manual')
+  assert.equal(workspace.memberUnavailable('bound', 'u3'), true)
   assert.equal(await workspace.unbind('old'), true)
-  assert.equal(workspace.assignments.has('bound'), false)
-  assert.equal(workspace.assignments.get('manual'), 'u3')
-  assert.equal(workspace.assignments.get('auto'), 'u2')
+  assert.equal(workspace.assignments.has('u1'), false)
+  assert.equal(workspace.assignments.get('u2'), 'auto')
+  assert.equal(workspace.memberUnavailable('bound', 'u3'), false)
 })
 
 test('permissions and stale drawer responses cannot publish or mutate another config', async () => {
@@ -275,6 +279,191 @@ test('late successful mutations do not reopen the drawer or restore its data', a
 })
 
 
+
+function deferred() {
+  let resolve
+  const promise = new Promise(done => { resolve = done })
+  return { promise, resolve }
+}
+async function settle() { for (let i = 0; i < 8; i++) await Promise.resolve() }
+
+test('channel auto match keeps one lock from matching through write and readback without opening the drawer', async () => {
+  const io = memberFixture(); const workspace = useWechatMembers(io.api)
+  await workspace.prepare(io.context)
+  const check = deferred(); const write = deferred(); const readback = deferred()
+  const bindings = io.api.bindings; const bind = io.api.bind
+  let reads = 0
+  io.api.bindings = async () => { await (++reads === 1 ? check.promise : readback.promise); return bindings() }
+  io.api.bind = async (...args) => { await write.promise; return bind(...args) }
+  const saving = workspace.autoMatchAndSave()
+  assert.equal(workspace.busy.value, true); assert.equal(workspace.autoMatching.value, true)
+  assert.equal(workspace.open.value, false)
+  assert.equal(await workspace.autoMatchAndSave(), false)
+  await workspace.show(io.context)
+  assert.equal(workspace.open.value, false)
+  check.resolve(); await settle()
+  assert.equal(workspace.busy.value, true); assert.equal(workspace.saved.value, false)
+  write.resolve(); await settle()
+  assert.equal(workspace.busy.value, true); assert.equal(workspace.refreshRequired.value, true)
+  readback.resolve()
+  assert.equal(await saving, true)
+  assert.equal(workspace.busy.value, false); assert.equal(workspace.autoMatching.value, false)
+  assert.equal(workspace.open.value, false); assert.equal(workspace.stats.value.bound, 2)
+  assert.equal(io.calls.filter(([action]) => action === 'bind').length, 1)
+  assert.deepEqual(io.calls.find(([action]) => action === 'bind')[2].map(row => row.thirdPartyUserId), ['auto'])
+})
+
+test('channel matching reports no matches without an empty write and drawer previews require explicit save', async () => {
+  const io = memberFixture(); const workspace = useWechatMembers(io.api)
+  io.api.members = async () => [member('manual')]
+  await workspace.prepare(io.context)
+  assert.equal(await workspace.autoMatchAndSave(), false)
+  assert.equal(workspace.matchCount.value, 0); assert.equal(workspace.busy.value, false)
+  assert.equal(io.calls.some(([action]) => action === 'bind'), false)
+  await workspace.show(io.context)
+  workspace.assign('u3', 'manual')
+  assert.equal(await workspace.autoMatchAndSave(), false, 'outside action never saves an open drawer draft')
+  assert.equal(await workspace.save(), true)
+})
+
+test('channel saves retry failed writes, but never repeat a successful write after readback failure', async () => {
+  const io = memberFixture(); const workspace = useWechatMembers(io.api)
+  await workspace.prepare(io.context)
+  const bind = io.api.bind; const bindings = io.api.bindings
+  io.api.bind = async () => { throw new Error('offline') }
+  assert.equal(await workspace.autoMatchAndSave(), false)
+  assert.equal(workspace.error.value, 'error'); assert.equal(workspace.canAutoMatchAndSave.value, true)
+  assert.equal(workspace.assignments.get('u2'), 'auto')
+  io.api.bind = async (...args) => { await bind(...args); io.api.bindings = async () => { throw new Error('read offline') } }
+  assert.equal(await workspace.autoMatchAndSave(), false)
+  assert.equal(workspace.error.value, 'refresh'); assert.equal(workspace.busy.value, false)
+  assert.equal(await workspace.autoMatchAndSave(), false)
+  io.api.bindings = bindings
+  await workspace.reload()
+  assert.equal(workspace.refreshRequired.value, false); assert.equal(workspace.stats.value.bound, 2)
+  assert.equal(io.calls.filter(([action]) => action === 'bind').length, 1)
+})
+
+test('channel matching blocks concurrent bindings, revoked access and stale writes across config changes', async () => {
+  const io = memberFixture(); const workspace = useWechatMembers(io.api)
+  await workspace.prepare(io.context)
+  io.setBindings([{ id: 'changed', userId: 'u2', thirdPartyUserId: 'other' }])
+  assert.equal(await workspace.autoMatchAndSave(), false)
+  assert.equal(workspace.error.value, 'conflict')
+  assert.equal(io.calls.some(([action]) => action === 'bind'), false)
+  io.setBindings([]); await workspace.reload()
+  const check = deferred(); const bindings = io.api.bindings
+  io.api.bindings = async () => { await check.promise; return bindings() }
+  const denied = workspace.autoMatchAndSave()
+  await settle(); io.permitted.value = false; check.resolve()
+  assert.equal(await denied, false)
+  assert.equal(io.calls.some(([action]) => action === 'bind'), false)
+  io.permitted.value = true; io.api.bindings = bindings
+  const write = deferred()
+  io.api.bind = async () => write.promise
+  const stale = workspace.autoMatchAndSave(); await settle()
+  workspace.close(true)
+  await workspace.prepare({ ...io.context, configId: 'next' })
+  write.resolve(); assert.equal(await stale, false)
+  assert.equal(workspace.configId.value, 'next'); assert.equal(workspace.saved.value, false)
+  assert.equal(workspace.busy.value, false); assert.equal(workspace.autoMatching.value, false)
+})
+
+test('core filters search platform users and selected members with department descendants and status counts', async () => {
+  const io = memberFixture(); const workspace = useWechatMembers(io.api)
+  await workspace.show(io.context)
+  workspace.autoMatch()
+  workspace.filterTerms.value = [{ column: 'department', termType: 'in', value: ['1'] }]
+  assert.equal(workspace.visibleRows.value.length, 2)
+  workspace.filterTerms.value.push({ column: 'member', termType: 'like', value: 'AUTO' })
+  assert.deepEqual(workspace.visibleRows.value.map(row => row.id), ['u2'])
+  assert.deepEqual(workspace.filterCounts.value, { all: 1, bound: 0, unbound: 1, invalid: 0 })
+  workspace.statusFilter.value = 'bound'
+  assert.equal(workspace.visibleRows.value.length, 0); assert.equal(workspace.stats.value.total, 4)
+  workspace.statusFilter.value = 'all'
+  assert.equal(workspace.visibleRows.value.length, 1)
+  workspace.filterTerms.value = [{ column: 'contact', termType: 'eq', value: '222' }, { column: 'platformUser', termType: 'like', value: 'u1', type: 'or' }]
+  assert.deepEqual(workspace.visibleRows.value.map(row => row.id), ['u1', 'u2'])
+  workspace.statusFilter.value = 'bound'
+  assert.deepEqual(workspace.visibleRows.value.map(row => row.id), ['u1'])
+  workspace.filterTerms.value = [{ column: 'department', termType: 'nin', value: ['2'] }]
+  assert.deepEqual(workspace.visibleRows.value.map(row => row.id), ['u3', 'u4'])
+  workspace.filterTerms.value = [{ column: 'member', termType: 'nlike', value: 'auto' }]
+  assert.deepEqual(workspace.visibleRows.value.map(row => row.id), ['u1', 'u3', 'u4'])
+  workspace.filterTerms.value = []
+  assert.equal(workspace.statusFilter.value, 'all'); assert.equal(workspace.visibleRows.value.length, 4)
+})
+
+test('drawer pagination and row editing reset when unified filter terms change', async () => {
+  const io = memberFixture(); const workspace = useWechatMembers(io.api)
+  await workspace.show(io.context)
+  const scope = vue.effectScope()
+  const drawer = scope.run(() => useWechatMembersDrawer(() => ({ ...Object.fromEntries(Object.entries(workspace).map(([key, value]) => [key, vue.unref(value)])), rows: workspace.visibleRows.value }), workspace.assign))
+  drawer.pagination.value.onChange(3, 20); drawer.edit('u3')
+  workspace.filterTerms.value = [{ column: 'member', termType: 'like', value: 'manual' }]
+  await vue.nextTick()
+  assert.equal(drawer.pagination.value.current, 1); assert.equal(drawer.editingUser.value, '')
+  assert.deepEqual(drawer.filterFields.value.map(field => field.dataIndex), ['member', 'platformUser', 'contact', 'department', 'mappingStatus'])
+  scope.stop()
+})
+
+test('department trees keep nested paths, deduplicate aliases and retain members without visible departments', () => {
+  const departments = [{ id: '1', name: '公司', children: [{ id: 2, name: '研发', children: [{ id: '3', name: '测试组' }] }, { id: '4', name: '运营' }, { id: '5', name: '空部门' }] }]
+  const members = [member('nested', '13800138000', undefined, { name: '测试成员', department: [3] }), member('shared', undefined, undefined, { department: ['2', '2', '4'] }), member('hidden', undefined, undefined, { department: ['invisible'] }), member('none', undefined, undefined, { department: [] })]
+  const source = structuredClone({ departments, members })
+  const build = keyword => buildWechatMemberTree(departments, members, id => id === 'shared', '未分组', keyword)
+  const flatten = nodes => nodes.flatMap(node => [node, ...flatten(node.children || [])])
+  const all = flatten(build(''))
+  assert.equal(all.filter(node => node.memberId === 'shared').length, 2)
+  assert.equal(all.filter(node => node.memberId === 'shared').every(node => node.disabled), true)
+  assert.equal(new Set(all.map(node => node.key)).size, all.length)
+  assert.equal(all.find(node => node.title === '公司').count, 2, 'department counts deduplicate multi-department members')
+  assert.equal(all.find(node => node.title === '未分组').count, 2)
+  assert.equal(all.some(node => node.title === '空部门'), false)
+  assert.equal(all.filter(node => node.kind === 'department').every(node => node.selectable === false), true)
+  assert.deepEqual(flatten(build('1380013')).map(node => node.title), ['公司', '研发', '测试组', '测试成员'])
+  assert.deepEqual(flatten(build('测试成员')).map(node => node.title), ['公司', '研发', '测试组', '测试成员'])
+  assert.deepEqual(flatten(build('研发')).filter(node => node.kind === 'member').map(node => node.memberId), ['nested', 'shared'])
+  assert.deepEqual(build('not found'), [])
+  assert.deepEqual(buildWechatMemberTree([], members, () => false, '未分组')[0].count, 4)
+  const expanded = wechatTreeExpandedKeys(build(''), 'nested')
+  assert.ok(all.filter(node => ['公司', '研发', '测试组'].includes(node.title)).every(node => expanded.includes(node.key)))
+  assert.deepEqual({ departments, members }, source)
+})
+
+test('unmatched platform users remain visible without members and missing users cannot be edited', async () => {
+  const io = memberFixture(); const workspace = useWechatMembers(io.api)
+  io.api.members = async () => []
+  io.setBindings([{ id: 'orphan', userId: 'missing-user', thirdPartyUserId: 'missing-member' }])
+  await workspace.show(io.context)
+  assert.equal(workspace.state.value, 'ready')
+  assert.equal(workspace.rows.value.length, 5)
+  assert.equal(workspace.visibleRows.value.length, 4)
+  assert.equal(workspace.canAutoMatch.value, false)
+  workspace.assign('missing-user', 'other')
+  assert.equal(workspace.dirty.value, false)
+  assert.equal(await workspace.unbind('orphan'), true)
+  assert.equal(workspace.rows.value.length, 4)
+})
+
+test('switching a saved member survives reload and failed replacement keeps the original relation and draft', async () => {
+  const io = memberFixture(); const workspace = useWechatMembers(io.api)
+  await workspace.show(io.context)
+  workspace.assign('u1', 'manual')
+  const bind = io.api.bind
+  io.api.bind = async () => { throw new Error('offline') }
+  assert.equal(await workspace.save(), false)
+  assert.equal(workspace.bindings.value[0].thirdPartyUserId, 'bound')
+  assert.equal(workspace.assignments.get('u1'), 'manual')
+  workspace.assign('u3', 'manual')
+  assert.equal(workspace.assignments.has('u3'), false)
+  io.api.bind = bind
+  assert.equal(await workspace.save(), true)
+  await workspace.reload()
+  assert.equal(workspace.bindings.value.length, 1)
+  assert.equal(workspace.assignments.get('u1'), 'manual')
+  assert.equal(workspace.memberUnavailable('bound', 'u3'), false)
+})
 
 test('member APIs preserve permission context, encode IDs, and use user details and POST binding', async () => {
   calls.length = 0

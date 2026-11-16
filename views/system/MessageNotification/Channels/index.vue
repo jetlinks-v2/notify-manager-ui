@@ -83,7 +83,7 @@
                     <section v-if="channelId === 'weixin:corpMessage'" class="notification-channels__members" :aria-label="t('messageNotification.members.section')">
                       <h3>{{ t('messageNotification.members.section') }}</h3>
                       <p>{{ t('messageNotification.members.sectionHelp') }}</p>
-                      <WechatMembersSummary v-if="canSyncMembers" :model="memberDrawer" @match="showMembers(true)">
+                      <WechatMembersSummary v-if="canSyncMembers" :model="memberDrawer" @match="autoMatchMembers" @reload="reloadMembers">
                         <j-permission-button size="small" :has-permission="[notificationPermissions.channels.bind]" :disabled="operationBusy || memberDrawer.state === 'loading'" @click="showMembers()">{{ t('messageNotification.members.manage') }} ›</j-permission-button>
                       </WechatMembersSummary>
                       <div v-else class="notification-page__actions">
@@ -110,7 +110,7 @@
     </EqualHeightColumns>
     <RobotConfigurationModal :model="robotModal" @close="robot.close" @save="robot.save" @change="robot.change" />
     <ChannelTestModal :model="testModel" @close="trial.close()" @recipient="trial.selectRecipient" @address="trial.setAddress" @validate="trial.validateRecipient" @retry-identity="trial.loadIdentity" @send="trial.send" @again="trial.again" @fix="fixTestConfiguration" @closed="afterTestClosed" />
-    <WechatMembersDrawer :model="memberDrawer" @close="closeMembers" @reload="reloadMembers" @save="members.save" @unbind="members.unbind" @assign="members.assign" @department="updateMemberDepartment" @search="updateMemberSearch" @match="members.autoMatch" @status="updateMemberStatus" @reset-filters="resetMemberFilters" />
+    <WechatMembersDrawer :model="memberDrawer" @close="closeMembers" @reload="reloadMembers" @save="members.save" @unbind="members.unbind" @assign="members.assign" @filter="updateMemberFilters" @match="members.autoMatch" @status="updateMemberStatus" @reset-filters="resetMemberFilters" />
     <JlConfirmDialog :open="memberDiscardOpen" :title="t('messageNotification.members.discardTitle')" :message="t('messageNotification.members.discardMessage')" :confirm-text="t('messageNotification.channels.leave')" :cancel-text="t('messageNotification.channels.stay')" @confirm="decideMemberDiscard(true)" @cancel="decideMemberDiscard(false)" @update:open="!$event && decideMemberDiscard(false)" />
     <a-modal v-if="channel" class="notification-channels__clear" :open="deleteOpen" :title="t('messageNotification.channels.clearTitle', { channel: clearChannelName })" :width="420" centered :closable="false" :mask-closable="false" :ok-text="t('messageNotification.channels.clearConfirm')" :cancel-text="t('messageNotification.common.cancel')" :ok-button-props="{ danger: true, disabled: operationBusy }" @ok="remove" @cancel="deleteOpen = false">
       <p class="notification-channels__clear-message">{{ clearMessage }}</p>
@@ -143,7 +143,7 @@ const {
   busy, dirty, canEdit, editing, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave,
   workspace, trial, testModel, fixTestConfiguration, afterTestClosed, refresh, save, remove, showSend, configurationVisible,
   catalog, directoryState, providerFeedback, channelTitle, help, helpOpen, toggleHelp, saveFields, focusField, activeHelpStep, sending, deleteOpen, clearChannelName, clearMessage, requestRemove,
-  members, memberDrawer, canSyncMembers, showMembers, closeMembers, reloadMembers, memberDiscardOpen, decideMemberDiscard, updateMemberDepartment, updateMemberSearch, updateMemberStatus, resetMemberFilters,
+  members, memberDrawer, canSyncMembers, showMembers, autoMatchMembers, closeMembers, reloadMembers, memberDiscardOpen, decideMemberDiscard, updateMemberFilters, updateMemberStatus, resetMemberFilters,
 } = useChannelsPage()
 </script>
 

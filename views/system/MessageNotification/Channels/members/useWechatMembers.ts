@@ -1,18 +1,20 @@
-import { computed, reactive, ref, shallowRef } from 'vue'
+import { computed, nextTick, reactive, ref, shallowRef } from 'vue'
 import { wechatMemberApi, loadMemberPlatformUsers, type WechatMemberApi, type WechatDepartment, type WechatMember, type MemberPlatformUser, type WechatMemberBinding } from '../../../../../api/notice/wechatMembers'
 import { classifyNotificationFailure, type NotificationLoadState } from '../../shared'
 import { bindingSignature, matchWechatMembers, memberBindingChanges } from './wechatMemberMatching'
+import { filterWechatMemberRows, memberStatusFilter, withMemberStatus, withoutMemberStatus, type MemberFilterTerm, type MemberStatusFilter } from './wechatMemberFilters'
 
 interface MemberContext { configId: string; permitted: () => boolean; clean: () => boolean }
-export type MemberStatusFilter = 'all' | 'bound' | 'unbound' | 'invalid'
+export type { MemberFilterTerm, MemberStatusFilter } from './wechatMemberFilters'
 
-/** Own the drawer's request lifetime and preview; no binding is written during sync/matching. */
+/** Own member snapshots, drawer previews and the channel's explicit match-and-save operation. */
 export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
   const open = ref(false)
   const configId = ref('')
   const state = ref<NotificationLoadState>('idle')
   const error = ref('')
   const busy = ref(false)
+  const autoMatching = ref(false)
   const saved = ref(false)
   const refreshRequired = ref(false)
   const departments = shallowRef<WechatDepartment[]>([])
@@ -21,9 +23,8 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
   const bindings = shallowRef<WechatMemberBinding[]>([])
   const assignments = reactive(new Map<string, string>())
   const manual = reactive(new Set<string>())
-  const departmentId = ref('')
-  const search = ref('')
-  const statusFilter = ref<MemberStatusFilter>('unbound')
+  const filterTerms = ref<MemberFilterTerm[]>(withMemberStatus([], 'unbound'))
+  const statusFilter = computed({ get: () => memberStatusFilter(filterTerms.value), set: (value: MemberStatusFilter) => { filterTerms.value = withMemberStatus(filterTerms.value, value) } })
   const matchCount = ref<number | undefined>()
   let context: MemberContext | undefined
   let version = 0
@@ -33,17 +34,18 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
   const dirty = computed(() => changes.value.length > 0)
   const canSave = computed(() => open.value && state.value === 'ready' && dirty.value && allowed() && !busy.value && !refreshRequired.value)
   // Keep orphaned bindings visible so unavailable counterparts can still be explicitly unbound.
-  const rows = computed(() => [...members.value, ...bindings.value
-    .filter(binding => !members.value.some(member => member.id === binding.thirdPartyUserId))
-    .map(binding => ({ id: binding.thirdPartyUserId, name: binding.providerName } as WechatMember))].map(member => {
-    const binding = bindings.value.find(item => item.thirdPartyUserId === member.id)
-    const userId = assignments.get(member.id)
-    const match = matches.value.get(member.id)
-    const memberAvailable = members.value.some(item => item.id === member.id)
-    const mappingStatus = !binding ? 'unbound' : !memberAvailable || !users.value.some(user => user.id === binding.userId) ? 'invalid' : 'bound'
-    const status = manual.has(member.id) && userId !== binding?.userId ? 'manual' : binding ? 'bound' : userId ? 'automatic' : match?.state === 'automatic' ? 'unmatched' : match?.state || 'unmatched'
-    const user = users.value.find(item => item.id === userId)
-    return { ...member, binding, userId, user, status, mappingStatus, memberAvailable }
+  const rows = computed(() => [...users.value, ...bindings.value
+    .filter(binding => !users.value.some(user => user.id === binding.userId))
+    .map(binding => ({ id: binding.userId } as MemberPlatformUser))].map(user => {
+    const binding = bindings.value.find(item => item.userId === user.id)
+    const memberId = assignments.get(user.id)
+    const member = members.value.find(item => item.id === memberId)
+    const userAvailable = users.value.some(item => item.id === user.id)
+    const memberAvailable = !!member
+    // Status reflects persisted validity until saving; draft replacements remain visible in the current filter.
+    const mappingStatus: Exclude<MemberStatusFilter, 'all'> = !binding ? 'unbound' : !userAvailable || !members.value.some(item => item.id === binding.thirdPartyUserId) ? 'invalid' : 'bound'
+    const status = memberId !== binding?.thirdPartyUserId ? manual.has(user.id) ? 'manual' : 'automatic' : binding ? 'bound' : 'unmatched'
+    return { id: user.id, user, binding, memberId, member, status, mappingStatus, memberAvailable, userAvailable }
   }))
   const stats = computed(() => ({
     total: rows.value.length,
@@ -51,42 +53,33 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
     unbound: rows.value.filter(row => row.mappingStatus === 'unbound').length,
     invalid: rows.value.filter(row => row.mappingStatus === 'invalid').length,
   }))
-  const searchedRows = computed(() => {
-    const ids = new Set<string>()
-    function collect(nodes: WechatDepartment[], inside = false) {
-      nodes.forEach(node => {
-        const selected = inside || String(node.id) === departmentId.value
-        if (selected) ids.add(String(node.id))
-        collect(node.children || [], selected)
-      })
-    }
-    collect(departments.value)
-    const keyword = search.value.trim().toLowerCase()
-    return rows.value.filter(row => (!departmentId.value || row.department?.some(id => ids.has(String(id))))
-      && (!keyword || [row.name, row.id, row.mobile, row.email, row.bizMail, row.user?.name, row.user?.username].some(value => value?.toLowerCase().includes(keyword))))
-  })
+  const searchedRows = computed(() => filterWechatMemberRows(rows.value, withoutMemberStatus(filterTerms.value), departments.value))
   const filterCounts = computed(() => ({ all: searchedRows.value.length,
     bound: searchedRows.value.filter(row => row.mappingStatus === 'bound').length,
     unbound: searchedRows.value.filter(row => row.mappingStatus === 'unbound').length,
     invalid: searchedRows.value.filter(row => row.mappingStatus === 'invalid').length,
   }))
-  const visibleRows = computed(() => searchedRows.value.filter(row => statusFilter.value === 'all' || row.mappingStatus === statusFilter.value))
+  const visibleRows = computed(() => filterWechatMemberRows(rows.value, filterTerms.value, departments.value))
   const canAutoMatch = computed(() => state.value === 'ready' && allowed() && !busy.value && !refreshRequired.value
-    && members.value.some(member => !assignments.has(member.id) && !manual.has(member.id)))
+    && members.value.length > 0 && users.value.some(user => !assignments.has(user.id) && !manual.has(user.id)))
+  const canAutoMatchAndSave = computed(() => !open.value && state.value === 'ready' && allowed() && !busy.value && !refreshRequired.value && (canAutoMatch.value || dirty.value))
 
   function resetAssignments() {
     assignments.clear()
     manual.clear()
-    bindings.value.forEach(binding => assignments.set(binding.thirdPartyUserId, binding.userId))
+    bindings.value.forEach(binding => assignments.set(binding.userId, binding.thirdPartyUserId))
     matchCount.value = undefined
   }
   /** Explicit matching only fills untouched, unassigned rows; manual choices and saved bindings win. */
   function autoMatch() {
     if (!canAutoMatch.value) return
+    applyMatches()
+  }
+  function applyMatches() {
     let count = 0
     matches.value.forEach((match, id) => {
-      if (match.userId && !assignments.has(id) && !manual.has(id) && !userUnavailable(match.userId, id)) {
-        assignments.set(id, match.userId)
+      if (match.userId && !assignments.has(match.userId) && !manual.has(match.userId) && !memberUnavailable(id, match.userId)) {
+        assignments.set(match.userId, id)
         count++
       }
     })
@@ -95,19 +88,19 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
     error.value = ''
     statusFilter.value = 'unbound'
   }
-  function userUnavailable(userId: string, memberId: string): boolean {
+  function memberUnavailable(memberId: string, userId: string): boolean {
     // Saved assignments remain reserved even while another row has a pending edit.
-    return bindings.value.some(binding => binding.userId === userId && binding.thirdPartyUserId !== memberId)
-      || [...assignments].some(([id, assigned]) => assigned === userId && id !== memberId)
+    return bindings.value.some(binding => binding.thirdPartyUserId === memberId && binding.userId !== userId)
+      || [...assignments].some(([id, assigned]) => assigned === memberId && id !== userId)
   }
-  function assign(memberId: string, userId?: string) {
-    if (!open.value || state.value !== 'ready' || !allowed() || busy.value || refreshRequired.value || !members.value.some(member => member.id === memberId)) return
-    if (userId && (!users.value.some(user => user.id === userId) || userUnavailable(userId, memberId))) { error.value = 'duplicate'; return }
-    const existing = bindings.value.find(binding => binding.thirdPartyUserId === memberId)
-    if (!userId && existing) assignments.set(memberId, existing.userId)
-    else if (userId) assignments.set(memberId, userId)
-    else assignments.delete(memberId)
-    manual.add(memberId)
+  function assign(userId: string, memberId?: string) {
+    if (!open.value || state.value !== 'ready' || !allowed() || busy.value || refreshRequired.value || !users.value.some(user => user.id === userId)) return
+    if (memberId && (!members.value.some(member => member.id === memberId) || memberUnavailable(memberId, userId))) { error.value = 'duplicate'; return }
+    const existing = bindings.value.find(binding => binding.userId === userId)
+    if (!memberId && existing) assignments.set(userId, existing.thirdPartyUserId)
+    else if (memberId) assignments.set(userId, memberId)
+    else assignments.delete(userId)
+    manual.add(userId)
     saved.value = false
     error.value = ''
   }
@@ -149,9 +142,7 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
     context = next
     configId.value = next.configId
     open.value = true
-    departmentId.value = ''
-    search.value = ''
-    statusFilter.value = 'unbound'
+    filterTerms.value = withMemberStatus([], 'unbound')
     if (!allowed()) { state.value = 'forbidden'; return }
     if (!reuse) await reload()
   }
@@ -174,8 +165,8 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
     if (ticket !== version || !allowed()) return
     bindings.value = latest
     changedIds.forEach(id => {
-      const binding = latest.find(item => item.thirdPartyUserId === id)
-      if (binding) assignments.set(id, binding.userId)
+      const binding = latest.find(item => item.userId === id)
+      if (binding) assignments.set(id, binding.thirdPartyUserId)
       else assignments.delete(id)
       manual.delete(id)
     })
@@ -185,22 +176,37 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
   }
   async function save(): Promise<boolean> {
     if (!canSave.value) return false
+    return saveChanges(false)
+  }
+  async function autoMatchAndSave(): Promise<boolean> {
+    if (!canAutoMatchAndSave.value) return false
+    return saveChanges(true)
+  }
+  async function saveChanges(matchFirst: boolean): Promise<boolean> {
     const ticket = version
-    const payload = changes.value
     busy.value = true
+    autoMatching.value = matchFirst
     error.value = ''
     saved.value = false
     try {
+      // Publish loading before matching; keep the same lock through conflict check, write and readback.
+      if (matchFirst) {
+        await nextTick()
+        if (ticket !== version || !allowed()) return false
+        applyMatches()
+      }
+      const payload = changes.value
+      if (!payload.length) return false
       if (!await unchanged(ticket)) return false
-      if (payload.some(change => userUnavailable(change.userId, change.thirdPartyUserId))) { error.value = 'duplicate'; return false }
+      if (payload.some(change => memberUnavailable(change.thirdPartyUserId, change.userId))) { error.value = 'duplicate'; return false }
       await api.bind(configId.value, payload)
       if (ticket !== version || !allowed()) return false
-      await refreshBindings(ticket, payload.map(change => change.thirdPartyUserId))
+      await refreshBindings(ticket, payload.map(change => change.userId))
       return ticket === version && saved.value
     } catch (failure) {
       if (ticket === version) error.value = refreshRequired.value ? 'refresh' : classifyNotificationFailure(failure)
       return false
-    } finally { if (ticket === version) busy.value = false }
+    } finally { if (ticket === version) { busy.value = false; autoMatching.value = false } }
   }
   async function unbind(bindingId: string): Promise<boolean> {
     const binding = bindings.value.find(item => item.id === bindingId)
@@ -213,7 +219,7 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
       if (!await unchanged(ticket)) return false
       await api.unbind(bindingId)
       if (ticket !== version || !allowed()) return false
-      await refreshBindings(ticket, [binding.thirdPartyUserId])
+      await refreshBindings(ticket, [binding.userId])
       return ticket === version && saved.value
     } catch (failure) {
       if (ticket === version) error.value = refreshRequired.value ? 'refresh' : classifyNotificationFailure(failure)
@@ -237,8 +243,8 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
     assignments.clear()
     manual.clear()
     members.value = []; users.value = []; bindings.value = []; departments.value = []
-    error.value = ''; saved.value = false; busy.value = false; refreshRequired.value = false; matchCount.value = undefined
+    error.value = ''; saved.value = false; busy.value = false; autoMatching.value = false; refreshRequired.value = false; matchCount.value = undefined
   }
-  return { open, configId, state, error, busy, saved, refreshRequired, departments, members, users, bindings, assignments, departmentId, search, statusFilter, matchCount, stats, filterCounts, rows, visibleRows, dirty, canSave, canAutoMatch, autoMatch, userUnavailable, assign, reload, prepare, show, save, unbind, close }
+  return { open, configId, state, error, busy, autoMatching, saved, refreshRequired, departments, members, users, bindings, assignments, filterTerms, statusFilter, matchCount, stats, filterCounts, rows, visibleRows, dirty, canSave, canAutoMatch, canAutoMatchAndSave, autoMatch, autoMatchAndSave, memberUnavailable, assign, reload, prepare, show, save, unbind, close }
 }
 export type WechatMembersWorkspace = ReturnType<typeof useWechatMembers>

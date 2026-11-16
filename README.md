@@ -72,6 +72,33 @@ node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/sy
 
 ## 通知渠道统一试发
 
+### 修复计划：试发复用已有消息模板（待确认，未实施）
+
+目标：所有已有“发送测试消息”入口的渠道统一增加消息模板下拉选择，复用用户选择的已有消息模板，仅临时填写本次接收人和模板变量；渠道不再维护或依赖另一套 `configuration.testTemplate`。该问题属于 M 级单模块交互改造，owning module 为 `runtime-ui/modules/notify-manager-ui`。下文原有试发行为仍代表当前实现，本计划确认并实施后回写同一节。
+
+- 范围：`Channels/testing/` 的弹窗、状态与参数组装，`Channels/useChannelsPage.ts` 的权限及跳转，`Channels/channelSchema.ts`、`Channels/configuration/channelMetadata.ts` 的测试字段注入和校验，以及相关三语文案、测试与本节说明。覆盖邮件、阿里云短信、阿里云语音、钉钉工作通知、企业微信、钉钉群机器人和 Webhook 七类现有适配器，全部先选消息模板，再发送测试。
+- 边界：仅修改运行时通知模块。复用现有模板查询、详情和发送接口；不新增测试渠道、测试模板实体、后端接口或存储字段，不修改运营端 `ui/`。群机器人和 Webhook 沿用现有固定发送目标，微信服务号及未支持提供商不因本次调整新增测试入口；不通过本次修复自动扩大角色授权，不清理线上历史配置。
+
+实施步骤：
+
+1. 所有支持试发的渠道打开弹窗后，按当前 `configId`、`type`、`provider` 查询有权读取的已保存消息模板，提供必选的模板下拉框，支持检索和分页。明确选择模板后读取详情及变量定义；不默认选择列表首项，不跨渠道账号取模板，也不使用页面预览中的未保存默认内容。
+2. 复用 `api/notice/messageNotification.ts` 的 `queryTemplates`、`getSendTemplate` 以及模块现有模板归一化、变量类型与校验规则。邮件标题 / 正文、工作通知 / 机器人内容、Webhook 请求内容、语音类型与模板编号、短信签名等均来自所选模板；按渠道展示摘要及变量输入，不再回退到前端内置测试文案。兼容已有 `ttsCode` 及缺省 TTS 类型，无法判定或缺少真实模板信息时指向消息模板编辑入口。
+3. 对需要指定接收人的渠道，沿用 `ChannelTestModal.vue` 的“发给自己 / 其他接收人”交互；群机器人和 Webhook 展示当前渠道的固定目标，不增加个人接收人输入。模板为空时提示“暂无可用消息模板”，有权限者可进入消息模板页配置并返回刷新；加载失败、无权读取和确实为空分别反馈。关闭、换模板、换渠道或权限失效时清空本次参数并忽略旧请求返回值；发送期间防重复提交。
+4. `channelTestAdapter.ts` 从所选模板构造独立的本次发送载荷，使用已有 `sendInline`（`POST /notifier/{configId}/_send`）。模板内容、供应商编号与变量定义沿用实际数据；个人接收人由本次明确输入覆盖，群或请求地址按当前渠道固定目标约束。按提供商清除可能恢复旧接收人、切换目标应用 / 地址或扩大广播范围的模板字段、变量默认值与表达式，不继承业务订阅关系。只在用户点击发送时发请求，不保存或修改源模板、渠道配置。
+5. 移除语音、短信对 `configuration.testTemplate` 的读取、必填检查、字段注入和“回渠道补齐模板”的跳转。清理无调用方的专用测试设置编辑代码与文案。历史 `testTemplate` 作为已有配置原样保留，但不再影响试发和普通渠道保存，也不自动迁成业务模板。
+6. 所有试发入口同时检查渠道读取、发送及现有模板查询权限；权限不足时明确提示原因，不将其当成“没有模板”，也不修改菜单权限映射自动授予读取能力。模板查询继续使用现有资产权限过滤，发送前复核当前渠道和所选模板身份、参数及权限。
+
+风险与待确认点：方案范围已按用户补充统一到七类现有试发适配器。邮件等原先可不选模板的快捷试发也将要求已有消息模板；只有渠道试发权限的账号还需已有的模板查询权限。当前工作区没有 `notify-manager` 控制器源码，现有前端接口和已检查的语音 / 短信 provider 是本方案证据；实施时需逐类核对实际模板详情响应、资产权限、固定目标及发送载荷兼容性。真实供应商投递需要测试账号联调，不将内存夹具通过等同于真实发送成功。
+
+验证计划（尚未执行）：
+
+- 覆盖七类渠道均展示并必选模板、发送内容来自所选模板，以及“渠道无 `testTemplate`、已有合法消息模板即可试发”的原始场景；覆盖 TTS / 语音文件、短信签名与变量、旧 `ttsCode`、模板缺失 / 删除 / 无权、多个渠道账号隔离、个人接收人覆盖、机器人群与 Webhook 地址不被模板替换、参数类型校验、请求迟到、重复提交和源模板不变。回归未支持渠道的入口策略及普通配置保存。
+- 从 `runtime-ui/` 执行 `node --test modules/notify-manager-ui/tests/messageNotification{Channels,Trial,Contracts,Integration,Templates}.test.mjs`，更新并运行模块内 `tests/messageNotificationBrowser/trials.mjs`，覆盖中英日和 390px 窄屏。浏览器夹具记录发送请求，断言无渠道 / 模板写入请求。
+- 从 `runtime-ui/` 执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，区分既有诊断与本次新增问题；对改动 Vue 文件执行 `node ../ui/scripts/check-ui-style.mjs --files <改动文件>`。模块没有独立 lint 脚本。
+- 从 `runtime-ui/jetlinks-web-core/` 执行 `node --max_old_space_size=16384 ../node_modules/vite/bin/vite.js build --outDir /tmp/notification-template-trial-build -- --module-name notify-manager-ui`，并执行 `git diff --check`。实施后的结果和未验证项回填本节。
+
+### 当前实现与已有验证
+
 阿里云语音页保留顶部“发送测试消息”，仅隐藏配置表单中的“渠道测试”分组、测试模板及样例参数编辑。试发读取已保存的 `configuration.testTemplate`，沿用统一弹窗和发送接口；缺少模板类型、模板编号或样例参数无效时提示缺项并禁止发送。编辑地域、AccessKey 等字段时原样保留历史测试配置，不要求补齐隐藏字段。
 
 本次 S 级修复已落实（2026-11-13）：仅在 `runtime-ui/modules/notify-manager-ui` 恢复 `Channels/testing/channelTestAdapter.ts` 的 `voice:aliyun` 适配，在 `channelTestConfig.ts` 恢复发送前校验但不注册语音配置编辑能力；`useChannelConfiguration.ts` 同时过滤服务端可能返回的语音 `testTemplate` 字段。复用当前页面和弹窗，不修改后端接口、业务模板、权限、运营端 `ui/` 或测试设置编辑组件。
@@ -284,6 +311,40 @@ Quill 验证（2026-11-12）：统一消息通知回归 **254/254 通过**，其
 页面验证：9200 真实登录态默认失败列表正常，聚合修复后显示全部 184、成功 56、失败 128、重试中 0、已取消 0。隔离夹具检查跨页勾选，下载并读取 CSV，确认只包含两页已选的两条记录；检查历史全文 / 原因、对应模板和渠道跳转。390px 窄屏抽屉宽 358px、右边界为 390px，无页面横向溢出；表格允许内部滚动。未发送真实通知或写入真实业务数据，完整账号权限矩阵仍待环境验收。本地原型浏览器预览受策略限制，对照依据为原 HTML 的 `recRow/recTable/recDrawer/recSeg/recBulk` 与事件源码。
 
 ### 企业微信试发与成员对应
+
+#### 成员摘要与自动保存（2026-11-13，已实现）
+
+`/system/notification/channels?channel=weixin:corpMessage` 的成员摘要、外部自动匹配与管理抽屉已按确认方案调整，owning module 为 `runtime-ui/modules/notify-manager-ui`。本节的自动匹配与筛选行为继续沿用；平台用户行与部门成员树以“按部门选择企微成员”一节为准。历史方案中的对应方式后端持久化仍未实施。
+
+1. `Channels/members/WechatMembersSummary.vue` 与 `Channels/index.vue` 参考图 1，将真实的“已对应 / 总人数、未对应、已失效”放在紧凑描边摘要栏左侧，失效数量用语义色强调，“自动匹配”和“管理对应”右对齐，窄屏允许换行。最新统计按平台用户计数，与抽屉行及状态保持一致；现有接口只提供成员绑定和企微部门树，没有部门对应关系，暂不展示无法核实的“部门已对应 / 总数”。
+2. `Channels/members/useWechatMembers.ts` 与 `Channels/useChannelsPage.ts` 复用同一自动匹配规则及保存流程：外部按钮完成匹配后直接保存，无需打开抽屉；loading 从开始匹配持续到绑定保存及汇总回读结束，期间禁止重复提交及冲突操作。抽屉内继续支持匹配后检查、手动调整和统一保存。保持手机号 / 邮箱唯一匹配、已有绑定与手动选择保护、写前冲突检查和请求失效保护；没有新匹配不发送空保存，失败提供可见反馈，写成功但回读失败时仅重试读取。
+3. `WechatMembersDrawer.vue`、`useWechatMembersDrawer.ts` 及 `wechatMemberFilters.ts` 复用 `@jetlinks-web-core/components/ConditionFilter`，以字段 schema 承载成员、平台用户、联系方式、部门及对应状态查询。使用组件原始 `terms` 在已完整加载的成员快照上筛选，支持大小写不敏感文本匹配、部门子树与 AND / OR 分组；快捷状态共用同一条件模型，数量仅排除状态条件计算。状态使用 `a-button-group`，按图 2 的设备列表样例展示“全部 / 已对应 / 未对应 / 已失效”、数量、状态点和选中态；筛选变更后回到第一页。移除常驻“刷新成员”按钮，仅在读取失败或冲突反馈中提供“重新读取”，外部保存成功但回读失败时不再提示未保存的手动草稿。
+4. `locales/lang/{zh,en,ja}.json` 同步新的操作说明、无新增匹配及恢复文案；`tests/messageNotificationWechat.test.mjs` 和 `tests/messageNotificationBrowser/wechatMembers.mjs` 覆盖保存与筛选流程。展示组件仅承载布局与事件，异步编排和筛选由 hook / 纯函数负责，修改的 Vue 文件均未超过 300 行。
+
+边界：仅修改运行时通知模块，沿用现有接口、权限和手机号 / 邮箱唯一匹配；未增加部门对应业务、姓名兜底匹配或截图示例数据，运营端、后端及其他通知渠道行为保持原范围。
+
+验证结果：在 `runtime-ui/` 执行 `node --test modules/notify-manager-ui/tests/messageNotificationWechat.test.mjs modules/notify-manager-ui/tests/messageNotificationChannels.test.mjs modules/notify-manager-ui/tests/messageNotificationIntegration.test.mjs`，92/92 通过，覆盖直接匹配保存、全过程 busy、无新增结果、保存失败与回读失败、重复点击、权限与配置切换、条件筛选 / 状态计数 / 分页重置。三处 Vue 的样式门禁、三语 698 个通知键一致性及 `git diff --check` 通过；本模块没有独立 lint 脚本，不据此宣称完整 lint 通过。
+
+模块目录执行 `SMOKE_PLAYWRIGHT_MODULE=../../../ui/node_modules/playwright node tests/messageNotificationBrowser/wechatMembers.mjs`（可按本机 Playwright 安装位置替换环境变量），7 组浏览器验收通过：真实组件下的 loading / 禁用与直接保存、core 搜索及按钮组联动、抽屉预览后保存、失败重试、回读失败仅重读、无新增结果不写入与权限禁用。1440px 桌面及中英日 390px 抽屉验证通过，表格与状态组内部滚动可达，页面无横向溢出，浏览器异常与外部请求均为 0；截图和报告位于 `/tmp/wechat-members-browser/`。所有写入仅作用于内存夹具，未改真实成员关系；真实账号的权限矩阵及后端保存联调仍需通过开发服务的原页面验收。
+
+在 `runtime-ui/` 执行 `pnpm exec vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，修改前后均为 195 条既有诊断（忽略行号后无新增或移除），完整类型检查尚未通过，修复既有诊断后需重跑。在 `runtime-ui/jetlinks-web-core/` 执行 `node --max_old_space_size=16384 ../node_modules/vite/bin/vite.js build --outDir /tmp/wechat-members-build-final -- --module-name notify-manager-ui` Vue 编译与模块生产构建通过（19.40 秒，保留既有分块体积等构建告警），最终日志为 `/tmp/wechat-members-build-final.log`；定向测试与类型日志为 `/tmp/wechat-members-{tests-final,types-before,types-final}.log`。未执行提交或推送。
+
+操作栏选择弹层（2026-11-13，已实现）：`WechatMembersDrawer.vue` 的“平台用户”列始终以文本展示姓名和账号。操作栏继续使用 Ant Popover，弹层内容已由下节的企微部门成员树替代原平台用户列表；选择后关闭，点击外部或 Escape 可收起。已保存关系通过确认解除，尚未保存的选择可以清除；统一保存期间关闭弹层并禁用操作。
+
+本次验证：`node --test tests/messageNotificationWechat.test.mjs` 23/23 通过；上述浏览器脚本扩充为 9 组并全部通过，新增操作栏锚定、文本列不出现控件、姓名 / 账号搜索及空结果、清除草稿、切换行、外部点击 / Escape、保存期间禁用与 390px 弹层边界检查。浏览器异常与外部请求均为 0，写入仍仅使用内存夹具；截图和报告在 `/tmp/wechat-picker-browser/`。Vue 样式门禁、三语 699 个通知键一致性和 `git diff --check` 通过；模块仍无独立 lint 脚本。沿用上述类型检查命令，195 条既有诊断无新增或移除，完整类型检查仍待既有问题修复。模块生产构建使用上述命令将 `--outDir` 替换为 `/tmp/wechat-picker-build`，23.52 秒通过，保留既有构建告警。日志为 `/tmp/wechat-picker-{tests,types,build,browser}.log`；真实后端保存联调尚未执行。
+
+#### 按部门选择企微成员（2026-11-13，已实现）
+
+抽屉以平台用户为行，依次展示“平台用户、企业微信成员、对应方式、对应状态、操作”；平台用户列保持文本，操作栏“选择成员 / 更换”打开“部门 → 子部门 → 企微成员”树。汇总、快捷状态与分页按平台用户计数；没有对应的用户也完整展示，失效平台用户的历史绑定保留只读行及解除入口。外部自动匹配直接保存、抽屉草稿统一保存与写前冲突检查继续沿用。
+
+`Channels/members/WechatMembersDrawer.vue` / `useWechatMembersDrawer.ts` 使用 core `AutoTree` 承载成员单选；`wechatMemberTree.ts` 根据现有部门树和成员 `department` 字段组树，支持姓名、部门、手机号及已有邮箱 / ID 搜索。搜索部门显示其子树，搜索成员保留并展开祖先，清空恢复；部门不可绑定。多部门成员在各所属部门显示但共用成员身份、占用状态及选中态，部门人数按成员去重。没有可见部门的成员归入“未分组成员”，空结果显示空态。弹层有独立高度约束，展开后使用虚拟树内部滚动，适配窄屏。
+
+`useWechatMembers.ts`、`wechatMemberMatching.ts` 的草稿改为“平台用户 ID → 企微成员 ID”，`wechatMemberFilters.ts` 同步用户与成员字段筛选。已保存和其他行待保存的成员均不可重复选择；旧成员在更换保存完成前保持占用，保存后释放。同一用户更换成员携带原绑定 ID 调用现有 `_bind`，回读后仍只有一条关系，不增加前端先解绑请求。接口契约已核对 `modules/authentication-manager/src/main/java/org/jetlinks/pro/auth/web/ThirdPartyUserController.java#bind` 与 `entity/ThirdPartyUserBindEntity.java#generateId`，后端按 type/provider/user 生成绑定身份。本次仅修改运行时通知模块，未改后端、运营端、匹配规则、权限或历史对应方式持久化。
+
+验证结果：在模块目录执行 `node --test tests/messageNotificationWechat.test.mjs tests/messageNotificationChannels.test.mjs tests/messageNotificationIntegration.test.mjs`，95/95 通过，覆盖平台用户全集、原绑定替换与重新加载、手动保护、占用释放、失效关系、树路径 / 搜索 / 多部门去重 / 无部门兜底及原有自动保存与异常恢复。`SMOKE_PLAYWRIGHT_MODULE=/Volumes/SSD/work/jetlinks/cloud.jetlinks/ui/node_modules/playwright SMOKE_OUTPUT=/tmp/wechat-tree-browser node tests/messageNotificationBrowser/wechatMembers.mjs` 的 9 组验收通过，包含部门展开与内部滚轮、搜索三类字段、单选 / 清除 / 更换、保存期间禁用、390px 树弹层和中英日抽屉；浏览器异常及外部请求均为 0。全部写入仅作用于内存夹具，真实账号权限和后端写入联调仍待环境验收。
+
+在 `runtime-ui/` 执行 `node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/system/MessageNotification/Channels/members/WechatMembersDrawer.vue` 通过，三语 704 个通知键一致，`git diff --check` 通过；模块无独立 lint 脚本。`pnpm exec vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json` 仍为 195 条既有诊断，忽略行号后无新增或移除，完整类型检查尚未通过。在 core 目录执行 `node --max_old_space_size=16384 ../node_modules/vite/bin/vite.js build --outDir /tmp/wechat-tree-build-final -- --module-name notify-manager-ui` 构建通过（25.41 秒，保留既有构建告警）。日志为 `/tmp/wechat-tree-{tests,types-final,build-final,browser}.log`，截图与报告在 `/tmp/wechat-tree-browser/`。
+
 
 #### 管理对应抽屉优化计划（2026-11-12，待确认）
 

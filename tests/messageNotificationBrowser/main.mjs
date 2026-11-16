@@ -69,6 +69,7 @@ if (flags.has('clearMessages')) {
 }
 
 const memberBindings = [{ id: 'binding-existing', userId: 'platform-existing', thirdPartyUserId: 'corp-existing', providerName: '已有对应成员' }]
+if (flags.has('wechatInvalid')) memberBindings.push({ id: 'binding-invalid', userId: 'platform-other', thirdPartyUserId: 'corp-unavailable', providerName: '不可见成员' })
 const platformMembers = [
   { id: 'platform-existing', name: '已对应账号', username: 'existing' },
   { id: 'platform-phone', name: '手机号对应账号', username: 'phone', telephone: '13800138000' },
@@ -82,6 +83,10 @@ const corporateMembers = [
   { id: 'corp-email', name: '邮箱匹配成员', email: 'MEMBER@example.test', department: ['other'] },
   { id: 'corp-manual', name: '待手动匹配成员', department: ['team'] },
 ]
+if (flags.has('wechatTree')) {
+  corporateMembers.find(member => member.id === 'corp-manual').department = ['team', 'other']
+  corporateMembers.push({ id: 'corp-intern', name: '子部门成员', department: ['intern'], mobile: '13900001234' }, { id: 'corp-loose', name: '未分组成员甲', department: ['missing'] })
+}
 if (flags.has('wechat')) {
   configs.push({ id: 'corp-fixture', name: '企微隔离配置', type: 'weixin', provider: 'corpMessage', configuration: { corpId: 'fixture-corp', agentId: '1000002', corpSecret: 'fixture-only-secret' } })
   templates.push({ id: 'corp-template', name: '企业微信测试模板', type: 'weixin', provider: 'corpMessage', configId: 'corp-fixture', template: { message: '隔离测试 ${message}' }, variableDefinitions: [{ id: 'message', name: '消息内容', type: 'string', required: true }, { id: 'toUser', name: '企微成员 ID', type: 'string' }] })
@@ -244,11 +249,12 @@ Object.assign(messageNotificationApi, {
 })
 // Replace every member endpoint before mounting; no test member can reach real services.
 Object.assign(wechatMemberApi, {
-  departments: async id => { record('memberDepartments', id); return [{ id: 'all', name: '全部测试部门', children: [{ id: 'team', name: '研发组' }, { id: 'other', name: '运营组' }] }] },
+  departments: async id => { record('memberDepartments', id); return [{ id: 'all', name: '全部测试部门', children: [{ id: 'team', name: '研发组', ...(flags.has('wechatTree') ? { children: [{ id: 'intern', name: '实习组' }] } : {}) }, { id: 'other', name: '运营组' }] }] },
   members: async id => { record('members', id); return clone(corporateMembers) },
   users: async (pageIndex, pageSize) => { record('memberUsers', { pageIndex, pageSize }); return { data: clone(platformMembers.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize)), total: platformMembers.length } },
-  bindings: async id => { record('memberBindings', id); return clone(memberBindings) },
+  bindings: async id => { if (flags.has('wechat') && writeDelay) await new Promise(resolve => setTimeout(resolve, writeDelay)); record('memberBindings', id); return clone(memberBindings) },
   bind: async (configId, changes) => {
+    if (writeDelay) await new Promise(resolve => setTimeout(resolve, writeDelay))
     record('bindMembers', { configId, changes })
     changes.forEach(change => {
       const index = memberBindings.findIndex(binding => binding.id === change.id)
