@@ -162,7 +162,7 @@ node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/sy
 
 剩余风险：后端 `notify-manager`（`/notify/channel/**` 属主）源码不在当前工作区，无法核实或修改。从未保存过模板的占位业务在后端默认是什么状态、启用后是否自带站内信渠道、`defaultSubscribed` / `defaultNotifyChannels` 的取值都取决于后端。本次前端只保证“首次保存即启用”和“入口可见、可一键启用”；“没人进过这个页面也默认开启”需在后端处理。首次保存若后端忽略载荷中的 `state`，以后端返回的主题记录为准。
 
-Commit：pending。
+Commit：`79bbbea`（本地 `2.20`，未推送）。提交快照验证（2026-11-16）：提交只包含本节改动，不含工作区内其他未提交改动；将提交内容导出到 `runtime-ui/` 下的临时目录运行同一组测试，356/359 通过，失败的 3 项为 `messageNotificationIntegration.test.mjs` 中读取真实 `modules/` 目录的菜单 / 路由聚合用例，临时目录不在 `modules/` 下，判断与导出位置有关而非本次改动；这 3 项在工作区原位置通过。日志 `/tmp/notification-business-toggle-commit-snapshot-test.log`。
 
 ### 业务节点联动与模板预览
 
