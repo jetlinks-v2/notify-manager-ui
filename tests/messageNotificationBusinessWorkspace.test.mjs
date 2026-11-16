@@ -182,7 +182,7 @@ test('a real business template wins over prototypes and single-channel saving pr
   assert.equal(workspace.dirty.value, false)
 })
 
-test('first save sends only this channel with a disabled topic and writes back the returned actual ID', async () => {
+test('first save sends only this channel with an enabled topic and writes back the returned actual ID', async () => {
   const io = mockApi([config(), config('http', 'webhook', 'http')])
   const workspace = useTemplateWorkspace(permissions(), io.api)
   const selected = business(null)
@@ -193,7 +193,7 @@ test('first save sends only this channel with a disabled topic and writes back t
   assert.equal(await workspace.saveTemplate(), true)
   const request = io.calls.find(([name]) => name === 'saveBusinessTemplates')
   assert.equal(request[1], 'alarm-device')
-  assert.equal(request[2].provider.state, 'disabled')
+  assert.equal(request[2].provider.state, 'enabled')
   assert.equal(request[2].provider.id, undefined)
   assert.equal(request[2].channels.length, 1)
   assert.equal(request[2].channels[0].channel.channelProvider, 'notifier-email')

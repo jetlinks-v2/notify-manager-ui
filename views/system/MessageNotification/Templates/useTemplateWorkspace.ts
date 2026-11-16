@@ -337,7 +337,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     }
   }
 
-  /** Existing topics use the single-channel transaction; first save creates one explicitly disabled topic, without enable. */
+  /** Existing topics use the single-channel transaction; first save creates one enabled topic so personal subscriptions become available immediately. */
   async function saveBusiness(current: TemplateDraftEntry, payload: ReturnType<typeof buildTemplatePayload>, fingerprint: string) {
     const selected = business.value
     const channel = currentChannel.value
@@ -352,7 +352,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
       applySavedBusiness(current, saved, fingerprint, updated, channel, submittedEnabled)
     } else {
       const response = await api.saveBusinessTemplates(selected.provider, {
-        provider: { ...cloneNotificationValue(selected), id: undefined, channels: undefined, state: 'disabled' }, channels: [item],
+        provider: { ...cloneNotificationValue(selected), id: undefined, channels: undefined, state: 'enabled' }, channels: [item],
       })
       const saved = response.channels.find(value => value.channel.channelProvider === channelProviderFor(channel))
       if (!response.provider?.id || !saved?.template) throw new NotificationRequestError('error', response)

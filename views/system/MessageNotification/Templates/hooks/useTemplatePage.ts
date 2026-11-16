@@ -228,14 +228,15 @@ export function useTemplatePage() {
     if (busy.value || !canConfigure.value) return
     configurationNavigation.open(identity(business.value), undefined, { channel: channelId.value, configId: draft.value?.configId })
   }
-  /** 显式启停与模板保存分离；占位业务启用后只接受唯一的实际记录。 */
+  /** 显式启停与模板保存分离；占位业务启用后只接受唯一的实际记录，目录回读一致后才提示成功。 */
   async function toggleBusiness() {
     const selected = business.value
     if (!selected || !canManage.value || busy.value) return
+    const enable = !businessEnabled.value
     changingBusiness.value = true
     businessActionState.value = 'loading'
     try {
-      await messageNotificationApi.setBusinessEnabled(identity(selected), !businessEnabled.value)
+      await messageNotificationApi.setBusinessEnabled(identity(selected), enable)
       await directory.reloadDirectory()
       const matches = directory.businessTypes.value.filter(item => selected.id ? item.id === selected.id : item.provider === selected.provider && !!item.id)
       if (matches.length === 1) {
@@ -244,6 +245,9 @@ export function useTemplatePage() {
         await router.replace({ query: selectionQuery(channelId.value, matches[0]) })
       }
       businessActionState.value = directory.directoryState.value === 'ready' && matches.length !== 1 ? 'unavailable' : directory.directoryState.value
+      if (businessActionState.value === 'ready' && !disposed) {
+        onlyMessage(t(enable ? 'messageNotification.templates.enableBusinessSucceeded' : 'messageNotification.templates.disableBusinessSucceeded'), 'success')
+      }
     } catch (error) { businessActionState.value = classifyNotificationFailure(error) }
     finally { changingBusiness.value = false }
   }

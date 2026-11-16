@@ -940,7 +940,8 @@ test('first save adopts actual topic and template IDs, preserves the sibling dra
     await settlePage()
     const created = current.api.calls.find(([name]) => name === 'saveBusinessTemplates')
     assert.equal(created[1], 'aiComplianceAlarm')
-    assert.equal(created[2].provider.state, 'disabled')
+    assert.equal(created[2].provider.state, 'enabled')
+    assert.equal(page.businessEnabled.value, true)
     assert.equal(created[2].channels.length, 1)
     assert.equal(created[2].channels[0].channel.channelProvider, 'notifier-email')
     assert.equal(page.business.value.id, 'saved-aiComplianceAlarm')
@@ -1154,6 +1155,40 @@ test('explicit activation keeps the prototype draft and adopts the real business
     assert.equal(current.page.draft.value.type, 'email')
     assert.equal(current.page.draft.value.subject, 'Unsaved before activation')
     assert.equal(current.page.channelEnabled.value, true)
+    assert.equal(current.page.businessEnabled.value, true)
+    assert.equal(current.page.businessActionState.value, 'ready')
+    assert.deepEqual(current.messages, [['messageNotification.templates.enableBusinessSucceeded', 'success']])
+  } finally { current.close() }
+})
+
+test('menu disable turns off an enabled business without confirmation and reports failures without a success hint', async () => {
+  let directory = [{ id: 'actual-scope-id', provider: 'scene', name: 'Scene', state: 'enabled', channels: [] }]
+  let fail = false
+  const writes = []
+  const current = await mountTemplatePage({ topicProvider: 'actual-scope-id' }, () => true, {
+    queryTemplateDirectory: async () => directory,
+    getBusinessTemplate: async () => undefined,
+    setBusinessEnabled: async (id, enabled) => {
+      writes.push([id, enabled])
+      if (fail) throw { status: 500 }
+      directory = [{ ...directory[0], state: enabled ? 'enabled' : 'disabled' }]
+    },
+  })
+  try {
+    assert.equal(current.page.businessEnabled.value, true)
+    await current.page.toggleBusiness()
+    await settlePage()
+    assert.deepEqual(writes, [['actual-scope-id', false]])
+    assert.equal(current.page.businessEnabled.value, false)
+    assert.equal(current.page.confirmation.open, false)
+    assert.deepEqual(current.messages, [['messageNotification.templates.disableBusinessSucceeded', 'success']])
+    fail = true
+    await current.page.toggleBusiness()
+    await settlePage()
+    assert.deepEqual(writes.at(-1), ['actual-scope-id', true])
+    assert.equal(current.page.businessEnabled.value, false)
+    assert.equal(current.page.businessActionState.value, 'error')
+    assert.equal(current.messages.length, 1)
   } finally { current.close() }
 })
 

@@ -15,6 +15,10 @@
             <template #titleExtra>
               <a-tag v-if="dirty" color="processing">{{ t('messageNotification.templates.unsaved') }}</a-tag>
               <a-tag v-else-if="draft">{{ t(isDefault ? 'messageNotification.templates.defaultContent' : entry?.existing ? 'messageNotification.templates.configured' : 'messageNotification.templates.unconfigured') }}</a-tag>
+              <a-tag v-if="business" class="message-templates__business-state" :color="businessEnabled ? 'success' : undefined"
+                :title="t(businessEnabled ? 'messageNotification.templates.businessEnabled' : 'messageNotification.templates.businessDisabled')">
+                {{ t(businessEnabled ? 'messageNotification.templates.businessStateEnabled' : 'messageNotification.templates.businessStateDisabled') }}
+              </a-tag>
             </template>
             <template #actions>
               <a-button v-if="draft && !editing && detailState === 'ready'" type="primary" :disabled="!canEdit || busy" @click="startEditing">
@@ -27,14 +31,17 @@
                 <a-button type="text" :aria-label="t('messageNotification.templates.more')"><AIcon type="EllipsisOutlined" /></a-button>
                 <template #overlay>
                   <a-menu>
-                    <a-menu-item v-if="business" key="restore" :disabled="!canRestoreDefault || !canEdit || busy" @click="restoreDefault">
-                      <AIcon type="UndoOutlined" /> {{ t('messageNotification.templates.restoreDefault') }}
-                    </a-menu-item>
+                    <template v-if="business">
+                      <a-menu-item key="restore" :disabled="!canRestoreDefault || !canEdit || busy" @click="restoreDefault">
+                        <AIcon type="UndoOutlined" /> {{ t('messageNotification.templates.restoreDefault') }}
+                      </a-menu-item>
+                      <a-menu-item key="business-state" :disabled="!canManage || busy" @click="toggleBusiness">
+                        <AIcon :type="businessEnabled ? 'StopOutlined' : 'CheckCircleOutlined'" />
+                        {{ t(businessEnabled ? 'messageNotification.templates.disableBusiness' : 'messageNotification.templates.enableBusiness') }}
+                      </a-menu-item>
+                    </template>
                     <a-menu-item v-else key="create" :disabled="!canAdd || !canQuery || busy" @click="createTemplate">
                       <AIcon type="PlusOutlined" /> {{ t('messageNotification.templates.create') }}
-                    </a-menu-item>
-                    <a-menu-item key="reload" :disabled="!canQuery || busy" @click="reload">
-                      <AIcon type="ReloadOutlined" /> {{ t('messageNotification.templates.reload') }}
                     </a-menu-item>
                   </a-menu>
                 </template>

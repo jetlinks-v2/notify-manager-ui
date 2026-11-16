@@ -115,7 +115,7 @@ export const messageNotificationApi = {
     if (!result?.template) throw new NotificationRequestError('error', result)
     return result
   },
-  /** First save creates one disabled topic and its current channel in the backend transaction. */
+  /** First save creates one enabled topic and its current channel in the backend transaction. */
   async saveBusinessTemplates(topicProvider: string, payload: NoticeProviderTemplateInfo): Promise<NoticeProviderTemplateInfo> {
     const result = await checked<NoticeProviderTemplateInfo>(request.put(`/notify/channel/${idSegment(topicProvider)}/_save-with-templates`, payload))
     if (!result?.provider || !nonemptyString(result.provider.id) || !Array.isArray(result.channels)) throw new NotificationRequestError('error', result)

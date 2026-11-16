@@ -139,6 +139,31 @@ node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/sy
 
 ## 系统通知模板原型对齐
 
+### 业务启停入口与默认开启
+
+目标：消息模板页恢复业务（如设备告警）的启停入口，但不放进左侧目录树；新业务默认开启，避免首次使用的管理员不知道要手动启用，导致个人中心无法订阅、站内信收不到该类告警。入口位置按用户确认（2026-11-13）放在“更多”菜单，状态显示在标题行，禁用不加二次确认。owning module `runtime-ui/modules/notify-manager-ui`。
+
+- 更多菜单：`views/system/MessageNotification/Templates/index.vue` 在业务模式下于“恢复默认”后增加“启用 / 禁用”项，按 `businessEnabled` 切换文案与图标，禁用条件沿用 `!canManage || busy`，点击直接调用 `toggleBusiness`。菜单中的“刷新”项已在业务 / 独立模板两种模式下移除，独立模板模式仍保留“新增模板”，菜单不会为空；`reload` 及目录、加载失败提示里的“刷新 / 重试”按钮保留。
+- 状态标签：标题行 `DetailHeader#titleExtra` 在“默认 / 已保存 / 未配置”标签旁增加 `a-tag.message-templates__business-state`，仅业务模式显示“已启用”（`color="success"`）/“已禁用”（默认色），`title` 分别带出 `businessEnabled` / `businessDisabled` 长说明（未启用时为“业务未启用，个人中心暂不可订阅”）。
+- 启停反馈：`Templates/hooks/useTemplatePage.ts#toggleBusiness` 在接口成功且目录回读到唯一真实记录（`businessActionState === 'ready'`）后提示 `onlyMessage(..., 'success')`；失败仍走既有 `businessActionState` 错误提示，不出现成功提示。
+- 首次保存默认启用：`Templates/useTemplateWorkspace.ts#saveBusiness` 对 `id == null` 的占位业务首次保存时，载荷主题级 `provider.state` 改为 `enabled`；`api/notice/messageNotification.ts#saveBusinessTemplates` 注释同步。渠道级 `channel.state` 的保留逻辑（`workspace/businessTemplates.ts#buildBusinessTemplateItem`）不变。
+- 文案：`messageNotification.templates.enableBusiness` / `disableBusiness` 仅被本页与浏览器夹具使用，直接改值为“启用 / 禁用”（Enable / Disable、有効化 / 無効化）；新增 `businessStateEnabled`、`businessStateDisabled`（标签短文案）及 `enableBusinessSucceeded`、`disableBusinessSucceeded`（成功提示）。中英日各 1092 个键一致，其中 `messageNotification.*` 各 708 个，无重复键。
+- 测试：`tests/messageNotificationBusinessWorkspace.test.mjs`、`tests/messageNotificationTemplates.test.mjs` 的首次保存断言改为 `provider.state === 'enabled'` 并断言保存后 `businessEnabled` 为真；启用用例补成功提示断言；新增“菜单禁用直接停用、失败无成功提示”用例。`tests/messageNotificationBrowser/navigation.mjs` 原先点击已移除的“启用业务”按钮，改为经“更多”菜单启用 / 禁用，并核对状态标签文案、`title`、成功色和菜单中无“刷新”。
+- 不做：不改左树，不改 `ui/`、后端、菜单与权限映射、core，不调整渠道级 `state` 开关，不在页面加载时自动批量调用启用接口，不发送真实通知。
+
+验证（2026-11-14，命令在 `runtime-ui/` 执行，日志前缀 `/tmp/notification-business-toggle-`）：
+
+- `node --test modules/notify-manager-ui/tests/messageNotification*.test.mjs`：368/368 通过（`-node-test.log`）。
+- `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`：改动前后均为 195 条既有诊断，忽略行列号对比新增 0、移除 0（`-tsc-before.log` / `-tsc-after.log`）；完整类型检查仍未通过，需修复既有问题后重跑。
+- `node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/system/MessageNotification/Templates/index.vue` 通过；模块 `git diff --check` 通过。
+- 在 `jetlinks-web-core/` 执行 `node --max_old_space_size=16384 ../node_modules/vite/bin/vite.js build --outDir /tmp/notification-business-toggle-build -- --module-name notify-manager-ui`：构建通过（22.87 秒，保留既有 chunk / CSS 告警，`-build.log`）。
+- 浏览器（9200 内存夹具，所有 XHR 被拦截）：业务模式菜单为“恢复默认 / 启用”，标签“默认 / 已禁用”；独立模板模式菜单仅“新增模板”且无状态标签。`navigation.mjs` 中经菜单启用后路由采用 `actual-scene`、标签变为“已启用”并带成功色，再经菜单禁用后标签恢复“已禁用”，`setBusinessEnabled` 调用依次为 `true`、`false`。截图 `/tmp/notification-business-toggle-browser/{business,standalone}-menu.png`，日志 `-browser-navigation.log`。
+- 未通过 / 未验证：`navigation.mjs` 在本节步骤之后的既有步骤失败，按 `getByRole('button', { name: '阿里云短信', exact: true })` 查找渠道按钮超时——渠道导航按钮的可访问名称已是“名称 · 状态”，与本次改动无关，未修改；该脚本其后的步骤本次未执行。未调用真实后端写入或发送通知。
+
+剩余风险：后端 `notify-manager`（`/notify/channel/**` 属主）源码不在当前工作区，无法核实或修改。从未保存过模板的占位业务在后端默认是什么状态、启用后是否自带站内信渠道、`defaultSubscribed` / `defaultNotifyChannels` 的取值都取决于后端。本次前端只保证“首次保存即启用”和“入口可见、可一键启用”；“没人进过这个页面也默认开启”需在后端处理。首次保存若后端忽略载荷中的 `state`，以后端返回的主题记录为准。
+
+Commit：pending。
+
 ### 业务节点联动与模板预览
 
 渠道模板配置平铺（2026-11-13）：`Templates/components/channels/{DingTalk,Wechat,Voice,Sms}TemplateEditor.vue` 已移除“更多模板字段 / 发送选项”的折叠包装，将原有配置字段直接放在标题、正文或服务商模板内容之前；`components/TemplateEditor.vue` 的缺绑定必要选择项也前移到渠道编辑器之前。字段值、必填 / 禁用条件、远程选项及变量插入沿用现有实现，邮件和 Webhook 已平铺，无须增加配置项；不恢复已移除的通用“更多设置”。
@@ -208,7 +233,7 @@ Quill 验证（2026-11-12）：统一消息通知回归 **254/254 通过**，其
 #### 业务入口与个人订阅联动
 
 - `hooks/useTemplateBusinessNavigation.ts` 同时识别 `business`、`topicProvider`、`channelProvider` 与 AI 告警会话参数，优先按实际记录 ID 定位。相同业务代码对应多个资产范围时要求选择具体记录；业务缺失、无权或绑定丢失不回退到其他模板。渠道入口的 `businessSelection=first-alarm` 只在首次落地使用，随后固定实际告警身份。
-- 模板保存与业务启停分离。首次保存可创建停用业务；“启用业务 / 停用业务”继续显式调用 `/notify/channel/{业务标识或实际ID}/enable`、`disable`。启用占位业务后刷新目录并采用唯一的真实记录 ID，保留编辑草稿。编辑时可单独调整渠道状态，取消恢复原状态；订阅人关系变量、渠道授权与兄弟绑定继续保留。
+- 模板保存与业务启停分离。占位业务首次保存即创建启用业务；“更多”菜单中的“启用 / 禁用”继续显式调用 `/notify/channel/{业务标识或实际ID}/enable`、`disable`。启用占位业务后刷新目录并采用唯一的真实记录 ID，保留编辑草稿。编辑时可单独调整渠道状态，取消恢复原状态；订阅人关系变量、渠道授权与兄弟绑定继续保留。
 - 历史独立模板可作为当前业务的内容来源，`useTemplateWorkspace.ts#importTemplate` 保留当前托管目标 ID，不覆盖历史源记录。新建独立邮件仍可选择 `shared/builtinEmailTemplates.ts` 中的内置内容，预览样例和 `builtinKey` 不进入保存载荷。
 - 只读账号可以查询独立模板，但不请求要求保存权限的 `/notify/channel/all-for-save`。个人中心沿用 `/notify/channel/all` 与个人订阅接口判断可用性，表头“去配置”按真实业务记录导航；模板菜单新增 / 编辑动作保留 `notify-channel:query/save` 映射。部署后需要同步菜单并刷新角色登录态。
 - 缺少发送配置时通过 core 的 `useNotificationConfigNavigation` 在独立标签打开渠道配置，返回后只刷新配置候选并保留模板草稿。原 AI 告警会话仅在对应业务模板保存成功后收到回传；独立模板保存不会触发该回传。
@@ -217,7 +242,7 @@ Quill 验证（2026-11-12）：统一消息通知回归 **254/254 通过**，其
 
 只保存当前业务、当前渠道。切换渠道保留各渠道草稿；切换业务或离页时有修改则确认放弃或继续编辑。取消编辑只还原当前渠道；恢复默认只替换当前草稿，保存后生效，取消保留原配置。保存及上传期间阻止渠道 / 业务路由切换，保存失败保留输入。无配置仍可查看和编辑，保存须选择可读且 type/provider 精确匹配的真实配置。
 
-业务目录 `id == null` 时，首次保存复用 `PUT /notify/channel/{业务provider}/_save-with-templates`，只发送当前一项 `{channel, template}`，主题保持 `disabled`，不传伪造主题 ID，不调用 enable。成功后接收实际 `provider.id`，后续改用单渠道接口；保留渠道 state、grant、接收人变量及其他渠道绑定。钉钉企业消息与机器人共用后端 `notifier-dingTalk`，保存另一提供商会替换该绑定。
+业务目录 `id == null` 时，首次保存复用 `PUT /notify/channel/{业务provider}/_save-with-templates`，只发送当前一项 `{channel, template}`，主题以 `enabled` 创建，不传伪造主题 ID，不另行调用 enable。成功后接收实际 `provider.id`，后续改用单渠道接口；保留渠道 state、grant、接收人变量及其他渠道绑定。钉钉企业消息与机器人共用后端 `notifier-dingTalk`，保存另一提供商会替换该绑定。
 
 受控资产下首次创建不按业务代码幂等；超时、网关错误或成功但未返回有效身份时，结果视为未知并锁住重复保存，必须刷新目录核对后再操作。并发首次创建及资产 Scope 仍受既有服务端能力限制。业务不存在 / 无权、配置不可读、绑定模板丢失和确实未配置分别反馈，不将失败降为默认内容。业务目录仍受现有 `/all-for-save` 权限约束，后端权限扩展不在本次范围。
 
