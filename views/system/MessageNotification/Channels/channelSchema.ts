@@ -19,7 +19,7 @@ export const channelConfigFields: Record<string, ChannelField[]> = {
   'email:embedded': [{ key: 'host', required: true }, { key: 'port', kind: 'number' }, { key: 'sender' }, { key: 'username' }, { key: 'password', kind: 'secret' }],
   'dingTalk:dingTalkMessage': [{ key: 'appKey', required: true }, { key: 'agentId' }, { key: 'appSecret', kind: 'secret', required: true }],
   'dingTalk:dingTalkRobotWebHook': [{ key: 'url', kind: 'secret', required: true }, { key: 'secret', kind: 'secret' }],
-  'weixin:corpMessage': [{ key: 'corpId', required: true }, { key: 'agentId' }, { key: 'corpSecret', kind: 'secret', required: true }],
+  'weixin:corpMessage': [{ key: 'corpId', required: true }, { key: 'corpSecret', kind: 'secret', required: true }],
   'voice:aliyun': [{ key: 'regionId', options: aliyunRegionElements }, { key: 'accessKeyId', required: true }, { key: 'secret', kind: 'secret', required: true }],
   'sms:aliyunSms': [{ key: 'regionId', options: aliyunRegionElements }, { key: 'accessKeyId', required: true }, { key: 'secret', kind: 'secret', required: true }],
   'webhook:http': [{ key: 'url', kind: 'url', required: true }],

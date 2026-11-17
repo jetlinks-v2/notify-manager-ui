@@ -742,6 +742,33 @@ test('metadata preserves unknown fields, false/zero defaults, constraints and se
   assert.throws(() => channelConfigPayload(editable, baseline, definition))
 })
 
+test('WeChat keeps the original two credentials with old or extended metadata and preserves saved values', () => {
+  const channel = notificationChannels.find(item => item.id === 'weixin:corpMessage')
+  const originalMetadata = clone(channelMetadata[channel.id])
+  originalMetadata.properties = originalMetadata.properties.filter(property => property.id !== 'agentId')
+  const extendedMetadata = clone(originalMetadata)
+  extendedMetadata.properties.push({ id: 'agentId', name: 'AgentId', description: 'Application ID', valueType: { type: 'string', expands: { required: true } } })
+  for (const metadata of [originalMetadata, extendedMetadata]) {
+    const definition = channelDefinition(channel, metadata)
+    assert.deepEqual(definition.fields.map(field => field.key), ['corpId', 'corpSecret'])
+    const help = channelHelp(channel, definition, key => locale[key] || key)
+    assert.deepEqual(help.sections.map(section => section.id), ['corpId', 'corpSecret'])
+    const fresh = { id: 'new-corp', name: 'WeChat', type: 'weixin', provider: 'corpMessage', configuration: { corpId: 'corp', corpSecret: 'new-secret' } }
+    assert.deepEqual(validateChannelDraft(fresh, undefined, definition), [])
+    assert.deepEqual(channelConfigPayload(fresh, undefined, definition).configuration, fresh.configuration)
+    for (const legacy of [{}, { agentId: 'saved-agent', extension: { preserved: true } }]) {
+      const baseline = { ...fresh, configuration: { ...fresh.configuration, ...legacy } }
+      const draft = createChannelConfigDraft(baseline, definition)
+      assert.equal(draft.configuration.corpSecret, '')
+      draft.configuration.corpId = 'updated-corp'
+      assert.deepEqual(validateChannelDraft(draft, baseline, definition), [])
+      assert.deepEqual(channelConfigPayload(draft, baseline, definition).configuration, { ...baseline.configuration, corpId: 'updated-corp' })
+      draft.configuration.corpSecret = 'replacement-secret'
+      assert.equal(channelConfigPayload(draft, baseline, definition).configuration.corpSecret, 'replacement-secret')
+    }
+  }
+})
+
 test('backend additions remain visible alongside explicit channel test settings', () => {
   const known = notificationChannels.find(item => item.id === 'dingTalk:dingTalkMessage')
   const metadata = clone(channelMetadata[known.id])
@@ -1632,7 +1659,7 @@ test('document anchors follow actual credential IDs, extensions and SMTP control
   const corp = notificationChannels.find(channel => channel.id === 'weixin:corpMessage')
   const help = channelHelp(corp, channelDefinition(corp, channelMetadata[corp.id]), translate)
   assert.equal(channelHelpSection(help, 'config:corpId'), 'corpId')
-  assert.equal(channelHelpSection(help, 'config:agentId'), 'weixinAgentId')
+  assert.equal(channelHelpSection(help, 'config:agentId'), undefined)
   assert.equal(channelHelpSection(help, 'config:corpSecret'), 'corpSecret')
   assert.equal(channelHelpSection(help, 'config:missing'), undefined)
   assert.equal(channelHelpSection(help, ''), undefined)

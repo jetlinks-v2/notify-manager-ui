@@ -9,6 +9,10 @@
 
 ## 消息渠道图文说明与常驻编辑
 
+企业微信渠道 `weixin:corpMessage` 仅编辑 `corpId`、`corpSecret`，说明面板对应两节原始文字与截图。`Channels/channelSchema.ts` 与 `configuration/channelMetadata.ts` 不再注入 AgentId，并排除服务端元数据中的该输入及其校验；`configuration/channelHelpGuides.ts`、`channelHelpImages.ts` 移除误用的模板 AgentId 说明和图片引用，三语页头说明同步。保存仍保留历史 AgentId、扩展配置和未重新输入的密钥。`useChannelsPage.ts` 仅在已有配置包含有效 AgentId 时保留企业微信渠道试发入口，避免双字段配置进入无法补齐参数的试发流程。后端与业务模板不变。
+
+双字段修复验证（2026-11-17）：在模块目录运行 `node --test tests/messageNotificationChannels.test.mjs tests/messageNotificationTrial.test.mjs tests/messageNotificationContracts.test.mjs`，109/109 通过，覆盖旧/新元数据、新建与更新、密钥及历史字段保留。按下述浏览器命令运行 `channelHelp.mjs` 和 `trials.mjs`（`SMOKE_OUTPUT=/tmp/jetlinks-corp-fields/{help,trials}`），8 + 11 组通过，覆盖三语双字段、原图、聚焦定位、保存、试发入口和窄屏；页面错误与业务网络请求为 0。三语资源检查及 `git diff --check` 通过，无独立 lint 脚本。按下述构建命令输出到 `/tmp/jetlinks-corp-fields/build`，模块构建通过（44.02 秒）；类型检查前后均为 196 条诊断，忽略行列无新增或移除，完整类型检查仍未通过，既有问题修复后需重跑下述 `vue-tsc` 命令。日志位于 `/tmp/jetlinks-corp-fields-*.log`，截图与报告位于 `/tmp/jetlinks-corp-fields/`。真实账号保存与消息投递未验证。
+
 右侧说明面板精简：移除面板顶部“配置说明”标题与“收起”按钮，正文常驻展示；同步清理收起状态及事件，保留字段聚焦定位和等宽布局。实现入口为 `Channels/configuration/ChannelHelp.vue`、`Channels/index.vue` 与 `Channels/useChannelsPage.ts`，模块目录执行 `node --test tests/messageNotificationChannels.test.mjs`，61/61 通过；按下述浏览器命令复验 `channelHelp.mjs` 与 `robotSigning.mjs`，16/16 组通过，页面错误与真实业务请求为 0。定向样式检查及 `git diff --check` 通过；按下述构建命令将输出目录改为 `/tmp/jetlinks-channel-help/body-only/build`，模块构建通过（39.64 秒）。类型检查仍为 196 条既有诊断，忽略行列后无新增或移除。报告、截图及日志位于 `/tmp/jetlinks-channel-help/body-only/` 与 `/tmp/jetlinks-channel-help/body-only-*.log`；工作区无独立 lint 脚本。
 
 运行时消息渠道的桌面配置工作区扣除间距后，表单与图文说明各占 50%，分别滚动，1024px 及以下上下排列。主页面始终显示表单控件，保存后仍可继续编辑，字段底部辅助文案归入右侧说明；校验错误、必填标记及凭据占位提示继续显示。底部仅提供整表“保存”。输入和失焦只改草稿，保留权限、凭据保护、提交锁与未保存离开提醒。钉钉群机器人只调整主页面列表 / 说明布局，编辑弹窗保持原样。
@@ -17,7 +21,7 @@
 
 页头按钮调整历史（右侧当前已常驻展示）：已删除 `Channels/index.vue` 页头的“配置说明”按钮，沿用右侧说明默认展开与收起行为；收起后重新进入页面可恢复默认展开。同步调整已有浏览器夹具，`channelHelp.mjs` 8 组、`robotSigning.mjs` 8 组、`trials.mjs` 10 组通过，覆盖八类渠道、机器人列表及空状态、三语与窄屏按钮移除、说明展示与收起恢复。机器人首次运行末尾发生开发服务模块初始化错误，单独复跑通过；最终报告无页面错误或真实业务请求。按下述命令验证：模块构建通过（35.75 秒），定向样式检查与 `git diff --check` 通过，无独立 lint 脚本；类型检查前后均为 196 条既有诊断，无新增或移除，完整类型检查仍未通过。证据位于 `/var/folders/kd/xy867r053zj3phhskmvc8vx40000gn/T/jetlinks-remove-channel-help-222bf69k/`；未操作真实渠道配置或发送消息。
 
-八类说明恢复自历史提交 `c5f0050645057ba0385296e32c9ac4731a9190f0`，12 张截图打包在 `assets/notice/doc/`，图片预留比例并支持预览。补充当前 AgentId、邮件端口 / 加密方式等说明，修正旧 SMTP 与地域描述；邮箱供应商认证提示随当前地址显示在右侧。中英日文案同步。未知提供商保留元数据说明。说明聚焦联动使用实际字段键和稳定段落 ID，仅显式聚焦时滚动右栏并高亮；输入与手动阅读不反复滚动，重复聚焦可重新定位，窄屏仅高亮。
+八类说明恢复自历史提交 `c5f0050645057ba0385296e32c9ac4731a9190f0`，11 张配置说明截图引用自 `assets/notice/doc/`，图片预留比例并支持预览。补充钉钉 AgentId、邮件端口 / 加密方式等说明，修正旧 SMTP 与地域描述；邮箱供应商认证提示随当前地址显示在右侧。中英日文案同步。未知提供商保留元数据说明。说明聚焦联动使用实际字段键和稳定段落 ID，仅显式聚焦时滚动右栏并高亮；输入与手动阅读不反复滚动，重复聚焦可重新定位，窄屏仅高亮。
 
 实现入口：`views/system/MessageNotification/Channels/configuration/` 的 `channelHelpGuides.ts`、`channelHelpImages.ts`、`channelHelp.ts`、`ChannelHelp.vue` 与 `useChannelHelpNavigation.ts` 承载文档及导航；`Channels/index.vue`、`ChannelConfiguration.vue`、`useChannelConfiguration.ts`、`useChannelWorkspace.ts` 和 `useChannelsPage.ts` 接入布局、常驻编辑及整表提交。新增 / 修改权限复用 auth store 的响应式检查，已打开的表单在权限撤销后立即锁定。不修改共享组件、后端接口、保存载荷、消息模板或试发业务规则。
 

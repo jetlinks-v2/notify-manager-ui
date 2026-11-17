@@ -23,9 +23,12 @@ function fieldGroup(channel: NotificationChannel, key: string): string {
 /** Preserve backend extensions and add the explicitly supported channel fields, labels and secret semantics. */
 export function channelDefinition(channel: NotificationChannel, metadata: NotificationConfigMetadata): ChannelDefinition {
   const known = channelConfigFields[channel.id] ?? []
-  // AgentId is part of the channel contract; older running services may still return two-field metadata.
-  const properties: NotificationConfigProperty[] = ['weixin:corpMessage', 'dingTalk:dingTalkMessage'].includes(channel.id) && !metadata.properties.some(property => property.id === 'agentId')
-    ? [...metadata.properties, { id: 'agentId', name: 'AgentId', valueType: { type: 'string' } }] : metadata.properties
+  // Enterprise WeChat edits only its original credentials; saved AgentId values remain in the configuration map.
+  let properties = channel.id === 'weixin:corpMessage'
+    ? metadata.properties.filter(property => property.id !== 'agentId') : metadata.properties
+  if (channel.id === 'dingTalk:dingTalkMessage' && !properties.some(property => property.id === 'agentId')) {
+    properties = [...properties, { id: 'agentId', name: 'AgentId', valueType: { type: 'string' } }]
+  }
   // Test settings are preserved by the existing configuration map, without changing business template defaults.
   const testProperties: NotificationConfigProperty[] = channelTestSettingsKinds[channel.id] && !properties.some(property => property.id === 'testTemplate')
     ? [...properties, { id: 'testTemplate', name: 'testTemplate', valueType: { type: 'object' } }] : properties
@@ -46,7 +49,7 @@ export function channelDefinition(channel: NotificationChannel, metadata: Notifi
     }
   })
   if (['email:embedded', 'weixin:corpMessage'].includes(channel.id)) {
-    const order = channel.id === 'weixin:corpMessage' ? ['corpId', 'agentId', 'corpSecret'] : ['host', 'port', 'properties', 'username', 'password', 'sender']
+    const order = channel.id === 'weixin:corpMessage' ? ['corpId', 'corpSecret'] : ['host', 'port', 'properties', 'username', 'password', 'sender']
     fields.sort((left, right) => (order.includes(left.key) ? order.indexOf(left.key) : order.length) - (order.includes(right.key) ? order.indexOf(right.key) : order.length))
   }
   return {

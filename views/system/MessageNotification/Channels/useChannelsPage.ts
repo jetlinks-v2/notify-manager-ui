@@ -115,7 +115,12 @@ export function useChannelsPage() {
   const configurationVisible = computed(() => !!entry.value && ![state.value, detailState.value].some(value => ['loading', 'unavailable', 'forbidden', 'error'].includes(value)))
   const webhookPreviewModel = useWebhookPreview(entry, t)
   const { leaveOpen, decideLeave } = useChannelLeaveGuard(computed(() => hasUnsavedChanges.value || members.dirty.value), operationBusy)
-  const trialSupported = computed(() => !!channelTestAdapters[channelId.value])
+  const trialSupported = computed(() => {
+    const adapter = channelTestAdapters[channelId.value]
+    // The two-field WeChat form cannot supply AgentId for an inline trial; only saved legacy values can.
+    if (channelId.value === 'weixin:corpMessage') return !!adapter && !!entry.value?.baseline && !adapter.missing(entry.value.baseline.configuration).length
+    return !!adapter
+  })
   const canTrial = computed(() => trialSupported.value && canQuery.value && permissions.action.value && !!entry.value?.baseline?.id && !entry.value?.isNew && !dirty.value && configurationVisible.value)
   const canSyncMembers = computed(() => canQuery.value && permissions.bind.value && channelId.value === 'weixin:corpMessage' && !!entry.value?.baseline?.id && !entry.value?.isNew && !dirty.value)
   const configurationOptions = computed(() => configs.value.map(item => ({ value: item.id, label: `${item.name} · ${item.id}` })))
@@ -215,7 +220,7 @@ export function useChannelsPage() {
   function fixTestConfiguration() {
     if (sending.value) return
     const key = channelTestSettingsKinds[channelId.value] ? 'testTemplate'
-      : ['weixin:corpMessage', 'dingTalk:dingTalkMessage'].includes(channelId.value) ? 'agentId'
+      : channelId.value === 'dingTalk:dingTalkMessage' ? 'agentId'
         : channelId.value === 'email:embedded' ? 'host' : 'url'
     pendingTestField.value = { configId: selectedConfigId.value || '', key }
     trial.close()

@@ -36,27 +36,6 @@ export const channelHelpGuides: Record<string, ChannelHelpGuide> = {
         ]
       },
       {
-        "id": "weixinAgentId",
-        "fields": [
-          "agentId"
-        ],
-        "titleKey": "messageNotification.channels.document.titles.weixinAgentId",
-        "blocks": [
-          {
-            "type": "text",
-            "key": "messageNotification.channels.document.weixin.agentId.description"
-          },
-          {
-            "type": "text",
-            "key": "messageNotification.channels.document.weixin.agentId.behavior"
-          },
-          {
-            "type": "image",
-            "image": "corpAgentId"
-          }
-        ]
-      },
-      {
         "id": "corpSecret",
         "fields": [
           "corpSecret"

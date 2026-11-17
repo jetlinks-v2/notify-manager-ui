@@ -12,7 +12,7 @@ const report = { checks: [], screenshots: [], errors: [], blockedRequests: [] }
 const browser = await chromium.launch({ headless: true })
 await mkdir(output, { recursive: true })
 const cases = [
-  ['weixin:corpMessage', [['corpId','corpId'], ['agentId','weixinAgentId'], ['corpSecret','corpSecret']], 3],
+  ['weixin:corpMessage', [['corpId','corpId'], ['corpSecret','corpSecret']], 2],
   ['weixin:officialMessage', [['AppId','appId'], ['AppSecret','officialSecret']], 2],
   ['dingTalk:dingTalkMessage', [['appKey','appKey'], ['agentId','dingTalkAgentId'], ['appSecret','appSecret']], 3],
   ['dingTalk:dingTalkRobotWebHook', [], 3],
@@ -106,6 +106,12 @@ try {
       assert.equal(await editButton(page, await t(page, 'messageNotification.channels.helpTitle')).count(), 0)
       assert.equal(await doc.getByRole('heading', { name: await t(page, 'messageNotification.channels.helpTitle'), exact: true }).count(), 0)
       assert.equal(await editButton(doc, await t(page, 'messageNotification.channels.collapseHelp')).count(), 0)
+      if (id === 'weixin:corpMessage') {
+        assert.equal(await page.locator('.channel-configuration input').count(), 2)
+        assert.deepEqual(await doc.locator('[data-help-section]').evaluateAll(sections => sections.map(section => section.dataset.helpSection)), ['corpId', 'corpSecret'])
+        assert.doesNotMatch(await doc.innerText(), /AgentId/i)
+        assert.doesNotMatch(await page.locator('.channel-configuration').innerText(), /AgentId/i)
+      }
       await split(page)
     }
     await screenshot(page, id.replace(':', '-'))

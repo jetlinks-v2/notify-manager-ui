@@ -160,6 +160,26 @@ try {
     pass('Email, phone and exact-configuration bindings distinguish missing data from failed reads and allow retry')
 
   }
+  const corpPage = await open('&missingTestSettings', trialRecords.find(record => record.provider === 'corpMessage'))
+  for (const language of ['zh', 'en', 'ja']) {
+    await corpPage.evaluate(language => { window.__notificationSmoke.i18n.global.locale.value = language }, language)
+    const testLabel = await corpPage.evaluate(() => window.__notificationSmoke.i18n.global.t('messageNotification.channels.test'))
+    assert.equal(await button(corpPage, testLabel).count(), 0, 'two-field configurations do not offer a trial that requires a hidden AgentId')
+    assert.equal(await corpPage.locator('.channel-configuration input').count(), 2)
+    assert.doesNotMatch(await corpPage.locator('.channel-configuration').innerText(), /AgentId/i)
+    assert.deepEqual(await corpPage.locator('[data-help-section]').evaluateAll(sections => sections.map(section => section.dataset.helpSection)), ['corpId', 'corpSecret'])
+  }
+  await corpPage.locator('.channel-configuration input').first().fill('updated-corp-fixture')
+  await saveChannelDraft(corpPage)
+  await corpPage.locator('.notification-channels__footer .ant-btn-primary:disabled:not(.ant-btn-loading)').waitFor()
+  assert.deepEqual(await corpPage.evaluate(() => window.__notificationSmoke.configs.find(row => row.provider === 'corpMessage').configuration), { corpId: 'updated-corp-fixture', corpSecret: 'fixture-only' })
+  await corpPage.setViewportSize({ width: 390, height: 844 })
+  assert.equal(await corpPage.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
+  await snapshot(corpPage, 'corp-two-fields-mobile')
+  assert.deepEqual(await sends(corpPage), [])
+  await corpPage.close()
+  pass('WeChat shows only corpId and corpSecret in three languages, saves without AgentId and hides unavailable trials')
+
   const voicePage = await open('', trialRecords[5])
   for (const language of ['zh', 'en', 'ja']) {
     await voicePage.evaluate(language => { window.__notificationSmoke.i18n.global.locale.value = language }, language)
