@@ -454,7 +454,7 @@
   "messageNotification.channels.fields.port": "SMTP ポート",
   "messageNotification.channels.fields.sender": "送信者",
   "messageNotification.channels.fields.username": "ユーザー名",
-  "messageNotification.channels.fields.password": "パスワードまたは認証コード",
+  "messageNotification.channels.fields.password": "パスワード",
   "messageNotification.channels.fields.appKey": "AppKey",
   "messageNotification.channels.fields.appSecret": "AppSecret",
   "messageNotification.channels.fields.url": "通知 URL",

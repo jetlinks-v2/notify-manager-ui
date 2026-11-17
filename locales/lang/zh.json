@@ -454,7 +454,7 @@
   "messageNotification.channels.fields.port": "SMTP 端口",
   "messageNotification.channels.fields.sender": "发件人",
   "messageNotification.channels.fields.username": "用户名",
-  "messageNotification.channels.fields.password": "密码或授权码",
+  "messageNotification.channels.fields.password": "密码",
   "messageNotification.channels.fields.appKey": "应用 AppKey",
   "messageNotification.channels.fields.appSecret": "应用 AppSecret",
   "messageNotification.channels.fields.url": "通知 URL",

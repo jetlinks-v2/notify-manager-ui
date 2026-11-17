@@ -454,7 +454,7 @@
   "messageNotification.channels.fields.port": "SMTP port",
   "messageNotification.channels.fields.sender": "Sender",
   "messageNotification.channels.fields.username": "Username",
-  "messageNotification.channels.fields.password": "Password or authorization code",
+  "messageNotification.channels.fields.password": "Password",
   "messageNotification.channels.fields.appKey": "AppKey",
   "messageNotification.channels.fields.appSecret": "AppSecret",
   "messageNotification.channels.fields.url": "Notification URL",
