@@ -1,42 +1,50 @@
 <template>
-  <aside id="notification-channel-help" class="channel-help" :aria-label="t('messageNotification.channels.helpTitle')">
-    <div class="channel-help__heading">
-      <h3>{{ t('messageNotification.channels.helpTitle') }}</h3>
-      <a-button type="link" size="small" @click="emit('close')">{{ t('messageNotification.channels.collapseHelp') }}</a-button>
+  <aside id="notification-channel-help" ref="container" class="channel-help" :aria-label="t('messageNotification.channels.helpTitle')">
+    <div v-if="model.link" class="channel-help__platform">
+      {{ model.link.label }} <a :href="model.link.href" target="_blank" rel="noopener noreferrer">{{ model.link.href }}</a>
     </div>
-    <ol v-if="model.steps.length" class="channel-help__steps">
-      <li v-for="(step, index) in model.steps" :key="index" :class="{ 'channel-help__active': activeStep === index }" :aria-current="activeStep === index ? 'step' : undefined">
-        <span class="channel-help__number" aria-hidden="true">{{ index + 1 }}</span>
-        <div><h4>{{ step.title }}</h4><p>{{ step.description }}</p></div>
-      </li>
-    </ol>
-    <p v-else>{{ model.description }}</p>
-    <div v-if="model.questions.length" class="channel-help__faq">
-      <h4>{{ t('messageNotification.channels.faq') }}</h4>
-      <dl><template v-for="(question, index) in model.questions" :key="index"><dt>{{ question.title }}</dt><dd>{{ question.description }}</dd></template></dl>
-    </div>
+    <h4>{{ t('messageNotification.channels.document.overview') }}</h4>
+    <p>{{ model.overview }}</p>
+    <h4 v-if="model.sections.length">{{ t('messageNotification.channels.document.configuration') }}</h4>
+    <section v-for="(section, index) in model.sections" :key="section.id" class="channel-help__section" :class="{ 'channel-help__section--active': activeSection === section.id }" :data-help-section="section.id" :aria-current="activeSection === section.id ? 'true' : undefined">
+      <h5>{{ index + 1 }}、{{ section.title }}</h5>
+      <template v-for="(block, blockIndex) in section.blocks" :key="blockIndex">
+        <p v-if="block.type === 'text'">{{ block.text }}</p>
+        <figure v-else-if="channelHelpImages[block.image]" class="channel-help__image" :style="{ aspectRatio: `${channelHelpImages[block.image].width} / ${channelHelpImages[block.image].height}` }">
+          <Image :src="channelHelpImages[block.image].src" :alt="block.alt" width="100%" :height="'auto'" />
+        </figure>
+      </template>
+    </section>
   </aside>
 </template>
 
 <script setup lang="ts">
-import type { PropType } from 'vue'
+import { ref, type PropType } from 'vue'
+import { Image } from 'ant-design-vue'
 import { useI18n } from 'vue-i18n'
 import type { ChannelHelpModel } from './channelHelp'
-defineProps({ model: { type: Object as PropType<ChannelHelpModel>, required: true }, activeStep: { type: Number, default: undefined } })
-const emit = defineEmits<{ (event: 'close'): void }>()
+import { channelHelpImages } from './channelHelpImages'
+import { useChannelHelpNavigation } from './useChannelHelpNavigation'
+const props = defineProps({
+  model: { type: Object as PropType<ChannelHelpModel>, required: true },
+  activeSection: { type: String, default: undefined },
+  focusVersion: { type: Number, default: 0 },
+})
 const { t } = useI18n()
+const container = ref<HTMLElement>()
+useChannelHelpNavigation(container, props)
 </script>
 
 <style scoped>
-.channel-help { padding: var(--space-4); border-radius: var(--jet-theme-button-r); background: var(--jet-theme-bg-elevated); min-width: 0; }
-.channel-help__heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); }
-.channel-help h3, .channel-help h4 { margin: 0; font-size: var(--fs-14); font-weight: 500; color: var(--jet-theme-text-title); }
-.channel-help p, .channel-help dd { margin: var(--space-1) 0 0; color: var(--text-color-secondary); font-size: var(--fs-12); line-height: 1.75; overflow-wrap: anywhere; }
-.channel-help__steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-4); }
-.channel-help__steps li { display: flex; align-items: flex-start; gap: var(--space-2); }
-.channel-help__steps li.channel-help__active { background: var(--ant-color-primary-bg, var(--jet-theme-bg-container)); outline: var(--space-1) solid var(--ant-color-primary-bg, var(--jet-theme-bg-container)); border-radius: var(--jet-theme-button-r); }
-.channel-help__number { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 var(--space-5); height: var(--space-5); border: 1px solid var(--line); border-radius: 50%; font-size: var(--fs-12); background: var(--jet-theme-bg-container); }
-.channel-help__faq { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--line); }
-.channel-help dl { margin: 0; }
-.channel-help dt { margin-top: var(--space-3); color: var(--jet-theme-text-title); font-size: var(--fs-12); }
+.channel-help { padding: var(--space-4); border-radius: var(--jet-theme-button-r); background: var(--jet-theme-bg-elevated); min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; overflow-wrap: anywhere; }
+.channel-help h4, .channel-help h5 { font-size: var(--fs-14); color: var(--jet-theme-text-title); }
+.channel-help h4 { margin: var(--space-4) 0 var(--space-3); font-weight: 600; }
+.channel-help h5 { margin: 0 0 var(--space-2); font-weight: 500; }
+.channel-help p { margin: var(--space-2) 0; color: var(--jet-theme-text-title); font-size: var(--fs-14); line-height: 1.8; }
+.channel-help__platform { padding: var(--space-3); color: var(--ant-color-primary); background: var(--ant-color-primary-bg, var(--jet-theme-bg-container)); font-size: var(--fs-14); }
+.channel-help__section { margin-top: var(--space-4); padding: var(--space-2); border-radius: var(--jet-theme-button-r); }
+.channel-help__section--active { background: var(--ant-color-primary-bg, var(--jet-theme-bg-container)); outline: 1px solid var(--ant-color-primary-border, var(--line)); }
+.channel-help__image { width: 100%; margin: var(--space-3) 0; }
+.channel-help__image :deep(.ant-image-img) { height: auto; }
+@media (max-width: 64rem) { .channel-help { overflow: visible; } }
 </style>

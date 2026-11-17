@@ -1,7 +1,7 @@
 <template>
   <div class="channel-configuration">
-    <a-alert v-if="editing && hiddenErrors.length" type="error" show-icon :message="hiddenErrors.join('；')" class="channel-configuration__error" />
-    <InlineEditForm :key="`${entry.key}:${editing}`" :groups="formGroups" :mode="editing ? 'form' : 'detail'" :disabled="disabled || !editing" :busy="busy" :messages="formMessages" @change="changeValue" @focus="emit('focus', $event)">
+    <a-alert v-if="hiddenErrors.length" type="error" show-icon :message="hiddenErrors.join('；')" class="channel-configuration__error" />
+    <InlineEditForm :key="entry.key" :groups="formGroups" mode="form" :disabled="disabled" :busy="busy" :messages="formMessages" @change="changeValue" @focus="emit('focus', $event)">
       <template #editor="{ field, value, update, disabled: fieldDisabled }">
         <div v-if="field.key === 'email:preset'" class="channel-configuration__brands">
           <a-segmented :value="String(value)" :options="field.options" size="small" :disabled="fieldDisabled" :aria-label="field.label" @change="update" />
@@ -40,7 +40,7 @@ const props = defineProps({
 })
 const emit = defineEmits<{ (event: 'field', key: string, value: unknown, topLevel?: boolean): void; (event: 'focus', key: string): void }>()
 const {
-  t, editing, hiddenErrors, formGroups, formMessages, changeValue, metadataField, customPairModel,
+  t, hiddenErrors, formGroups, formMessages, changeValue, metadataField, customPairModel,
   preset, emailOptionsVisible, smtpOptions, selectSmtpHost, filterSmtpOption,
   canClearSigningSecret, clearSecretOpen, clearSecretPending, clearSecretError, requestClearSigningSecret, cancelClearSigningSecret, clearSigningSecret,
 } = useChannelConfiguration(props, (key, value, topLevel) => emit('field', key, value, topLevel))

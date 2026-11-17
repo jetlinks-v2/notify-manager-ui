@@ -21,7 +21,6 @@ export interface ChannelConfigurationProps {
 /** Adapt metadata into controls and semantic groups, keeping all draft writes in the workspace. */
 export function useChannelConfiguration(props: ChannelConfigurationProps, change?: (key: string, value: unknown, topLevel?: boolean) => void) {
   const { t } = useI18n()
-  const editing = computed(() => props.entry.isNew || !!props.entry.editing)
   const isAliyunVoice = computed(() => props.entry.draft.type === 'voice' && props.entry.draft.provider === 'aliyun')
   const configuredFields = computed(() => props.entry.definition?.fields ?? channelConfigFields[`${props.entry.draft.type}:${props.entry.draft.provider}`] ?? [])
   // Hidden settings remain in the draft and metadata so saving visible fields preserves existing values.
@@ -41,7 +40,7 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
     return Array.isArray(rows) ? rows.filter(row => row && typeof row.key === 'string').map(row => row.key.toLowerCase()) : []
   })
   const emailOptionsVisible = computed(() => props.entry.draft.type === 'email' && props.entry.draft.provider === 'embedded' && ['host', 'port', 'properties'].every(key => configuredFields.value.some(field => field.key === key)))
-  const { preset, presetOptions, smtpOptions, smtpHint, encryption, encryptionOptions, setPreset, setSmtpHost, selectSmtpHost, setEncryption, filterSmtpOption } = useEmailSmtpSettings(props, emailOptionsVisible, change)
+  const { preset, presetOptions, smtpOptions, encryption, encryptionOptions, setPreset, setSmtpHost, selectSmtpHost, setEncryption, filterSmtpOption } = useEmailSmtpSettings(props, emailOptionsVisible, change)
 
   function issue(path: string): string | undefined {
     const value = props.entry.issues.find(item => item.path === path)
@@ -54,17 +53,6 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
     const known = channelConfigFields[`${props.entry.draft.type}:${props.entry.draft.provider}`]
     const key = `messageNotification.channels.fields.${field.key}`
     return known && (known.some(item => item.key === field.key) || ['properties', 'headers'].includes(field.key)) ? t(key) : field.property?.name || field.key
-  }
-  function hint(field: ChannelField): string | undefined {
-    if (emailOptionsVisible.value && field.key === 'host') return smtpHint.value
-    if (field.key === 'testTemplate') return t('messageNotification.channelTest.settings.hint')
-    if (props.entry.draft.type === 'webhook' && props.entry.draft.provider === 'http' && field.key === 'url') return t('messageNotification.channels.webhook.addressHint')
-    if (props.entry.draft.type === 'dingTalk' && props.entry.draft.provider === 'dingTalkRobotWebHook' && field.key === 'secret') return t('messageNotification.channels.robot.secretHint')
-    const key = `messageNotification.channels.hints.${props.entry.draft.type}.${field.key}`
-    if (isAliyunVoice.value && ['accessKeyId', 'secret'].includes(field.key)) return t(key)
-    if (isAliyunVoice.value && field.key === 'regionId') return t('NoticeCenter.channel.credential.description.regionId')
-    if (props.entry.draft.type === 'weixin' && props.entry.draft.provider === 'corpMessage' && field.key === 'agentId') return t(key)
-    return props.entry.draft.type === 'email' && props.entry.draft.provider === 'embedded' && ['host', 'username', 'password', 'sender'].includes(field.key) ? t(key) : field.property?.description
   }
   function fieldType(field: ChannelField) { return field.options?.length ? 'enum' : field.property?.valueType.type || (field.kind === 'number' ? 'int' : 'string') }
   function numberBounds(field: ChannelField) {
@@ -155,7 +143,7 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
       displayValue: testDisplay || pairDisplay, options: isSelect ? selectOptions(field) : undefined,
       secretSet: !!props.entry.baseline?.configuration[field.key],
       placeholder: field.kind === 'secret' ? t(props.entry.baseline ? 'messageNotification.channels.keepSecret' : 'messageNotification.channels.enterSecret') : undefined,
-      hint: hint(field), error: fieldError(field.key) || preservationError, fullWidth: !['port', 'password', 'sender'].includes(field.key),
+      error: fieldError(field.key) || preservationError, fullWidth: !['port', 'password', 'sender'].includes(field.key),
       ...numberBounds(field), precision: ['int', 'long'].includes(type) ? 0 : field.property?.valueType.scale, maxLength: maxLength(field),
     }
   }
@@ -165,25 +153,24 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
         const items = [mappedField(field)]
         if (emailOptionsVisible.value && field.key === 'port') items.push({ key: 'email:encryption', label: t('messageNotification.channels.email.encryptionTitle'),
           value: encryption.value, initialValue: emailEncryption(initial.value.configuration), editor: 'select', options: encryptionOptions.value,
-          hint: t('messageNotification.channels.email.encryptionHint'), error: fieldError('email:encryption') } as InlineEditFieldDefinition)
+          error: fieldError('email:encryption') } as InlineEditFieldDefinition)
         return items
       })
       if (emailOptionsVisible.value && group.key === 'server') mapped.unshift({ key: 'email:preset', label: t('messageNotification.channels.email.preset'),
         value: preset.value, initialValue: emailBrandForHost(initial.value.configuration.host), editor: 'custom',
         displayValue: t(`messageNotification.channels.email.presets.${emailBrandForHost(initial.value.configuration.host)}`),
-        options: presetOptions.value, hint: t('messageNotification.channels.email.presetHint'), fullWidth: true, error: fieldError('email:preset') })
+        options: presetOptions.value, fullWidth: true, error: fieldError('email:preset') })
       if (isAliyunVoice.value && group.key === 'credentials') {
         mapped.unshift({ key: 'voice:provider', label: t('messageNotification.channels.voice.provider'),
           value: props.entry.draft.provider, initialValue: props.entry.draft.provider, displayValue: t('messageNotification.channels.voice.aliyun'),
-          readonly: true, fullWidth: true, hint: t('messageNotification.channels.hints.voice.provider') })
+          readonly: true, fullWidth: true })
         return { key: group.key, title: t('messageNotification.channels.voice.credentials'), fields: mapped }
       }
       const titleKey = props.entry.draft.type === 'webhook' && props.entry.draft.provider === 'http' && group.key === 'connection'
         ? 'messageNotification.channels.webhook.receiver' : `messageNotification.channels.groups.${group.key}`
       return { key: group.key, title: t(titleKey), fields: mapped }
     })
-    // View mode uses actual readonly fields, preventing click and keyboard entry into inline editing.
-    return editing.value ? result : result.map(group => ({ ...group, fields: group.fields.map(field => ({ ...field, readonly: true })) }))
+    return result
   })
 
   /** Translate the public form's field keys into business-owned drafts; option indices never reach the API. */
@@ -201,7 +188,7 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
   function customPairModel(key: string, value: unknown, disabled: boolean): ConfigurationPairsModel | undefined {
     return key === `config:${pairKind.value}` && pairKind.value ? { kind: pairKind.value, value: value as Record<string, string>[] | undefined, disabled, savedKeys: savedHeaderKeys.value } : undefined
   }
-  return { t, editing, hiddenErrors, numberBounds, selectedValue, setSelectedValue, preset, setPreset,
+  return { t, hiddenErrors, numberBounds, selectedValue, setSelectedValue, preset, setPreset,
     emailOptionsVisible, smtpOptions, selectSmtpHost, filterSmtpOption,
     formGroups, formMessages, changeValue, metadataField, customPairModel,
     canClearSigningSecret, clearSecretOpen, clearSecretPending, clearSecretError, requestClearSigningSecret, cancelClearSigningSecret, clearSigningSecret }

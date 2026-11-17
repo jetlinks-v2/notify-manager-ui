@@ -7,6 +7,7 @@ export async function beginChannelEdit(page) {
     await page.locator('.ant-dropdown:visible').waitFor({ state: 'hidden' })
   }
   const robotRows = page.locator('.robot-configurations__row')
+  if (!await robotRows.count()) { await page.locator('.channel-configuration input:not([type=radio])').first().waitFor(); return }
   const id = await page.evaluate(() => window.__notificationSmoke.router.currentRoute.value.query.configId)
   const scope = await robotRows.count() ? page.locator(`.robot-configurations__row[data-config-id="${id}"]`) : page
   await editButton(scope, await translate(page, 'messageNotification.channels.more')).click()
@@ -28,8 +29,20 @@ export async function cancelChannelEdit(page) {
     await robotModal.waitFor({ state: 'hidden' })
     return
   }
-  await editButton(page.locator('.notification-channels__footer'), await translate(page, 'messageNotification.common.cancel')).click()
-  await page.locator('.notification-channels__footer').waitFor({ state: 'hidden' })
+  const save = editButton(page.locator('.notification-channels__footer'), await translate(page, 'messageNotification.common.save'))
+  if (await save.isDisabled()) return
+  // Main forms only offer Save; discard unsaved drafts through the real route-leave guard.
+  const route = await page.evaluate(() => window.__notificationSmoke.router.currentRoute.value.fullPath)
+  await page.evaluate(() => { void window.__notificationSmoke.router.push('/records') })
+  const dialog = page.locator('.jlc')
+  await Promise.race([
+    dialog.waitFor(),
+    page.waitForFunction(() => window.__notificationSmoke.router.currentRoute.value.path === '/records'),
+  ])
+  if (await dialog.isVisible()) await editButton(dialog, await translate(page, 'messageNotification.channels.leave')).click()
+  await page.waitForFunction(() => window.__notificationSmoke.router.currentRoute.value.path === '/records')
+  await page.evaluate(route => window.__notificationSmoke.router.push(route), route)
+  await page.locator('.channel-configuration input:not([type=radio])').first().waitFor()
 }
 
 export const channelField = (page, label) => page.locator('.inline-edit-field').filter({ has: page.locator('label').filter({ hasText: label }) })

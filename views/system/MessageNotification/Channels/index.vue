@@ -48,12 +48,10 @@
               <div v-if="isRobot || entry" class="notification-page__actions">
                 <j-permission-button v-if="isRobot" type="primary" :has-permission="[notificationPermissions.channels.add]" :disabled="!robotCanAdd" @click="robot.add"><template #icon><PlusOutlined aria-hidden="true" /></template>{{ t('messageNotification.channels.robot.add') }}</j-permission-button>
                 <j-permission-button v-else-if="configurationVisible && trialSupported" :has-permission="[notificationPermissions.channels.action]" :disabled="!canTrial || operationBusy" @click="showSend"><template #icon><SendOutlined aria-hidden="true" /></template>{{ t('messageNotification.channels.test') }}</j-permission-button>
-                <a-button :type="helpOpen ? 'primary' : 'default'" :ghost="helpOpen" :aria-expanded="helpOpen" aria-controls="notification-channel-help" @click="toggleHelp()"><template #icon><AIcon type="ReadOutlined" /></template>{{ t('messageNotification.channels.helpTitle') }}</a-button>
                 <a-dropdown v-if="!isRobot && entry && configurationVisible && !entry.isNew" :trigger="['click']" :disabled="operationBusy">
                   <a-button style="padding: 0 0.5rem"
                       :aria-label="t('messageNotification.channels.more')"><AIcon type="MoreOutlined" /></a-button>
                   <template #overlay><a-menu class="notification-channels__menu">
-                    <a-menu-item key="edit"><j-permission-button type="link" block class="notification-channels__menu-action" :has-permission="[notificationPermissions.channels.update]" :disabled="editing || !canEdit || operationBusy" @click="workspace.startEditing"><template #icon><EditOutlined aria-hidden="true" /></template>{{ t('messageNotification.common.edit') }}</j-permission-button></a-menu-item>
                     <a-menu-item key="delete"><j-permission-button type="link" block class="notification-channels__menu-action" danger :has-permission="[notificationPermissions.channels.delete]" :disabled="operationBusy" @click="requestRemove"><template #icon><DeleteOutlined aria-hidden="true" /></template>{{ t('messageNotification.channels.clear') }}</j-permission-button></a-menu-item>
                   </a-menu></template>
                 </a-dropdown>
@@ -71,14 +69,14 @@
             <template v-else-if="isRobot || entry">
               <div class="notification-page__body notification-channels__body">
                 <a-alert v-if="!isRobot && entry?.refreshFailure" type="warning" show-icon :message="t('messageNotification.channels.savedRefreshFailed')" class="notification-channels__alert"><template #action><a-button :disabled="operationBusy" @click="workspace.refreshSaved()">{{ t('messageNotification.common.retry') }}</a-button></template></a-alert>
-                <div class="notification-channels__content" :class="{ 'notification-channels__content--help': helpOpen }">
-                  <div v-if="isRobot">
+                <div class="notification-channels__content notification-channels__content--help">
+                  <div v-if="isRobot" class="notification-channels__editor">
                     <a-alert v-if="['unavailable', 'forbidden', 'error'].includes(detailState)" type="error" show-icon :message="t(`messageNotification.state.${detailState}`)" class="notification-channels__alert"><template #action><a-button :disabled="operationBusy" @click="refresh">{{ t('messageNotification.common.retry') }}</a-button></template></a-alert>
                     <RobotConfigurationList v-if="configs.length" :items="robotRows" :disabled="operationBusy || robotModal.open" @action="robot.act" />
                     <CloudEmpty v-else :description="t('messageNotification.channels.empty')" />
                   </div>
-                  <div v-else-if="entry">
-                    <ChannelConfiguration :entry="entry" :disabled="!canEdit || !editing || sending" :busy="busy" :submit="saveFields" @field="workspace.changeField" @focus="focusField" />
+                  <div v-else-if="entry" class="notification-channels__editor">
+                    <ChannelConfiguration :entry="entry" :disabled="!canEdit || sending" :busy="busy" :submit="saveFields" @field="workspace.changeField" @focus="focusField" />
                     <WebhookRequestPreview v-if="channelId === 'webhook:http'" :model="webhookPreviewModel" />
                     <section v-if="channelId === 'weixin:corpMessage'" class="notification-channels__members" :aria-label="t('messageNotification.members.section')">
                       <h3>{{ t('messageNotification.members.section') }}</h3>
@@ -92,11 +90,10 @@
                       </div>
                     </section>
                   </div>
-                  <ChannelHelp v-if="helpOpen" :model="help" :active-step="activeHelpStep" @close="toggleHelp(false)" />
+                  <ChannelHelp :key="`${channelId}:${entry?.key || ''}`" :model="help" :active-section="activeHelpSection" :focus-version="helpFocusVersion" />
                 </div>
               </div>
-              <StickyActionBar v-if="!isRobot && entry && editing" position="inline" class="notification-page__footer notification-channels__footer">
-                <a-button v-if="!entry.isNew" :disabled="operationBusy" @click="workspace.cancelEditing">{{ t('messageNotification.common.cancel') }}</a-button>
+              <StickyActionBar v-if="!isRobot && entry && canEdit" position="inline" class="notification-page__footer notification-channels__footer">
                 <j-permission-button type="primary" :has-permission="[entry.isNew ? notificationPermissions.channels.add : notificationPermissions.channels.update]" :loading="busy" :disabled="(!entry.isNew && !dirty) || !canEdit || operationBusy" @click="save">{{ t('messageNotification.common.save') }}</j-permission-button>
               </StickyActionBar>
             </template>
@@ -120,7 +117,7 @@
 </template>
 
 <script setup lang="ts">
-import { DeleteOutlined, EditOutlined, PlusOutlined, SendOutlined } from '@ant-design/icons-vue'
+import { DeleteOutlined, PlusOutlined, SendOutlined } from '@ant-design/icons-vue'
 import { DingTalk, Email, Sms, Voice, Webhook, WeixinCorp } from '@jetlinks-web-core/assets/notice'
 import AutoTree from '@jetlinks-web-core/components/AutoTree'
 import { useChannelsPage } from './useChannelsPage'
@@ -140,9 +137,9 @@ const {
   webhookPreviewModel,
   t, notificationPermissions, isNarrow, channelOptions, channelSearch, filteredChannelTree, openChannelKeys, selectChannel, configurationOptions,
   canQuery, channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId,
-  busy, dirty, canEdit, editing, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave,
+  busy, dirty, canEdit, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave,
   workspace, trial, testModel, fixTestConfiguration, afterTestClosed, refresh, save, remove, showSend, configurationVisible,
-  catalog, directoryState, providerFeedback, channelTitle, help, helpOpen, toggleHelp, saveFields, focusField, activeHelpStep, sending, deleteOpen, clearChannelName, clearMessage, requestRemove,
+  catalog, directoryState, providerFeedback, channelTitle, help, saveFields, focusField, activeHelpSection, helpFocusVersion, sending, deleteOpen, clearChannelName, clearMessage, requestRemove,
   members, memberDrawer, canSyncMembers, showMembers, autoMatchMembers, closeMembers, reloadMembers, memberDiscardOpen, decideMemberDiscard, updateMemberFilters, updateMemberStatus, resetMemberFilters,
 } = useChannelsPage()
 </script>
@@ -166,17 +163,22 @@ const {
 .notification-channels__selector { flex: 1 1 15rem; min-width: 0; max-width: 28rem; }
 .notification-channels__menu :deep(.ant-dropdown-menu-item) { padding: 0; }
 .notification-channels__menu-action { text-align: left; }
-.notification-channels__body { }
+.notification-channels__body { display: flex; flex-direction: column; overflow: hidden; }
+.notification-channels__editor { min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .notification-channels__members { margin-top: var(--space-6); padding-top: var(--space-4); border-top: 1px solid var(--line); }
 .notification-channels__members h3 { margin: 0 0 var(--space-2); font-size: var(--fs-14); font-weight: 500; }
 .notification-channels__members p { margin: 0 0 var(--space-3); color: var(--text-color-secondary); font-size: var(--fs-12); }
-.notification-channels__content { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: var(--space-6); }
-.notification-channels__content--help { grid-template-columns: minmax(0, 1fr) minmax(16rem, 34%); }
-.notification-channels__alert { margin-bottom: var(--space-4); }
+.notification-channels__content { display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: var(--space-6); flex: 1; min-height: 0; }
+.notification-channels__content--help { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.notification-channels__alert { flex-shrink: 0; margin-bottom: var(--space-4); }
 .notification-channels__footer { justify-content: flex-start; }
 .notification-channels__mobile-nav { flex-shrink: 0; }
 .notification-channels__mobile-feedback { flex-shrink: 0; max-height: 8rem; overflow-y: auto; }
-@media (max-width: 64rem) { .notification-channels__content--help { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 64rem) {
+  .notification-channels__body { display: block; overflow: auto; }
+  .notification-channels__content--help { grid-template-columns: minmax(0, 1fr); }
+  .notification-channels__editor { overflow: visible; }
+}
 @media (max-width: 48rem) { .notification-channels__heading { flex-wrap: wrap; } .notification-channels__summary { flex-basis: calc(100% - 3rem); } }
 </style>
 

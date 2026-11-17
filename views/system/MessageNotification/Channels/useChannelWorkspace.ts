@@ -67,7 +67,8 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
   const dirty = computed(() => !!entry.value && JSON.stringify(entry.value.draft) !== entry.value.snapshot)
   const hasUnsavedChanges = computed(() => [...drafts.values()].some(item => JSON.stringify(item.draft) !== item.snapshot))
   const canEdit = computed(() => !!options.permissions.query.value && !!entry.value && (entry.value.isNew ? options.permissions.add.value : options.permissions.update.value))
-  const editing = computed(() => !!entry.value && (entry.value.isNew || !!entry.value.editing))
+  // Main-page configurations stay in form mode; robot dialogs retain their explicit edit lifecycle.
+  const editing = computed(() => !!entry.value && (channelId.value !== 'dingTalk:dingTalkRobotWebHook' || entry.value.isNew || !!entry.value.editing))
 
   /** Editing belongs to the cached configuration, so channel switches preserve its draft and mode. */
   function startEditing() {

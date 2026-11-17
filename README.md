@@ -7,6 +7,28 @@
 - 接口封装：`api/notice/messageNotification.ts`；旧页面及 `api/notice-center.ts` 保留兼容使用
 - 后端接口：`/notifier/config/**`、`/notifier/template/**`、`/notify/channel/**`、`/notify/history/**`、`/notifier/**`
 
+## 消息渠道图文说明与常驻编辑
+
+右侧说明面板精简：移除面板顶部“配置说明”标题与“收起”按钮，正文常驻展示；同步清理收起状态及事件，保留字段聚焦定位和等宽布局。实现入口为 `Channels/configuration/ChannelHelp.vue`、`Channels/index.vue` 与 `Channels/useChannelsPage.ts`，模块目录执行 `node --test tests/messageNotificationChannels.test.mjs`，61/61 通过；按下述浏览器命令复验 `channelHelp.mjs` 与 `robotSigning.mjs`，16/16 组通过，页面错误与真实业务请求为 0。定向样式检查及 `git diff --check` 通过；按下述构建命令将输出目录改为 `/tmp/jetlinks-channel-help/body-only/build`，模块构建通过（39.64 秒）。类型检查仍为 196 条既有诊断，忽略行列后无新增或移除。报告、截图及日志位于 `/tmp/jetlinks-channel-help/body-only/` 与 `/tmp/jetlinks-channel-help/body-only-*.log`；工作区无独立 lint 脚本。
+
+运行时消息渠道的桌面配置工作区扣除间距后，表单与图文说明各占 50%，分别滚动，1024px 及以下上下排列。主页面始终显示表单控件，保存后仍可继续编辑，字段底部辅助文案归入右侧说明；校验错误、必填标记及凭据占位提示继续显示。底部仅提供整表“保存”。输入和失焦只改草稿，保留权限、凭据保护、提交锁与未保存离开提醒。钉钉群机器人只调整主页面列表 / 说明布局，编辑弹窗保持原样。
+
+底栏仅保存的复验：`Channels/index.vue` 移除“撤销修改”，浏览器夹具通过离开确认丢弃未保存草稿。`smoke.mjs` 10 组、`channelHelp.mjs` 8 组、`emailSmtp.mjs` 5 组、`trials.mjs` 10 组全部通过，覆盖唯一保存按钮的桌面 / 窄屏左对齐与可达性、提交锁、保存失败重试、离开确认和凭据保护；页面错误及真实业务请求为 0。报告与截图位于 `/tmp/jetlinks-channel-help/save-only/`；下述单元、机器人弹窗及类型检查复用前序验证证据。
+
+页头按钮调整历史（右侧当前已常驻展示）：已删除 `Channels/index.vue` 页头的“配置说明”按钮，沿用右侧说明默认展开与收起行为；收起后重新进入页面可恢复默认展开。同步调整已有浏览器夹具，`channelHelp.mjs` 8 组、`robotSigning.mjs` 8 组、`trials.mjs` 10 组通过，覆盖八类渠道、机器人列表及空状态、三语与窄屏按钮移除、说明展示与收起恢复。机器人首次运行末尾发生开发服务模块初始化错误，单独复跑通过；最终报告无页面错误或真实业务请求。按下述命令验证：模块构建通过（35.75 秒），定向样式检查与 `git diff --check` 通过，无独立 lint 脚本；类型检查前后均为 196 条既有诊断，无新增或移除，完整类型检查仍未通过。证据位于 `/var/folders/kd/xy867r053zj3phhskmvc8vx40000gn/T/jetlinks-remove-channel-help-222bf69k/`；未操作真实渠道配置或发送消息。
+
+八类说明恢复自历史提交 `c5f0050645057ba0385296e32c9ac4731a9190f0`，12 张截图打包在 `assets/notice/doc/`，图片预留比例并支持预览。补充当前 AgentId、邮件端口 / 加密方式等说明，修正旧 SMTP 与地域描述；邮箱供应商认证提示随当前地址显示在右侧。中英日文案同步。未知提供商保留元数据说明。说明聚焦联动使用实际字段键和稳定段落 ID，仅显式聚焦时滚动右栏并高亮；输入与手动阅读不反复滚动，重复聚焦可重新定位，窄屏仅高亮。
+
+实现入口：`views/system/MessageNotification/Channels/configuration/` 的 `channelHelpGuides.ts`、`channelHelpImages.ts`、`channelHelp.ts`、`ChannelHelp.vue` 与 `useChannelHelpNavigation.ts` 承载文档及导航；`Channels/index.vue`、`ChannelConfiguration.vue`、`useChannelConfiguration.ts`、`useChannelWorkspace.ts` 和 `useChannelsPage.ts` 接入布局、常驻编辑及整表提交。新增 / 修改权限复用 auth store 的响应式检查，已打开的表单在权限撤销后立即锁定。不修改共享组件、后端接口、保存载荷、消息模板或试发业务规则。
+
+验证（2026-11-17）：模块目录运行 `node --test tests/messageNotificationChannels.test.mjs tests/messageNotificationContracts.test.mjs tests/messageNotificationTrial.test.mjs`，108/108 通过。`tests/messageNotificationBrowser/` 下 `channelHelp.mjs` 8 组、`smoke.mjs` 10 组、`robotSigning.mjs` 8 组、`emailSmtp.mjs` 5 组、`trials.mjs` 10 组均通过，共 41 组；覆盖八类说明和原图、字段定位 / 重复聚焦 / 不抢滚动、三语、1280 / 1440 / 1920px 等宽与 390px 窄屏、保存与草稿丢弃 / 失败重试 / 凭据、权限撤销、机器人弹窗和试发。浏览器均使用内存夹具，页面错误及真实业务请求为 0。
+
+复验浏览器：从模块目录执行 `SMOKE_CHANNELS_ONLY=1 SMOKE_PLAYWRIGHT_MODULE="$PWD/../../../ui/node_modules/playwright" SMOKE_OUTPUT=/tmp/jetlinks-channel-help/<脚本名> node tests/messageNotificationBrowser/<脚本名>.mjs`，分别代入上述五个脚本名；默认使用已有 9200 开发服务。报告和截图均位于 `/tmp/jetlinks-channel-help/`。
+
+质量验证：在 `runtime-ui/` 执行 `node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/system/MessageNotification/Channels/index.vue modules/notify-manager-ui/views/system/MessageNotification/Channels/ChannelConfiguration.vue modules/notify-manager-ui/views/system/MessageNotification/Channels/configuration/ChannelHelp.vue` 通过，三语 JSON / 文案键及模块 `git diff --check` 通过；工作区无独立 lint 脚本。在 `runtime-ui/jetlinks-web-core/` 执行 `node --max_old_space_size=16384 ../node_modules/vite/bin/vite.js build --outDir /tmp/jetlinks-channel-help/save-only/build -- --module-name notify-manager-ui` 通过（35.59 秒），保留既有构建告警。
+
+完整类型检查仍未通过：在 `runtime-ui/` 执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，修改前后均为 196 条既有诊断，忽略行列比较无新增或移除；修复基线问题后需重跑。类型日志为 `/tmp/jetlinks-channel-help/types-{before,final}.log`。本轮未写入真实渠道配置或发送通知，真实服务商账号与投递仍需环境联调。
+
 ## 微信服务号配置说明
 
 `views/system/MessageNotification/Channels/` 的微信服务号配置页仅展示服务端配置字段，已移除渠道测试入口、测试模板和样例参数设置；沿用现有配置表单与说明面板，中英日说明同步。参考线上 `https://doc.jetlinks.cn/` 的微信服务号配置说明（`doc.WeixinApp.707693-*`），介绍 AppID、AppSecret 以及“微信公众平台 → 设置与开发 → 基本配置”的获取路径。保留已有配置值、业务消息模板和其他渠道能力，服务号调整不改变后端接口或配置数据；统一试发沿用既有发送接口，并移除渠道试发按钮对业务模板查询权限的依赖。
@@ -27,7 +49,7 @@
 
 实现提交：`8dc19ca`；配置说明与按钮修正：`48553f4`（本地 `2.20`）；未推送。
 
-`/system/notification/channels?channel=dingTalk:dingTalkRobotWebHook` 使用紧凑机器人列表：每行展示名称、脱敏 Webhook 地址、“测试”和“更多 → 编辑 / 删除”。右侧标题保留“添加群机器人”和“配置说明”入口，无数据复用 `CloudEmpty`。列表与空状态均显示原有配置说明侧栏，默认展开，支持收起和重新展开；窄屏沿用单列布局。仅调整 `runtime-ui/modules/notify-manager-ui`；其他渠道、后端接口、菜单路由和共享组件沿用现有实现。
+`/system/notification/channels?channel=dingTalk:dingTalkRobotWebHook` 使用紧凑机器人列表：每行展示名称、脱敏 Webhook 地址、“测试”和“更多 → 编辑 / 删除”。右侧标题保留“添加群机器人”入口，无数据复用 `CloudEmpty`。列表与空状态均常驻显示图文说明侧栏；页头“配置说明”按钮、侧栏标题和“收起”按钮已移除。窄屏沿用单列布局。仅调整 `runtime-ui/modules/notify-manager-ui`；其他渠道、后端接口、菜单路由和共享组件沿用现有实现。
 
 配置说明与按钮修正（2026-11-13）：`Channels/index.vue` 复用同一个 `ChannelHelp` 和说明按钮，机器人列表及空状态恢复说明侧栏；`messageNotification.channels.robot.add` 提供“添加群机器人”的中英日文案。沿用下方命令验证：`robotSigning.mjs` 8 组、渠道 `smoke.mjs` 10 组通过，覆盖默认展开、收起 / 重开、空列表、添加弹窗和三语 390px 布局，浏览器无页面错误或业务请求；定向样式检查 1 个 Vue 文件、三语资源及 `git diff --check` 通过。模块构建通过（23.59 秒，保留既有告警）；类型检查仍为 195 项既有诊断，无新增或移除，完整类型检查尚未通过，无独立 lint 脚本。报告与截图位于 `/tmp/jetlinks-robot-help/`，命令日志前缀 `/tmp/jetlinks-robot-help-`；未操作真实配置或发送真实消息。
 
@@ -111,7 +133,7 @@ node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/sy
 
 浏览器使用隔离内存夹具：模块内执行 `SMOKE_PLAYWRIGHT_MODULE="$PWD/../../../ui/node_modules/playwright" node tests/messageNotificationBrowser/trials.mjs`，完整回归通过，覆盖六类支持渠道、语音和服务号隐藏入口、历史值保留、短信参数保存、三语及 390px 窄屏。简介调整后以 `TRIAL_SETTINGS_ONLY=1` 复验相关页面通过，页面错误与业务网络请求均为空；日志前缀 `/tmp/notification-voice-remove-final-`，最终截图与报告位于 `/tmp/notification-voice-remove-copy-browser/`。未修改真实配置或发送通知，真实后端投递不在本次验证范围。
 
-统一入口为 `Channels/testing/ChannelTestModal.vue` 与 `useChannelTest.ts`。邮件、钉钉工作通知 / 群机器人、企业微信、阿里云短信 / 语音、Webhook 共用「发一条测试 · 渠道名称」弹窗、发送锁定、失败重试及结果反馈。渠道更多菜单依次提供编辑和清除配置，独立模板页面及其内置邮件内容继续保留。
+统一入口为 `Channels/testing/ChannelTestModal.vue` 与 `useChannelTest.ts`。邮件、钉钉工作通知 / 群机器人、企业微信、阿里云短信 / 语音、Webhook 共用「发一条测试 · 渠道名称」弹窗、发送锁定、失败重试及结果反馈。普通渠道直接常驻编辑，更多菜单提供清除配置；机器人仍通过逐行菜单编辑。独立模板页面及其内置邮件内容继续保留。
 
 - 默认发给自己，可选择其他单个接收人；校验邮箱、手机或渠道成员 ID / OpenID，禁止列表和广播目标。本人邮箱沿用主邮箱身份、首个邮箱身份、资料邮箱的优先级；手机读取账号资料；第三方绑定必须同时匹配 `type_provider` 与当前通知器 ID。加载失败支持重试，与确实未绑定分开显示。群机器人 / Webhook 直接使用当前配置的群 / 地址。
 - 邮件、钉钉、企业微信、机器人和 Webhook 使用固定测试消息，系统名称读取 `useSystemStore().layout.title`。短信和语音只读渠道中保存的服务商测试模板和样例参数，提示实际内容以服务商模板为准。
@@ -437,11 +459,11 @@ AgentId 浏览器复核：9200 实际企业微信页已显示新字段和默认�
 
 质量检查：从 `runtime-ui/` 执行 `node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/system/MessageNotification/Channels/ChannelConfiguration.vue` 通过；三语 JSON / SMTP 文案键及 `git diff --check` 通过，修改的 Vue 文件低于 300 行。`./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json` 修改前后均为 195 条既有诊断，忽略行列比较无新增 / 移除；完整类型检查仍未通过，需修复基线后重跑。工作区无独立 lint 脚本。在 `runtime-ui/jetlinks-web-core/` 执行 `node --max_old_space_size=16384 ../node_modules/vite/bin/vite.js build --outDir /tmp/notification-smtp-build -- --module-name notify-manager-ui` 通过（21.43 秒），保留既有分块等构建告警。日志前缀 `/tmp/notification-smtp-`；浏览器报告及截图位于 `/tmp/notification-smtp-browser/` 与 `/tmp/notification-smtp-smoke/`。未保存真实配置或发送邮件，各供应商账号认证及实际投递仍需测试环境联调。
 
-渠道表单精简：短信顶部“发送测试消息”保持原样；短信的“渠道测试”区和邮件的“SMTP 扩展属性”在新建、查看及编辑时均移除，已有配置值继续保留；邮件预设和加密方式仍通过内部 `properties` 联动。群机器人空配置先显示“添加”入口，点击后打开两字段弹窗；已有配置以紧凑列表逐行展示并支持新增，详见上方“群机器人弹窗与列表”。更多菜单中的编辑按钮铺满菜单项宽度。实现范围为本模块的 `Channels/index.vue`、表单适配和 workspace，配套更新说明文案及现有内存夹具；验证字段可见性、历史值保留、群机器人新增/删除/草稿隔离、权限和窄屏菜单。
+渠道表单精简：短信顶部“发送测试消息”保持原样；短信的“渠道测试”区和邮件的“SMTP 扩展属性”在新建、查看及编辑时均移除，已有配置值继续保留；邮件预设和加密方式仍通过内部 `properties` 联动。群机器人空配置先显示“添加”入口，点击后打开两字段弹窗；已有配置以紧凑列表逐行展示并支持新增，详见上方“群机器人弹窗与列表”。机器人更多菜单中的编辑按钮铺满菜单项宽度；普通渠道常驻编辑。实现范围为本模块的 `Channels/index.vue`、表单适配和 workspace，配套更新说明文案及现有内存夹具；验证字段可见性、历史值保留、群机器人新增/删除/草稿隔离、权限和窄屏菜单。
 
 精简验证：渠道 / 试发 / 契约定向测试 90/90 通过，`smoke.mjs`（`SMOKE_CHANNELS_ONLY=1`）10 项和 `trials.mjs` 9 项通过。内存夹具覆盖新建/查看/编辑字段移除、短信凭据保存后原有试发正常、邮件加密联动、群机器人显式添加及清除后回到空态、权限限制、编辑按钮右侧空白点击和 390px 布局；无页面错误或真实配置写入。定向样式检查、三语资源键与 JSON、`git diff --check` 和生产构建通过（24.28 秒）；模块类型检查仍有 193 项既有诊断，无新增或移除，无独立 lint 脚本。验证命令沿用下方质量检查，日志及浏览器报告前缀为 `/tmp/notification-form-cleanup-`。
 
-整表编辑（2026-11-12）：所有渠道的已有配置默认只读，更多菜单在“清除配置”上方提供“编辑”，受配置更新权限控制；点击后全部可修改字段进入编辑态，左下角出现“取消 / 保存”。`Channels/useChannelWorkspace.ts` 按配置保存编辑状态和草稿，`useChannelsPage.ts` 编排入口、保存反馈及测试补全配置，`ChannelConfiguration.vue` 通过 `useChannelConfiguration.ts` 映射只读字段和整表输入。复用 `InlineEditForm` 的 form/detail 模式及 `StickyActionBar`，不改变共享组件、后端接口或运营端 `ui/`。`Channels/index.vue` 中试发、编辑和清除配置按钮分别使用 `SendOutlined`、`EditOutlined` 和 `DeleteOutlined`，图标不改变按钮的可访问名称；“编辑”使用模块中英日资源。
+整表编辑：当前行为以上方“消息渠道图文说明与常驻编辑”为准。普通渠道使用 `InlineEditForm` 的 form 模式，直接修改并在左下角保存；机器人继续使用弹窗。`Channels/useChannelWorkspace.ts` 按配置保存草稿，`useChannelsPage.ts` 编排保存反馈及测试补全定位，表单适配负责元数据与输入类型。下列 2026-11-12 验证记录为原先显式编辑模式的历史结果。
 
 菜单图标补充验证：定向样式检查、`git diff --check` 和生产构建通过（23.90 秒）；类型检查仍为 193 项既有诊断，无新增或移除，工作区无独立 lint 脚本。内存夹具核对 1440px / 390px 菜单图标、按钮可访问名称与布局通过，无页面错误或配置写入；报告为 `/tmp/notification-menu-icons-browser/report.json`。
 
@@ -450,11 +472,11 @@ AgentId 浏览器复核：9200 实际企业微信页已显示新字段和默认�
 质量检查：在 `runtime-ui/` 执行 `node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/system/MessageNotification/Channels/index.vue modules/notify-manager-ui/views/system/MessageNotification/Channels/ChannelConfiguration.vue` 通过；两个 Vue 文件均低于 300 行，中英日 JSON 与模块 `git diff --check` 通过。`./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json` 前后均为 193 项既有诊断，忽略行列后新增 0、移除 0，完整类型检查仍待基线问题修复后重跑。工作区无独立 lint 脚本。在 `runtime-ui/jetlinks-web-core/` 执行 `node --max_old_space_size=16384 ../node_modules/vite/bin/vite.js build --outDir /tmp/notification-whole-edit-build -- --module-name notify-manager-ui` 通过（34.21 秒），保留既有构建警告。日志前缀 `/tmp/notification-whole-edit-`；真实服务商投递与完整账号权限矩阵仍需环境联调。
 
 
-语音提示对齐（S）：`views/system/MessageNotification/Channels/useChannelConfiguration.ts` 复用 `InlineEditForm` 的字段提示与只读字段，展示当前阿里云服务商，按原型补充服务商、AccessKey ID 和 AccessKey Secret 的提示；`locales/lang/{zh,en,ja}.json` 同步调整语音简介及“服务商与 AccessKey”分组标题。保留地域选择，地域提示复用既有“阿里云服务地域。”译文；凭据保护、保存与接口契约保持不变。
+语音提示（当前已迁移到右侧文档）：`views/system/MessageNotification/Channels/useChannelConfiguration.ts` 通过 `InlineEditForm` 展示当前阿里云服务商及凭据字段，相关地域和 AccessKey 说明集中在右侧图文文档；`locales/lang/{zh,en,ja}.json` 同步调整语音简介及“服务商与 AccessKey”分组标题。保留地域选择，地域提示复用既有“阿里云服务地域。”译文；凭据保护、保存与接口契约保持不变。
 
 语音提示验证（2026-11-11）：`node --test tests/messageNotificationChannels.test.mjs tests/messageNotificationContracts.test.mjs` 59/59 通过，模块构建通过（35.74 秒，保留既有构建告警），三语消息通知键一致且 `git diff --check` 通过。模块类型检查前后均为 213 项既有诊断，无新增或移除；待既有诊断修复后在 `runtime-ui/` 重跑 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`。工作区无独立 lint 脚本，本次未修改 Vue 模板或样式。9200 登录态已核对各项提示在对应字段下显示，未保存真实配置或发送通知。日志前缀 `/tmp/notification-voice-hints-`。
 
-底部操作栏：`Channels/index.vue` 的新配置底栏仅保留左对齐的“保存”，移除“撤销修改”和底栏未保存提示；`useChannelsPage.ts` 清理仅用于旧底栏对齐的派生值。保存权限、校验、草稿与离开提醒保持原有行为。验证（2026-11-11）：渠道 / 契约回归 58/58、单文件样式门禁、模块构建（26.14 秒）和 `git diff --check` 通过；类型检查仍为上一轮相同的 213 项既有诊断，无新增或移除，待修复后重跑下方类型命令。工作区无独立 lint 脚本。9200 钉钉渠道页实测输入前后保存按钮均与表单左边缘对齐，“撤销修改”按钮数量为 0；测试输入已清空，未保存真实配置。日志前缀 `/tmp/notification-footer-`。
+底部操作栏（2026-11-11 历史，当前常驻编辑底栏同样仅保留“保存”）：当时 `Channels/index.vue` 的新配置底栏仅保留左对齐的“保存”，移除“撤销修改”和底栏未保存提示；`useChannelsPage.ts` 清理仅用于旧底栏对齐的派生值。保存权限、校验、草稿与离开提醒保持原有行为。验证（2026-11-11）：渠道 / 契约回归 58/58、单文件样式门禁、模块构建（26.14 秒）和 `git diff --check` 通过；类型检查仍为上一轮相同的 213 项既有诊断，无新增或移除，待修复后重跑下方类型命令。工作区无独立 lint 脚本。9200 钉钉渠道页实测输入前后保存按钮均与表单左边缘对齐，“撤销修改”按钮数量为 0；测试输入已清空，未保存真实配置。日志前缀 `/tmp/notification-footer-`。
 
 地域选择：`Channels/channelSchema.ts` 为阿里云语音和短信的 `regionId` 复用旧版 `views/notice/channel/hooks/noticeChannelModel.ts` 中的 28 个地域选项，经 `configuration/channelMetadata.ts` 和 `useChannelConfiguration.ts` 接入现有下拉编辑器及中英日翻译。后端仍返回字符串类型时也使用下拉列表，显示地域名称，保存字符串地域 ID；接口、必填规则及其他配置保持原有行为。
 
@@ -462,7 +484,7 @@ AgentId 浏览器复核：9200 实际企业微信页已显示新字段和默认�
 
 分组详情和整表保存覆盖动态后端目录中的全部提供商。公共表单为 `runtime-ui/jetlinks-web-core/src/components/InlineEditForm/`，通过 core 根入口或目录公开入口导出；API、事件、插槽和示例见组件 README。通知模块通过 `Channels/useChannelConfiguration.ts` / `ChannelConfiguration.vue` 映射业务元数据，`useChannelWorkspace.ts` 承载草稿、校验与提交，`useChannelsPage.ts` / `index.vue` 管理操作入口。
 
-已有配置展示保存值和凭据掩码，字段自身不响应点击或键盘进入编辑；“编辑”同时展开所有可见的普通字段和请求头，服务商等固有只读字段保持只读；短信“渠道测试”和邮件“SMTP 扩展属性”均不显示。本页不接入字段 submit，失焦、Enter、选择下拉及元数据控件完成事件均不保存。取消仅还原当前配置快照和校验错误，退出编辑，不发送请求；保存整表校验后仅调用一次既有创建或更新接口，成功回到只读，失败保留输入。无修改时禁用保存，提交期间锁定取消、重复保存和配置切换。单配置渠道首次进入时直接填写，群机器人首次填写由“添加”入口开启独立弹窗，在弹窗右下角添加 / 保存并支持取消；其余渠道新建配置继续在左下角保存。
+已有配置直接展示表单，凭据输入保持空白并以占位提示说明保留规则；固有只读字段保持只读，短信“渠道测试”和邮件“SMTP 扩展属性”均不显示。本页不接入字段自动 submit，失焦、Enter、选择下拉及元数据控件完成事件均不保存。底栏仅提供保存；整表校验后仅调用一次既有创建或更新接口，成功仍保持表单，失败保留输入。已有配置无修改时禁用保存，提交期间锁定输入、重复保存和配置切换。群机器人继续由“添加 / 编辑”入口开启独立弹窗，在弹窗右下角添加 / 保存并支持取消。
 
 非机器人渠道每个 `type/provider` 只提供一套配置入口：没有配置选择器和新增入口，已存在记录时 workspace 也禁止创建第二套。机器人由 `shared/catalog.ts` 的 `multipleConfigurations` 标记，动态目录继承该展示能力；当前后端机器人提供商为 `dingTalk:dingTalkRobotWebHook`，以多行列表及新增 / 编辑弹窗管理多套配置，保留自动重名编号和删除。未知提供商默认单套，不影响动态渠道或字段发现。历史重复数据不自动删除：默认进入后端第一条，仍兼容明确配置 ID 的原有跳转，防止已引用模板错绑。此限制作用于本页面，不新增后端唯一约束或执行历史数据迁移。
 
@@ -494,7 +516,7 @@ AgentId 浏览器复核：9200 实际企业微信页已显示新字段和默认�
 
 实施入口：`views/system/MessageNotification/Channels/` 承载动态目录、元数据表单、首次草稿和专属说明；`api/notice/messageNotification.ts` 与类型提供现有接口的类型化封装；`shared/` 的目录、导航和凭据工具增加可注入的渠道上下文，其他页面保持兼容。渠道类型不再受六类字符串联合约束；既有七种定义只作为展示增强，未知类型 / 提供商由后端名称、字段和描述生成界面。中英日资源同步更新。
 
-已实现：`useChannelCatalog.ts` 加载类型 / 提供商目录、批量配置快照与元数据，类型失败独立重试，配置查询失败不产生未配置状态。`configuration/channelMetadata.ts`、`channelSchema.ts` 与 `ChannelConfiguration.vue` 按元数据保留全部字段，既有渠道提供分组、凭据与校验增强；`configuration/ChannelHelp.vue` 提供默认展开、可收起的说明。`useChannelWorkspace.ts` 为每个新草稿生成一次 32 位随机标识，名称由渠道 / 提供商名称组成并在重名时追加序号；默认值不计脏，首次保存可触发校验。切换、重置和保存失败保留草稿身份；已成功写入但刷新失败时只重试读取，已有配置不自动改名。
+已实现：`useChannelCatalog.ts` 加载类型 / 提供商目录、批量配置快照与元数据，类型失败独立重试，配置查询失败不产生未配置状态。`configuration/channelMetadata.ts`、`channelSchema.ts` 与 `ChannelConfiguration.vue` 按元数据保留全部字段，既有渠道提供分组、凭据与校验增强；`configuration/ChannelHelp.vue` 提供常驻说明正文。`useChannelWorkspace.ts` 为每个新草稿生成一次 32 位随机标识，名称由渠道 / 提供商名称组成并在重名时追加序号；默认值不计脏，首次保存可触发校验。切换、重置和保存失败保留草稿身份；已成功写入但刷新失败时只重试读取，已有配置不自动改名。
 
 兼容约束：邮件快捷填充与加密选项映射实际 SMTP 参数并保留扩展项；企业微信 AgentId 按上节增加渠道配置并保留历史模板回退，其他提供商的 AgentId、短信签名等不移入渠道配置。不生成原型中的演示 IP、回调地址或不受支持的参数。未知提供商的凭据依据元数据识别，保留已知渠道的凭据补充定义及 HTTP header 保护。仅对现有支持渠道提供模板跳转与试发。目录或配置查询失败不解释为未配置，单类型失败可独立重试。
 
@@ -522,7 +544,7 @@ AgentId 浏览器复核：9200 实际企业微信页已显示新字段和默认�
 
 | 页面与首要任务 | 确定的布局方案 | 操作与状态 |
 | --- | --- | --- |
-| 通知渠道：选择并维护一项通知配置 | 15rem 渠道导航与右侧配置工作区共用一个连续面板；移除独立页面标题及左右卡片；配置选择器限制合理宽度，与新增等操作组成紧凑工具栏 | 机器人保留多配置选择；其他渠道直接展示单套配置；已有配置通过更多菜单整表编辑并保存/取消，首次配置保留底部保存；帮助信息仍贴近配置内容 |
+| 通知渠道：选择并维护一项通知配置 | 15rem 渠道导航与右侧配置工作区共用一个连续面板；移除独立页面标题及左右卡片；配置选择器限制合理宽度，与新增等操作组成紧凑工具栏 | 机器人保留多配置选择；其他渠道直接展示单套配置；主页面表单常驻编辑并整表保存，右侧图文说明与表单等宽并按字段定位；机器人保留列表与弹窗 |
 | 消息模板：查找模板并编辑、预览 | 当前布局以上方“系统通知模板原型对齐”为准：15rem 可折叠模板目录，右侧标题操作、渠道切换与效果预览；恢复默认 / 刷新收纳到更多菜单 | 默认查看，显式编辑；保留变量、附件、草稿与保存能力，长表单独立滚动，窄屏使用模板选择器 |
 | 通知记录：筛选并查看发送结果 | 单一连续面板；`ConditionFilter`、状态筛选和操作组成紧凑工具栏；使用无额外内边距的 `j-pro-table`，对齐表头、状态标签、固定操作列与分页 | 保留查询不可用、权限不足、加载、错误及空态，继续使用详情抽屉；不为视觉补齐虚构记录或数量 |
 

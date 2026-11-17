@@ -55,6 +55,7 @@ function load(filename) {
 }
 
 const { useChannelCatalog } = load(resolve(root, 'useChannelCatalog.ts'))
+const { channelHelp, channelHelpSection } = load(resolve(root, 'configuration/channelHelp.ts'))
 const { channelDefinition, channelDefaults } = load(resolve(root, 'configuration/channelMetadata.ts'))
 const { emailEncryption, emailEncryptionProperties } = load(resolve(root, 'configuration/emailSettings.ts'))
 const { emailSmtpEndpoints, emailBrandForHost } = load(resolve(root, 'configuration/emailSmtpCatalog.ts'))
@@ -103,25 +104,24 @@ function configurationProps(workspace) {
   return { get entry() { return mountedEntry = workspace.entry.value ?? mountedEntry }, disabled: false }
 }
 
-test('saved channels are readonly until editing and save all fields in a single write', async () => {
+test('saved channels remain editable before and after a single whole-form save', async () => {
   const io = testApi()
   const workspace = useChannelWorkspace({ api: io.api, permissions: permissions() })
   await workspace.activate('email:embedded')
   const editor = useChannelConfiguration(configurationProps(workspace), workspace.changeField)
-  assert.equal(workspace.editing.value, false)
-  assert.ok(editor.formGroups.value.flatMap(group => group.fields).every(field => field.readonly))
+  assert.equal(workspace.editing.value, true)
+  assert.ok(editor.formGroups.value.flatMap(group => group.fields).every(field => !field.readonly && !field.hint))
   const app = mount(ChannelConfiguration, { entry: workspace.entry.value, disabled: false })
   assert.equal([...walk(app._instance.subTree)].some(node => node.props?.class === 'inline-edit-field__trigger'), false)
   app.unmount()
   workspace.startEditing()
-  assert.equal(editor.editing.value, true)
   assert.ok(editor.formGroups.value.flatMap(group => group.fields).every(field => !field.readonly))
   assert.equal(await workspace.save(), false, 'an unchanged draft does not write')
   editor.changeValue('config:host', 'batch.example.test')
   editor.changeValue('config:port', 2525)
   assert.equal(io.calls.some(([method]) => method === 'updateConfig'), false)
   assert.equal(await workspace.save(), true)
-  assert.equal(workspace.editing.value, false)
+  assert.equal(workspace.editing.value, true)
   assert.equal(workspace.dirty.value, false)
   const writes = io.calls.filter(([method]) => method === 'updateConfig')
   assert.equal(writes.length, 1)
@@ -131,14 +131,14 @@ test('saved channels are readonly until editing and save all fields in a single 
   assert.deepEqual(writes[0][1].configuration.preservedExtension, { value: 1 })
 })
 
-test('cancel restores nested values and errors only for the current cached configuration', async () => {
+test('reset restores nested values and errors only for the current cached configuration', async () => {
   const io = testApi([email(), sms()])
   const workspace = useChannelWorkspace({ api: io.api, permissions: permissions() })
   await workspace.activate('email:embedded')
   workspace.startEditing()
   workspace.changeField('host', 'email-draft.example.test')
   await workspace.activate('sms:aliyunSms')
-  assert.equal(workspace.editing.value, false)
+  assert.equal(workspace.editing.value, true)
   workspace.startEditing()
   const snapshot = workspace.entry.value.snapshot
   workspace.changeField('secret', 'replacement')
@@ -150,12 +150,12 @@ test('cancel restores nested values and errors only for the current cached confi
   assert.equal(workspace.entry.value.draft.configuration.host, 'email-draft.example.test')
   await workspace.activate('sms:aliyunSms')
   assert.equal(workspace.editing.value, true)
-  workspace.cancelEditing()
+  workspace.resetDraft()
   assert.deepEqual(workspace.entry.value.draft, JSON.parse(snapshot))
   assert.equal(workspace.entry.value.draft.configuration.secret, '')
   assert.deepEqual(workspace.entry.value.issues, [])
   assert.deepEqual(workspace.entry.value.fieldFailures, {})
-  assert.equal(workspace.editing.value, false)
+  assert.equal(workspace.editing.value, true)
   assert.equal(workspace.hasUnsavedChanges.value, true, 'other channel drafts remain')
   assert.equal(io.calls.some(([method]) => method === 'updateConfig'), false)
 })
@@ -167,12 +167,14 @@ test('whole-form editing obeys permissions and pending locks and preserves faile
   const workspace = useChannelWorkspace({ api: io.api, permissions: perms, blocked })
   await workspace.activate('email:embedded')
   perms.update.value = false
-  workspace.startEditing()
-  assert.equal(workspace.editing.value, false)
+  const snapshot = workspace.entry.value.snapshot
+  assert.equal(workspace.canEdit.value, false)
+  workspace.changeField('host', 'forbidden.example.test')
+  assert.equal(JSON.stringify(workspace.entry.value.draft), snapshot)
   perms.update.value = true
   blocked.value = true
-  workspace.startEditing()
-  assert.equal(workspace.editing.value, false)
+  workspace.changeField('host', 'locked.example.test')
+  assert.equal(JSON.stringify(workspace.entry.value.draft), snapshot)
   blocked.value = false
   workspace.startEditing()
   workspace.changeField('host', '')
@@ -188,13 +190,13 @@ test('whole-form editing obeys permissions and pending locks and preserves faile
   let release
   io.api.updateConfig = payload => new Promise(resolve => { release = async () => { await update(payload); resolve() } })
   const pending = workspace.save()
-  workspace.cancelEditing()
+  workspace.resetDraft()
   assert.equal(workspace.editing.value, true)
   assert.equal(workspace.entry.value.draft.configuration.host, 'retry.example.test')
   assert.equal(await workspace.save(), false)
   await release()
   assert.equal(await pending, true)
-  assert.equal(workspace.editing.value, false)
+  assert.equal(workspace.editing.value, true)
   assert.equal(io.calls.filter(([method]) => method === 'updateConfig').length, 1)
 })
 
@@ -447,15 +449,18 @@ function* walk(node) {
   if (Array.isArray(node.children)) for (const child of node.children) if (typeof child === 'object') yield* walk(child)
 }
 
-test('saved configuration renders masked details, with empty password input only while editing', async () => {
+test('saved configuration always renders empty credential inputs, disabled without edit permission', async () => {
   const original = email()
   const draft = createChannelConfigDraft(original)
   const entry = { key: 'record', draft, baseline: original, isNew: false, snapshot: JSON.stringify(draft), issues: [] }
   const app = mount(ChannelConfiguration, { entry, disabled: true })
   const nodes = [...walk(app._instance.subTree)]
-  assert.equal(nodes.some(node => node.type?.name === 'a-input-password'), false)
+  const lockedPassword = nodes.find(node => node.type?.name === 'a-input-password')
+  assert.equal(lockedPassword.props.value, '')
+  assert.equal(lockedPassword.props.disabled, true)
   assert.equal(nodes.some(node => node.type === 'button' && node.props?.['aria-label'] === 'messageNotification.channels.fields.password'), false)
-  assert.ok(nodes.some(node => node.children === '••••••••'))
+  assert.equal(nodes.some(node => node.children === 'saved-password'), false)
+  assert.equal(nodes.some(node => node.props?.class === 'inline-edit-field__hint'), false)
   app.unmount()
   entry.editing = true
   const editable = mount(ChannelConfiguration, { entry })
@@ -537,9 +542,15 @@ test('extracted page orchestration preserves route filters, send-only trial perm
     for (let index = 0; index < 24; index += 1) { await Promise.resolve(); await vue.nextTick() }
     assert.equal(page.entry.value.baseline.id, 'smtp-real')
     assert.equal(page.configurationVisible.value, true)
-    assert.equal(page.helpOpen.value, true, 'saved channels show guidance by default')
-    page.toggleHelp(false)
-    assert.equal(page.helpOpen.value, false)
+    permissionRefs.get(notificationPermissions.channels.update).value = false
+    await vue.nextTick()
+    assert.equal(page.canEdit.value, false, 'open forms immediately follow update permission revocation')
+    const savedDraft = JSON.stringify(page.entry.value.draft)
+    page.workspace.changeField('host', 'unauthorized.example.test')
+    assert.equal(JSON.stringify(page.entry.value.draft), savedDraft)
+    permissionRefs.get(notificationPermissions.channels.update).value = true
+    await vue.nextTick()
+    assert.equal(page.canEdit.value, true)
     assert.equal(page.configurationOptions.value.length, 2)
     assert.equal(page.multipleConfigurations.value, false)
     assert.equal(pageContext.route.query.configId, 'smtp-real')
@@ -555,14 +566,13 @@ test('extracted page orchestration preserves route filters, send-only trial perm
     await vue.nextTick()
     page.showSend()
     assert.equal(io.calls.some(([method]) => method === 'queryTemplates'), false)
-    assert.equal(page.editing.value, false)
+    assert.equal(page.editing.value, true)
     page.fixTestConfiguration()
     assert.equal(page.trial.open.value, false)
-    assert.equal(page.editing.value, false, 'editing waits for the test dialog to close')
+    assert.equal(page.editing.value, true, 'form remains available after the test dialog closes')
     await page.afterTestClosed()
     assert.equal(page.editing.value, true)
-    assert.equal(page.helpOpen.value, true)
-    page.toggleHelp(false)
+    assert.equal(page.activeHelpSection.value, 'host')
     page.workspace.changeField('password', 'replacement-secret')
     page.workspace.changeField('host', 'smtp.updated.example.org')
     const update = io.api.updateConfig
@@ -598,9 +608,7 @@ test('extracted page orchestration preserves route filters, send-only trial perm
     assert.equal(page.channelId.value, 'dingTalk:dingTalkMessage')
     assert.equal(pageContext.route.query.channel, 'dingTalk:dingTalkMessage')
     assert.equal(page.entry.value.isNew, true)
-    assert.equal(page.helpOpen.value, true, 'new channels show guidance by default')
     await page.workspace.activate('email:embedded', 'smtp-real')
-    assert.equal(page.helpOpen.value, false, 'manual collapse is remembered per channel')
     for (const [channelId, fields] of [['sms:aliyunSms', ['regionId', 'accessKeyId', 'secret', 'testTemplate']], ['webhook:http', ['url', 'headers']]]) {
       await page.workspace.activate(channelId)
       assert.equal(page.state.value, 'empty')
@@ -894,7 +902,7 @@ test('opening and reselecting a known SMTP brand preserve exact saved values and
   assert.equal(workspace.entry.value.draft.configuration.host, 'smtpdm-eu-central-1.aliyuncs.com')
   assert.equal(workspace.entry.value.draft.configuration.port, 465)
   assert.equal(emailEncryption(workspace.entry.value.draft.configuration), 'ssl')
-  workspace.cancelEditing()
+  workspace.resetDraft()
   assert.equal(model.preset.value, 'tencent')
   assert.equal(workspace.dirty.value, false)
   assert.equal(workspace.entry.value.draft.configuration.host, record.configuration.host)
@@ -928,7 +936,7 @@ test('Other filters branded endpoints, keeps the current address and never appli
   model.selectSmtpHost('smtp.qq.com')
   assert.equal(workspace.entry.value.draft.configuration.host, 'smtp.mail.me.com')
   assert.equal(io.calls.some(([method]) => method === 'updateConfig'), false)
-  workspace.cancelEditing()
+  workspace.resetDraft()
   assert.equal(model.preset.value, 'exchange')
 })
 
@@ -948,16 +956,14 @@ test('an initially unknown SMTP host remains in Other when a known brand address
   assert.equal(Object.hasOwn(io.records.get('smtp-real').configuration, 'brand'), false)
 })
 
-test('SMTP selections are locked in view mode, while busy or disabled and outside matching brand options', async () => {
+test('SMTP selections obey busy and disabled locks and move provider hints to the document', async () => {
   const io = testApi()
   const workspace = useChannelWorkspace({ api: io.api, permissions: permissions(), loadDefinition: async channel => channelDefinition(channel, channelMetadata[channel.id]) })
   await workspace.activate('email:embedded')
   const props = vue.reactive({ ...configurationProps(workspace), busy: false })
   const model = useChannelConfiguration(props, workspace.changeField)
   const initial = clone(workspace.entry.value.draft.configuration)
-  model.setPreset('tencent')
-  assert.deepEqual(workspace.entry.value.draft.configuration, initial)
-  workspace.startEditing()
+
   for (const flag of ['busy', 'disabled']) {
     props[flag] = true
     model.setPreset('exchange')
@@ -972,7 +978,9 @@ test('SMTP selections are locked in view mode, while busy or disabled and outsid
   assert.equal(workspace.entry.value.draft.configuration.host, 'smtp.office365.com')
   model.changeValue('config:host', 'smtp-mail.outlook.com')
   const hostField = model.formGroups.value.flatMap(group => group.fields).find(field => field.key === 'config:host')
-  assert.equal(hostField.hint, 'messageNotification.channels.email.outlookAuthentication')
+  assert.equal(hostField.hint, undefined)
+  const help = channelHelp(workspace.channel.value, workspace.entry.value.definition, key => key, workspace.entry.value.draft.configuration)
+  assert.ok(help.sections.find(section => section.id === 'host').blocks.some(block => block.text === 'messageNotification.channels.email.outlookAuthentication'))
   assert.equal(io.calls.some(([method]) => method === 'updateConfig'), false)
 })
 
@@ -1092,7 +1100,7 @@ test('whole-form email edits keep coupled draft values, custom ports and extra S
   assert.equal(workspace.entry.value.draft.configuration.host, 'smtp.office365.com')
   assert.equal(workspace.entry.value.draft.configuration.port, 587)
   assert.equal(emailEncryption(workspace.entry.value.draft.configuration), 'starttls')
-  workspace.cancelEditing()
+  workspace.resetDraft()
   assert.equal(workspace.entry.value.draft.configuration.host, 'smtp.example.org')
   assert.equal(workspace.entry.value.draft.configuration.port, 2525)
   assert.equal(workspace.dirty.value, false)
@@ -1617,4 +1625,52 @@ test('external robot deep links discard the replaced modal draft without changin
     await f.dialog.act('first', 'edit')
     assert.equal(f.dialog.modal.value.name, '群机器人')
   } finally { f.dispose() }
+})
+
+test('document anchors follow actual credential IDs, extensions and SMTP controls', () => {
+  const translate = key => locale[key] || key
+  const corp = notificationChannels.find(channel => channel.id === 'weixin:corpMessage')
+  const help = channelHelp(corp, channelDefinition(corp, channelMetadata[corp.id]), translate)
+  assert.equal(channelHelpSection(help, 'config:corpId'), 'corpId')
+  assert.equal(channelHelpSection(help, 'config:agentId'), 'weixinAgentId')
+  assert.equal(channelHelpSection(help, 'config:corpSecret'), 'corpSecret')
+  assert.equal(channelHelpSection(help, 'config:missing'), undefined)
+  assert.equal(channelHelpSection(help, ''), undefined)
+  assert.ok(help.sections.every(section => section.blocks.some(block => block.type === 'image')))
+  const emailChannel = notificationChannels.find(channel => channel.type === 'email')
+  const emailHelp = channelHelp(emailChannel, channelDefinition(emailChannel, channelMetadata[emailChannel.id]), translate)
+  assert.equal(channelHelpSection(emailHelp, 'email:preset'), 'emailPreset')
+  assert.equal(channelHelpSection(emailHelp, 'email:encryption'), 'encryption')
+  assert.equal(channelHelpSection(emailHelp, 'config:password'), 'password')
+  const custom = { id: 'extension:custom', type: 'extension', provider: 'custom', secretFields: [] }
+  const extensionHelp = channelHelp(custom, { metadata: { description: 'Provider overview' }, fields: [{ key: 'endpoint', property: { name: 'Endpoint', description: 'Provider instructions' } }] }, translate)
+  assert.equal(extensionHelp.overview, 'Provider overview')
+  assert.equal(channelHelpSection(extensionHelp, 'config:endpoint'), 'field-endpoint')
+  assert.equal(extensionHelp.sections[0].blocks[0].text, 'Provider instructions')
+  const official = channelHelp({ ...custom, id: 'weixin:officialMessage' }, undefined, translate)
+  assert.equal(channelHelpSection(official, 'config:secret'), 'officialSecret')
+  assert.equal(channelHelpSection(official, 'config:appId'), 'appId')
+  for (const lang of ['zh', 'en', 'ja']) {
+    const messages = JSON.parse(readFileSync(resolve(moduleRoot, `locales/lang/${lang}.json`), 'utf8'))
+    for (const channel of [...notificationChannels, { ...custom, id: 'weixin:officialMessage' }]) {
+      const model = channelHelp(channel, undefined, key => {
+        assert.equal(typeof messages[key], 'string', `${lang}: ${key}`)
+        return messages[key]
+      })
+      assert.ok(model.sections.length)
+    }
+  }
+})
+
+test('resetting a fresh form restores defaults without leaving form mode or making a request', async () => {
+  const io = testApi([])
+  const workspace = useChannelWorkspace({ api: io.api, permissions: permissions() })
+  await workspace.activate('email:embedded')
+  const initial = workspace.entry.value.snapshot
+  workspace.changeField('host', 'draft.example.test')
+  workspace.resetDraft()
+  assert.equal(JSON.stringify(workspace.entry.value.draft), initial)
+  assert.equal(workspace.editing.value, true)
+  assert.equal(workspace.dirty.value, false)
+  assert.equal(io.calls.some(([method]) => ['createConfig', 'updateConfig'].includes(method)), false)
 })

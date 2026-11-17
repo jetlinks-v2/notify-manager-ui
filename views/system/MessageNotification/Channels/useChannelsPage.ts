@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import type { TreeProps } from 'ant-design-vue'
@@ -16,7 +16,7 @@ import { channelTestAdapters } from './testing/channelTestAdapter'
 import { useWechatMembers, type MemberFilterTerm, type MemberStatusFilter } from './members/useWechatMembers'
 import type { WechatMembersDrawerModel } from './members/useWechatMembersDrawer'
 import { useChannelLeaveGuard } from './useChannelLeaveGuard'
-import { channelHelp, channelHelpStep } from './configuration/channelHelp'
+import { channelHelp, channelHelpSection } from './configuration/channelHelp'
 import { classifyNotificationFailure, notificationFailureMessage } from '../../../../api/notice/messageNotificationState'
 import { useWebhookPreview } from './webhook/useWebhookPreview'
 import { useRobotConfigurations } from './robot/useRobotConfigurations'
@@ -33,8 +33,9 @@ export function useChannelsPage() {
   // Trial permissions must react to session/role changes; usePermission with a fixed code is a snapshot.
   const permissions = {
     query: computed(() => auth.hasPermission(notificationPermissions.channels.query)),
-    add: usePermission(notificationPermissions.channels.add).hasPerm,
-    update: usePermission(notificationPermissions.channels.update).hasPerm,
+    // Always-visible editors must react when authorization changes after the page was opened.
+    add: computed(() => auth.hasPermission(notificationPermissions.channels.add)),
+    update: computed(() => auth.hasPermission(notificationPermissions.channels.update)),
     delete: usePermission(notificationPermissions.channels.delete).hasPerm,
     action: computed(() => auth.hasPermission(notificationPermissions.channels.action)),
     bind: usePermission(notificationPermissions.channels.bind).hasPerm,
@@ -160,13 +161,11 @@ export function useChannelsPage() {
   function updateMemberFilters(value: MemberFilterTerm[]) { if (!members.busy.value) members.filterTerms.value = value }
   function updateMemberStatus(value: MemberStatusFilter) { members.statusFilter.value = value }
   function resetMemberFilters() { members.filterTerms.value = [] }
-  const helpChoices = reactive(new Map<string, boolean>())
-  const helpOpen = computed(() => helpChoices.get(channelId.value) ?? true)
-  const help = computed(() => channelHelp(channel.value, entry.value?.definition, t))
+  const help = computed(() => channelHelp(channel.value, entry.value?.definition, t, entry.value?.draft.configuration))
   const focusedField = ref('')
-  const activeHelpStep = computed(() => channelHelpStep(channel.value, entry.value?.definition, focusedField.value))
-  function focusField(key: string) { focusedField.value = key }
-  function toggleHelp(value = !helpOpen.value) { helpChoices.set(channelId.value, value) }
+  const helpFocusVersion = ref(0)
+  const activeHelpSection = computed(() => channelHelpSection(help.value, focusedField.value))
+  function focusField(key: string) { focusedField.value = key; helpFocusVersion.value++ }
 
   // Directory availability precedes route normalization; unknown links never silently select another provider.
   watch(canQuery, () => { workspace.clear(); void catalog.reload() }, { immediate: true })
@@ -227,9 +226,7 @@ export function useChannelsPage() {
     pendingTestField.value = undefined
     if (!target || target.configId !== selectedConfigId.value || !canEdit.value || operationBusy.value) return
     if (robot.isRobot.value) { robot.editSelected(); return }
-    helpChoices.set(channelId.value, true)
-    focusedField.value = target.key
-    workspace.startEditing()
+    focusField(target.key)
   }
   // External navigation can change the target while the workspace is locked by a pending send.
   watch([() => route.query.channel, () => route.query.ch, () => route.query.configId], () => trial.close(true))
@@ -258,7 +255,7 @@ export function useChannelsPage() {
     canQuery, channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId,
     busy, dirty, canEdit, editing, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave,
     sending, workspace, trial, testModel: trial.model, fixTestConfiguration, afterTestClosed, refresh, save, remove, showSend, configurationVisible,
-    catalog, directoryState, providerFeedback, channelTitle, help, helpOpen, toggleHelp, saveFields, focusField, activeHelpStep, deleteOpen, clearChannelName, clearMessage, requestRemove,
+    catalog, directoryState, providerFeedback, channelTitle, help, saveFields, focusField, activeHelpSection, helpFocusVersion, deleteOpen, clearChannelName, clearMessage, requestRemove,
     members, memberDrawer, canSyncMembers, showMembers, autoMatchMembers, closeMembers, reloadMembers, memberDiscardOpen, decideMemberDiscard, updateMemberFilters, updateMemberStatus, resetMemberFilters,
   }
 }

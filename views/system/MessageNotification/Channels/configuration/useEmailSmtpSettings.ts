@@ -8,9 +8,8 @@ import { emailBrandDefaults, emailBrandForHost, emailBrands, emailSmtpEndpoints,
 export function useEmailSmtpSettings(props: ChannelConfigurationProps, enabled: ComputedRef<boolean>, change?: (key: string, value: unknown) => void) {
   const { t } = useI18n()
   const explicitBrand = ref<EmailBrand>()
-  const editing = computed(() => props.entry.isNew || !!props.entry.editing)
-  const locked = computed(() => props.disabled || props.busy || !editing.value || !enabled.value)
-  watch([() => props.entry.key, editing], () => { explicitBrand.value = undefined }, { flush: 'sync' })
+  const locked = computed(() => props.disabled || props.busy || !enabled.value)
+  watch([() => props.entry.key, () => props.entry.draft], () => { explicitBrand.value = undefined }, { flush: 'sync' })
   const preset = computed(() => explicitBrand.value || emailBrandForHost(props.entry.draft.configuration.host))
   const presetOptions = computed(() => emailBrands.map(value => ({ value, label: t(`messageNotification.channels.email.presets.${value}`) })))
   const endpoints = computed(() => emailSmtpEndpoints.filter(endpoint => endpoint.brand === preset.value))
