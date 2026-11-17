@@ -60,7 +60,8 @@ export function useChannelCatalog(permitted: Ref<boolean>, api: MessageNotificat
     if (!permitted.value) return
     providerStates.set(type, 'loading')
     try {
-      const result = await api.queryProviders(type)
+      // Official-account messaging is not supported by the runtime channel configuration page.
+      const result = (await api.queryProviders(type)).filter(provider => type !== 'weixin' || provider.id !== 'officialMessage')
       if (version !== revision || !permitted.value) return
       providers.set(type, result)
       providerStates.set(type, result.length ? 'ready' : 'empty')

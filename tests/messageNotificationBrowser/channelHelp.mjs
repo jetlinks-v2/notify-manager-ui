@@ -13,7 +13,6 @@ const browser = await chromium.launch({ headless: true })
 await mkdir(output, { recursive: true })
 const cases = [
   ['weixin:corpMessage', [['corpId','corpId'], ['corpSecret','corpSecret']], 2],
-  ['weixin:officialMessage', [['AppId','appId'], ['AppSecret','officialSecret']], 2],
   ['dingTalk:dingTalkMessage', [['appKey','appKey'], ['agentId','dingTalkAgentId'], ['appSecret','appSecret']], 3],
   ['dingTalk:dingTalkRobotWebHook', [], 3],
   ['email:embedded', [['host','host'], ['port','port'], ['username','username'], ['password','password'], ['sender','sender']], 0],

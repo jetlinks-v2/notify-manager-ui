@@ -444,6 +444,7 @@
   "messageNotification.channels.groups.instant": "Messaging and email",
   "messageNotification.channels.workNotification": "Work notifications",
   "messageNotification.channels.groupRobot": "Group robot",
+  "messageNotification.channels.wechat": "WeChat",
   "messageNotification.channels.search": "Search notification channels",
   "messageNotification.channels.noMatches": "No matching notification channels",
   "messageNotification.channels.groups.telephone": "SMS and voice",

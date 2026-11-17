@@ -44,14 +44,15 @@ export function useChannelsPage() {
   const catalog = useChannelCatalog(canQuery)
   const channelTitle = (item: NotificationChannel) => item.labelKey ? t(item.labelKey) : item.name || item.id
   const channelOptions = computed(() => catalog.channels.value.map(item => ({ value: item.id, label: channelTitle(item) })))
-  const typeTitle = (id: string, name?: string) => te(`NoticeCenter.channel.type.${id}`) ? t(`NoticeCenter.channel.type.${id}`) : name || id
+  const typeTitle = (id: string, name?: string) => id === 'weixin' ? t('messageNotification.channels.wechat')
+    : te(`NoticeCenter.channel.type.${id}`) ? t(`NoticeCenter.channel.type.${id}`) : name || id
   const providerTitle = (item: NotificationChannel) => item.id === 'dingTalk:dingTalkRobotWebHook'
     ? t('messageNotification.channels.groupRobot') : ['dingTalk:dingTalkMessage', 'weixin:corpMessage'].includes(item.id)
       ? t('messageNotification.channels.workNotification') : item.providerName || channelTitle(item)
   const channelSearch = ref('')
   const channelTree = computed(() => catalog.types.value.map(type => {
     const items = catalog.channels.value.filter(item => item.type === type.id)
-    const nested = items.length !== 1 || ['dingTalk', 'weixin'].includes(type.id)
+    const nested = items.length !== 1 || type.id === 'dingTalk'
     const leaf = (item: NotificationChannel) => ({ key: item.id, type: type.id, title: nested ? providerTitle(item) : typeTitle(type.id, type.name), count: catalog.count(item), multipleConfigurations: !!item.multipleConfigurations, children: [] })
     return nested ? { key: `type:${type.id}`, type: type.id, title: typeTitle(type.id, type.name), count: undefined, children: items.map(leaf) } : leaf(items[0])
   }))
@@ -63,7 +64,7 @@ export function useChannelsPage() {
       return children.length ? [{ ...node, children }] : []
     })
   })
-  const openChannelKeys = ref<string[]>(['type:dingTalk', 'type:weixin'])
+  const openChannelKeys = ref<string[]>(['type:dingTalk'])
   watch(channelSearch, keyword => { if (keyword.trim()) openChannelKeys.value = channelTree.value.filter(node => node.children.length).map(node => node.key) })
   const providerFeedback = computed(() => catalog.types.value.flatMap(type => {
     const status = catalog.providerStates.get(type.id)
@@ -172,10 +173,16 @@ export function useChannelsPage() {
   const activeHelpSection = computed(() => channelHelpSection(help.value, focusedField.value))
   function focusField(key: string) { focusedField.value = key; helpFocusVersion.value++ }
 
-  // Directory availability precedes route normalization; unknown links never silently select another provider.
+  // Directory availability precedes route normalization; only the retired official-account link has a replacement.
   watch(canQuery, () => { workspace.clear(); void catalog.reload() }, { immediate: true })
   watch([() => route.query, catalog.state, catalog.channels, catalog.configState, externalBusy, busy], ([query]) => {
     if (!canQuery.value || catalog.state.value !== 'ready' || operationBusy.value) return
+    const requestedId = Array.isArray(query.channel) ? query.channel[0] : query.channel
+    // A retired provider's config ID must never be applied to the corporate account editor.
+    if (requestedId === 'weixin:officialMessage' && findNotificationChannel('weixin:corpMessage', catalog.channels.value)) {
+      void navigate({ channel: 'weixin:corpMessage' })
+      return
+    }
     const navigation = normalizeNotificationNavigation(query, catalog.channels.value)
     // 个人中心只有真实通知器 ID 时，由当前权限内的配置确定提供商，不猜成同类型首项。
     const configOnly = !!navigation.configId && !query.channel && !query.ch

@@ -444,6 +444,7 @@
   "messageNotification.channels.groups.instant": "即时通讯与邮件",
   "messageNotification.channels.workNotification": "工作通知",
   "messageNotification.channels.groupRobot": "群机器人",
+  "messageNotification.channels.wechat": "微信",
   "messageNotification.channels.search": "搜索通知渠道",
   "messageNotification.channels.noMatches": "暂无匹配的通知渠道",
   "messageNotification.channels.groups.telephone": "短信与语音",

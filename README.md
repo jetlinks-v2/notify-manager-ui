@@ -33,7 +33,13 @@
 
 完整类型检查仍未通过：在 `runtime-ui/` 执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，修改前后均为 196 条既有诊断，忽略行列比较无新增或移除；修复基线问题后需重跑。类型日志为 `/tmp/jetlinks-channel-help/types-{before,final}.log`。本轮未写入真实渠道配置或发送通知，真实服务商账号与投递仍需环境联调。
 
-## 微信服务号配置说明
+## 微信渠道入口
+
+`views/system/MessageNotification/Channels/` 已过滤不支持的 `weixin:officialMessage`，微信只显示一级“微信”，点击打开 `weixin:corpMessage`。旧服务号链接在企业微信可用时跳转到该渠道并清除原配置 ID，保留其他查询条件；企业微信不可用时沿用不可用状态，不选中其他渠道。实现入口为 `useChannelCatalog.ts` 和 `useChannelsPage.ts`，中英日导航文案使用 `messageNotification.channels.wechat`。后端、业务模板、通知记录和历史配置数据不变。
+
+验证（2026-11-17）：模块目录执行 `node --test tests/messageNotificationChannels.test.mjs tests/messageNotificationContracts.test.mjs`，90/90 通过。沿用上文浏览器命令，`trials.mjs` 增加 `TRIAL_SETTINGS_ONLY=1`，与 `channelHelp.mjs` 分别通过 7 组检查；覆盖三语一级节点、点击切换、旧链接清除服务号配置 ID、窄屏隐藏选项与七类渠道说明，页面错误和真实业务请求均为 0。沿用上文构建命令，模块构建通过（24.95 秒，保留既有分块告警）；`vue-tsc` 前后均为 196 条既有诊断，忽略行列后无新增或移除，待修复既有问题后重跑上文类型命令。无独立 lint 脚本，三语资源及 `git diff --check` 通过。证据位于 `/tmp/jetlinks-wechat-nav/` 和 `/tmp/jetlinks-wechat-nav-*.log`；实际后端保存与消息投递未验证。
+
+### 历史服务号配置说明（入口已屏蔽）
 
 `views/system/MessageNotification/Channels/` 的微信服务号配置页仅展示服务端配置字段，已移除渠道测试入口、测试模板和样例参数设置；沿用现有配置表单与说明面板，中英日说明同步。参考线上 `https://doc.jetlinks.cn/` 的微信服务号配置说明（`doc.WeixinApp.707693-*`），介绍 AppID、AppSecret 以及“微信公众平台 → 设置与开发 → 基本配置”的获取路径。保留已有配置值、业务消息模板和其他渠道能力，服务号调整不改变后端接口或配置数据；统一试发沿用既有发送接口，并移除渠道试发按钮对业务模板查询权限的依赖。
 

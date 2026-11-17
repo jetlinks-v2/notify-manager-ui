@@ -444,6 +444,7 @@
   "messageNotification.channels.groups.instant": "メッセージとメール",
   "messageNotification.channels.workNotification": "業務通知",
   "messageNotification.channels.groupRobot": "グループボット",
+  "messageNotification.channels.wechat": "WeChat",
   "messageNotification.channels.search": "通知チャネルを検索",
   "messageNotification.channels.noMatches": "一致する通知チャネルがありません",
   "messageNotification.channels.groups.telephone": "SMS と音声",

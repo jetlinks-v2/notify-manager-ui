@@ -505,6 +505,7 @@ test('actual leave hook keeps navigation pending, supports stay/leave and cleans
 
 test('extracted page orchestration preserves route filters, send-only trial permission and failed save recovery', async () => {
   const io = testApi([email(), email('smtp-backup')])
+  io.api.queryProviders = async type => clone(type === 'weixin' ? [...channelProviders.weixin, { id: 'officialMessage', name: '微信服务号' }] : channelProviders[type] || [])
   const queryAllConfigs = io.api.queryAllConfigs
   io.api.queryAllConfigs = async () => { throw new Error('offline') }
   const originalWindow = globalThis.window
@@ -608,6 +609,23 @@ test('extracted page orchestration preserves route filters, send-only trial perm
     assert.equal(page.channelId.value, 'dingTalk:dingTalkMessage')
     assert.equal(pageContext.route.query.channel, 'dingTalk:dingTalkMessage')
     assert.equal(page.entry.value.isNew, true)
+    const wechatNode = page.filteredChannelTree.value.find(node => node.type === 'weixin')
+    assert.equal(wechatNode.key, 'weixin:corpMessage')
+    assert.equal(wechatNode.title, 'messageNotification.channels.wechat')
+    assert.deepEqual(wechatNode.children, [])
+    assert.equal(page.channelOptions.value.some(item => item.value === 'weixin:officialMessage'), false)
+    page.selectChannel([], { node: wechatNode })
+    for (let index = 0; index < 24; index++) { await Promise.resolve(); await vue.nextTick() }
+    assert.equal(page.channelId.value, 'weixin:corpMessage')
+    for (const channel of ['weixin:officialMessage', ['weixin:officialMessage']]) {
+      pageContext.route.query = { channel, configId: 'official-real', q: 'kept-filter' }
+      for (let index = 0; index < 24; index++) { await Promise.resolve(); await vue.nextTick() }
+      assert.equal(pageContext.route.query.channel, 'weixin:corpMessage')
+      assert.equal(pageContext.route.query.configId, undefined)
+      assert.equal(pageContext.route.query.q, 'kept-filter')
+      assert.equal(page.entry.value.draft.provider, 'corpMessage')
+    }
+    assert.equal(io.calls.some(([method, id]) => method === 'getConfig' && id === 'official-real'), false)
     await page.workspace.activate('email:embedded', 'smtp-real')
     for (const [channelId, fields] of [['sms:aliyunSms', ['regionId', 'accessKeyId', 'secret', 'testTemplate']], ['webhook:http', ['url', 'headers']]]) {
       await page.workspace.activate(channelId)
@@ -651,15 +669,17 @@ test('all channel SFCs compile through Vue script/template without auto-named sc
   }
 })
 
-test('backend catalog includes every provider, new types and removals without a static fallback', async () => {
+test('backend catalog hides official accounts and retains extension providers, new types and removals', async () => {
   const io = testApi([])
   const allowed = vue.ref(true)
   const returnedTypes = [...clone(channelTypes), extensionType]
   io.api.queryTypes = async () => returnedTypes
-  io.api.queryProviders = async type => clone(type === 'extension' ? extensionProviders : channelProviders[type])
+  io.api.queryProviders = async type => clone(type === 'extension' ? extensionProviders
+    : type === 'weixin' ? [...channelProviders.weixin, { id: 'officialMessage', name: '微信服务号' }] : channelProviders[type])
   const catalog = useChannelCatalog(allowed, io.api)
   await catalog.reload()
   assert.equal(catalog.channels.value.length, 9)
+  assert.deepEqual(catalog.channels.value.filter(item => item.type === 'weixin').map(item => item.id), ['weixin:corpMessage'])
   assert.equal(catalog.channels.value.find(item => item.id === 'extension:custom').providerName, '自定义服务')
   assert.equal(catalog.count(catalog.channels.value[0]), undefined)
   await catalog.loadConfigs()
