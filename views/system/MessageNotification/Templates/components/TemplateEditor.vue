@@ -23,13 +23,15 @@
       <a-spin :spinning="metadataState === 'loading' && !known">
         <a-form-item v-for="field in fields" :key="field.key" :label="t(field.labelKey)" :required="field.required">
           <div @focusin="captureProviderCaret($event, field.path)" @click="captureProviderCaret($event, field.path)" @keyup="captureProviderCaret($event, field.path)" @input="captureProviderCaret($event, field.path)">
-            <TemplateFieldRenderer :field="field" :value="fieldValue(field)" @update="changeField(field, $event)" @activate="activateProviderField" @load-options="loadRemoteOptions" />
+            <TemplateProviderField :field="field" :editor="editor" />
           </div>
         </a-form-item>
         <template v-if="!genericJson">
           <a-form-item v-for="property in metadataFields" :key="property.id" :label="property.name || property.id" :required="metadataRequired(property)">
             <div @focusin="captureProviderCaret($event, [property.id])" @click="captureProviderCaret($event, [property.id])" @keyup="captureProviderCaret($event, [property.id])">
-              <MetadataValueItem :item="property" :model-value="metadataValue(property)" :disabled="disabled" @update:model-value="changeMetadata(property.id, $event)" />
+              <TemplateVariableInput v-if="property.valueType.type === 'string'" :value="String(metadataValue(property) ?? '')" :aria-label="property.name || property.id"
+                :disabled="disabled" @update:value="changeMetadata(property.id, $event)" />
+              <MetadataValueItem v-else :item="property" :model-value="metadataValue(property)" :disabled="disabled" @update:model-value="changeMetadata(property.id, $event)" />
             </div>
             <div v-if="property.description" class="template-editor__hint">{{ property.description }}</div>
           </a-form-item>
@@ -39,7 +41,7 @@
           <a-alert v-else-if="!known && metadataState !== 'loading'" type="info" show-icon :message="t(`messageNotification.templates.presentation.${metadataFailure ? 'metadataError' : 'metadataUnavailable'}`)" />
           <a-form-item :label="t('messageNotification.templates.providerContent')" required>
             <div class="template-editor__hint">{{ t('messageNotification.templates.jsonHint') }}</div>
-            <a-textarea v-model:value="draft.templateJson" :rows="14" @focus="captureCaret($event, 'templateJson')" @click="captureCaret($event, 'templateJson')" @keyup="captureCaret($event, 'templateJson')" @input="captureCaret($event, 'templateJson')" />
+            <TemplateVariableInput v-model:value="draft.templateJson" multiline :rows="14" :disabled="disabled" :aria-label="t('messageNotification.templates.providerContent')" />
           </a-form-item>
         </template>
       </a-spin>
@@ -58,12 +60,16 @@ import WechatTemplateEditor from './channels/WechatTemplateEditor.vue'
 import VoiceTemplateEditor from './channels/VoiceTemplateEditor.vue'
 import SmsTemplateEditor from './channels/SmsTemplateEditor.vue'
 import WebhookTemplateEditor from './channels/WebhookTemplateEditor.vue'
-import TemplateFieldRenderer from '../../../../notice/template/components/TemplateFieldRenderer.vue'
+import type { NoticeChannelConfig } from '../../../../../api/notice-center'
+import { provideTemplateVariableEditing } from '../variables/catalog'
+import TemplateVariableInput from '../variables/TemplateVariableInput.vue'
+import TemplateProviderField from '../variables/TemplateProviderField.vue'
 
 const props = defineProps({
   draft: { type: Object as PropType<TemplateDraft>, required: true },
   existing: { type: Boolean, default: false },
   businessMode: { type: Boolean, default: false },
+  business: { type: Object as PropType<NoticeChannelConfig>, default: undefined },
   disabled: { type: Boolean, default: false },
   configs: { type: Array as PropType<NotifierConfig[]>, default: () => [] },
   configState: { type: String as PropType<NotificationLoadState>, required: true },
@@ -73,11 +79,12 @@ const props = defineProps({
 })
 const emit = defineEmits<{ (event: 'uploading', value: boolean): void }>()
 const editor = useTemplateEditor(props, emit)
+provideTemplateVariableEditing({ names: editor.variableNames, identity: computed(() => props.draft), captureCaret: editor.captureCustomCaret })
 const {
   t, emailDraft, builtinOptions, selectBuiltin, canInsertVariable, configFailure, configOptions,
-  setUploading, captureCaret, captureProviderCaret, activateProviderField, insertVariable,
-  known, fields, metadataFields, genericJson, metadataFailure, parsed, fieldValue, changeField,
-  changeMetadata, metadataValue, metadataRequired, loadRemoteOptions,
+  captureProviderCaret, insertVariable,
+  known, fields, metadataFields, genericJson, metadataFailure, parsed,
+  changeMetadata, metadataValue, metadataRequired,
 } = editor
 const channelEditors: Record<string, Component> = {
   'email:embedded': EmailTemplateEditor, 'dingTalk:dingTalkMessage': DingTalkTemplateEditor,

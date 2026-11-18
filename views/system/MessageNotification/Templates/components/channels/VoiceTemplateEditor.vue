@@ -2,11 +2,11 @@
   <div class="voice-editor">
     <a-alert class="voice-editor__notice" type="info" :message="t('messageNotification.templates.visual.voiceApprovalHint')" />
     <a-form-item v-for="field in advancedFields" :key="field.key" :label="t(field.labelKey)" :required="field.required">
-      <TemplateFieldRenderer :field="field" :value="fieldValue(field)" @update="changeField(field, $event)" @activate="activateProviderField" @load-options="loadRemoteOptions" />
+      <TemplateProviderField :field="field" :editor="editor" />
     </a-form-item>
     <a-form-item v-for="field in mainFields" :key="field.key" :label="t(field.key === 'templateCode' ? 'messageNotification.templates.visual.supplierTemplateCode' : 'messageNotification.templates.visual.approvedContent')" :required="field.required">
       <div @focusin="captureProviderCaret($event, field.path)" @click="captureProviderCaret($event, field.path)" @keyup="captureProviderCaret($event, field.path)" @input="captureProviderCaret($event, field.path)">
-        <TemplateFieldRenderer :field="field" :value="fieldValue(field)" @update="changeField(field, $event)" @activate="activateProviderField" @load-options="loadRemoteOptions" />
+        <TemplateProviderField :field="field" :editor="editor" />
       </div>
       <p v-if="field.key === 'ttsmessage'" class="voice-editor__hint">{{ t('messageNotification.templates.visual.voiceContentHint') }}</p>
     </a-form-item>
@@ -14,7 +14,7 @@
       <h3>{{ t('messageNotification.templates.visual.variableMapping') }}</h3>
       <table>
         <thead><tr><th>{{ t('messageNotification.templates.visual.supplierVariable') }}</th><th>{{ t('messageNotification.templates.visual.platformVariable') }}</th></tr></thead>
-        <tbody><tr v-for="row in mappings" :key="row.id"><td><code>{{ '${' + row.id + '}' }}</code></td><td>{{ row.available ? row.label : t('messageNotification.templates.visual.providedAtSendTime') }}</td></tr></tbody>
+        <tbody><tr v-for="row in mappings" :key="row.id"><td><TemplateVariableText :value="'${' + row.id + '}'" /></td><td><TemplateVariableText v-if="row.available" :value="'${' + row.id + '}'" /><template v-else>{{ t('messageNotification.templates.visual.providedAtSendTime') }}</template></td></tr></tbody>
       </table>
       <p class="voice-editor__hint">{{ t('messageNotification.templates.visual.smsMappingHint') }}</p>
     </section>
@@ -30,10 +30,11 @@
 import type { TemplateDraft } from '../../model'
 import type { TemplateEditorController } from '../../channelViewTypes'
 import { useVoiceTemplateEditorVisual } from '../../hooks/useVoiceTemplateVisual'
-import TemplateFieldRenderer from '../../../../../notice/template/components/TemplateFieldRenderer.vue'
+import TemplateVariableText from '../../variables/TemplateVariableText.vue'
+import TemplateProviderField from '../../variables/TemplateProviderField.vue'
 
 const props = defineProps<{ draft: TemplateDraft; editor: TemplateEditorController; disabled?: boolean }>()
-const { t, fieldValue, changeField, captureProviderCaret, activateProviderField, loadRemoteOptions } = props.editor
+const { t, captureProviderCaret } = props.editor
 const { mainFields, playTimesField, advancedFields, playTimes, mappings, changePlayTimes } = useVoiceTemplateEditorVisual(props.editor)
 </script>
 

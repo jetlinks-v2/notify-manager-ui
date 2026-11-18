@@ -52,6 +52,7 @@ function load(filename) {
 const { createTemplateDraft, buildTemplatePayload } = load(resolve(templateRoot, 'model.ts'))
 const { useTemplateEditor } = load(resolve(templateRoot, 'hooks/useTemplateEditor.ts'))
 const { useTemplatePreview, templatePreviewExample } = load(resolve(templateRoot, 'hooks/useTemplatePreview.ts'))
+const { useTemplateVariablePanel } = load(resolve(templateRoot, 'hooks/useTemplateVariablePanel.ts'))
 const { templateTextSegments, templateTextBlocks } = load(resolve(templateRoot, 'hooks/useTemplateMessageText.ts'))
 const draftFor = (type, provider, template = {}) => createTemplateDraft({
   id: 'template-one', name: 'Saved', configId: 'config-one', type, provider, template,
@@ -287,6 +288,47 @@ test('examples respect date and numeric formats without changing saved variable 
   const before = JSON.stringify(draft)
   assert.equal(useTemplatePreview({ draft }).text.value, '90.1')
   assert.equal(JSON.stringify(draft), before)
+})
+
+test('available legacy variables share formatted business examples even before insertion', () => {
+  const draft = draftFor('email', 'embedded', { subject: 'Saved', text: '${detail.targetName}' })
+  const variables = [
+    { id: 'targetName', name: '设备名称' }, { id: 'detail.targetName', name: '设备名称' },
+    { id: 'alarmTime', type: 'date', format: 'yyyy/MM/dd' },
+    { id: 'propertyValue', type: 'double', format: '%.2f' },
+    { id: 'relieveTime', defaultValue: '' }, { id: 'detail.relieveTime', defaultValue: '' },
+    { id: 'unknown', expands: { mockValue: '  ' }, defaultValue: '' },
+  ]
+  const before = JSON.stringify({ draft, variables, payload: buildTemplatePayload(draft) })
+  const panel = useTemplateVariablePanel({ draft, variables })
+  const rows = new Map(panel.groups.value.flatMap(group => group.rows).map(row => [row.id, row.sample]))
+  assert.equal(rows.get('targetName'), 'Camera 218')
+  assert.equal(rows.get('targetName'), rows.get('detail.targetName'))
+  assert.equal(rows.get('alarmTime'), '2026/01/01')
+  assert.equal(rows.get('propertyValue'), '90.13')
+  for (const id of ['relieveTime', 'detail.relieveTime', 'unknown']) assert.equal(rows.get(id), '—')
+  assert.equal(draft.variables.some(variable => variable.id === 'targetName'), false)
+  assert.equal(JSON.stringify({ draft, variables, payload: buildTemplatePayload(draft) }), before)
+})
+
+test('panel and body preserve explicit samples, zero and false while empty samples fall back', () => {
+  const draft = draftFor('email', 'embedded', { subject: 'Saved', text: '${targetName}|${detail.targetName}|${zero}|${off}|${blank}|${unknown}' })
+  draft.variables = [
+    { id: 'targetName', expands: { mockValue: 'Explicit sample' }, defaultValue: 'Default name' },
+    { id: 'detail.targetName', expands: { mockValue: '' }, defaultValue: 'Default name' },
+    { id: 'zero', expands: { mockValue: 0 }, defaultValue: '1' },
+    { id: 'off', expands: { mockValue: false }, defaultValue: 'true' },
+    { id: 'blank', expands: { mockValue: '  ' }, defaultValue: 'Fallback sample' },
+    { id: 'unknown', name: 'Custom value', defaultValue: '' },
+  ]
+  const before = JSON.stringify({ draft, payload: buildTemplatePayload(draft) })
+  const rows = new Map(useTemplateVariablePanel({ draft, variables: [] }).groups.value
+    .flatMap(group => group.rows).map(row => [row.id, row.sample]))
+  assert.deepEqual(Object.fromEntries(rows), {
+    targetName: 'Explicit sample', 'detail.targetName': 'Camera 218', zero: '0', off: 'false', blank: 'Fallback sample', unknown: '—',
+  })
+  assert.equal(useTemplatePreview({ draft }).text.value, 'Explicit sample|Camera 218|0|false|Fallback sample|Example Custom value')
+  assert.equal(JSON.stringify({ draft, payload: buildTemplatePayload(draft) }), before)
 })
 
 test('sender requires the exact configuration and previews never read credentials', () => {

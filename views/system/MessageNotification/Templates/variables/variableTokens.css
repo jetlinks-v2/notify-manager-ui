@@ -1,0 +1,7 @@
+.template-variable-token {
+  color: var(--jet-theme-primary);
+  background: var(--jet-theme-primary-1, var(--bg-sunken));
+  border-radius: var(--r-1);
+  padding-inline: var(--space-1);
+  overflow-wrap: anywhere;
+}

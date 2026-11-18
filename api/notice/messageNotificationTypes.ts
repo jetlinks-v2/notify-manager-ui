@@ -94,6 +94,7 @@ export interface EmailConfiguration extends NotificationObject {
 export interface NotificationVariable {
   id: string
   name?: string
+  i18nName?: string
   description?: string
   type?: string
   required?: boolean

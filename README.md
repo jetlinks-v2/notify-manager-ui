@@ -193,6 +193,40 @@ Commit：`79bbbea`（本地 `2.20`，未推送）。提交快照验证（2026-11
 
 ### 业务节点联动与模板预览
 
+交付复核（2026-11-18）：以 `origin/2.20` 的 `f5f4eb5` 为基线，使用 `codex/notification-template-variable-editing-2.20` 交付。模块根目录执行 `node --test tests/messageNotification*.test.mjs`，384/384 通过；15 个改动或新增 Vue 的 script/template/style 编译、16 个文件的定向样式门禁、中英日各 1096 个语言键一致性及 `git diff --check` 通过，相关 Vue 均少于 300 行。复用 `/tmp/notify-variable-panel-build-final.log` 的最终模块构建（9,373 个模块、42.45 秒）及 `/tmp/notify-variable-panel-types-final.log` 的类型记录，所覆盖生产源码未再修改；类型日志与变量编辑前基线归一化行列号后完全一致，仍为 195 条既有诊断。完整类型检查尚未通过，真实通知后端保存 / 发送及系统输入法联调仍待验收；重跑命令与边界见下文。
+
+变量名称显示：`Templates/variables/catalog.ts` 为变量面板与编辑器合并接口、预置及草稿变量后，优先通过声明的 `i18nName` 或 `noticeTemplateModel.ts#getRecommendedVariables` 的字段国际化键解析当前语言名称；旧模板缺少名称或名称为变量 key 时也能显示翻译，未知字段沿用已有名称或 key。`api/notice/messageNotificationTypes.ts` 补齐已有可选 `i18nName` 的类型。名称解析只用于展示，变量 ID、插入表达式、草稿元数据和保存载荷保持原值，复用已有语言资源；全渠道编辑接入见下节。
+
+名称验证（2026-11-17）：真实 9201 页面确认告警类型、告警源、产品 ID、属性名称等显示中文；真实组件的 SSR 验证覆盖中英日切换、旧声明覆盖、未知字段回退及草稿 / 保存载荷不变。模板、业务工作区与默认模板回归 95/95 通过，命令为 `node --test modules/notify-manager-ui/tests/messageNotification{Templates,BusinessWorkspace,PrototypeDefaults}.test.mjs`。模块构建通过（45.90 秒，沿用本节 Vite 命令，输出 `/tmp/notify-variable-names-build`），`git diff --check` 通过。类型检查 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json` 修改前后均为 195 项既有诊断，无新增或移除，修复既有错误后需重跑；工作区无独立 lint 脚本，本次未修改 Vue 或样式。浏览器未修改正文、保存配置或发送通知；完整保存仍沿用既有接口契约验证。日志前缀 `/tmp/notify-variable-names-`。
+
+#### 全渠道模板变量以中文标签编辑
+
+模板编辑时，已知变量统一显示为与变量面板一致的蓝色 `{中文名称}`；保存和重新读取始终保留原始 `${变量ID}`。范围仅为 `runtime-ui/modules/notify-manager-ui`：邮件主题 / 富文本正文 / 图片地址 / 附件引用，钉钉工作通知 / 群机器人，企业微信，语音，短信，Webhook JSON，以及动态提供商的字符串字段和通用 JSON。短信审核原文仍为只读，缺少名称的自定义变量显示其 key。不修改后端、接口、数据库、渠道配置、权限、路由或运营端 `ui/`。
+
+变量面板调整（2026-11-18）：精简面板标题、让长变量列表不带走编辑器 / 预览，并补齐历史无前缀变量的已知示例。owning module 仍为本模块，9200 Vite 进程运行于 `runtime-ui/jetlinks-web-core`。
+
+1. `components/TemplateVariablePanel.vue` 将操作说明放在标题右侧，使用现有 `--fs-12` 字号；窄栏允许自然换行，标题与内部滚动列表分开。
+2. `Templates/index.vue` 通过 Spin 的 `wrapper-class-name` 约束编辑区可用高度，桌面编辑器、变量与 `components/TemplatePreview.vue` 的画布各自滚动；两栏 / 单栏保留响应式排列，变量面板最高 28rem，保存栏继续可见。单栏容器规则放在两栏媒体规则之后，避免窄容器被覆盖为两栏；查看态仍沿用原有布局。
+3. `hooks/useTemplatePreview.ts#variableExample` 为面板与预览统一解析示例，优先使用非空显式 mock，再读取当前业务的原 ID / `detail.` 示例，最后使用非空默认值；保留 0、false 及变量声明的日期 / 数值格式。`useTemplateVariablePanel.ts` 对仅在可用目录、尚未插入草稿的变量同样使用该入口；未知字段或当前业务没有提供示例的解除时间显示“—”。示例仅用于展示，变量 ID、默认值、草稿和保存载荷不改写，复用原语言资源。
+
+验证：`node --test tests/messageNotification{TemplatePresentation,VariableEditing,Templates,PrototypeDefaults}.test.mjs` 在模块根目录执行，105/105 通过；新增用例覆盖尚未插入的无前缀变量、日期 / 数值格式、空示例回退、0 / false、显式 mock 优先级和保存载荷不变。三个改动 Vue 的定向样式检查及 `git diff --check` 通过，无独立 lint 脚本；沿用下文类型命令，改动前后均为 195 项既有诊断，忽略行列后无新增或移除，完整类型检查仍需修复既有问题后重跑。模块生产构建通过（42.45 秒，输出 `/tmp/notify-variable-panel-build`，保留既有大 chunk 告警）。日志前缀 `/tmp/notify-variable-panel-`。
+
+真实 9200 页面验证：1543×898 下变量列表从顶部滚到底（scrollTop 702），外层详情 scrollTop 保持 0，编辑器 / 预览与保存栏均可见，说明字体为 12px 且与标题同行；1304 宽度为两栏、700 宽度为单栏，变量面板高度均为 448px。滚动后在正文指定光标处插入蓝色中文变量，节点 title 仍为原 `${detail.alarmConfigName}`；撤销后正文与加载内容完全一致、保存按钮重新禁用，图片面板可正常打开 / 关闭。结束时退出编辑并清除临时视口设置，未保存真实配置或发送通知。截图：`/Users/fuhao/.codex/visualizations/2026/11/17/01a1e913-30e7-7972-a924-db07180ae4a2/notification-variable-panel.jpg`。
+
+实现入口：
+
+- `Templates/variables/catalog.ts`：面板与编辑器共用名称解析，按 ID 合并声明与目录，复用现有中英日翻译；展示名称不写回草稿。目录上下文局限于当前模板编辑器。
+- `variables/quillVariables.ts`：复用模块已有 Quill 2.0.3 的局部 registry 和自定义 embed，节点携带完整原始表达式。同名变量按原 ID 区分，不能通过中文反查。复制 / 剪切输出原表达式，粘贴和手动输入完整表达式后恢复变量节点。
+- `variables/TemplateVariableInput.vue` 与 `useTemplateVariableInput.ts`：共用单行 / 多行输入，保留光标、整体删除、撤销重做、中文组合输入、原始表达式长度校验及禁用 / 只读约束。草稿仅承载原表达式字符串；进入编辑、切换语言不会改变保存基线，撤销到加载内容会恢复原始换行编码。
+- `variables/TemplateProviderField.vue`：通过原 `views/notice/template/components/TemplateFieldRenderer.vue` 的可选 `text-input` slot 接入文本字段，旧调用方继续使用原控件。`components/TemplateEditor.vue` 为各渠道及动态文本字段提供同一目录与光标上下文；钉钉 / 企业微信标题、正文仍合并到原供应商 message 字段。
+- `hooks/useEmailRichTextEditor.ts`：变量节点的语义 HTML 只输出原表达式；保留邮件格式、列表、链接、图片及异步上传选区，编辑专用 span / data 属性不进入保存值。撤销回到加载文档时保留原始 HTML / 纯文本，并保留重做记录。附件及语音 / 短信变量引用使用 `variables/TemplateVariableText.vue` 展示。
+
+验证（2026-11-17）：相关消息通知回归 382 项分批验证通过，包含真实 Vue / Quill 挂载、各渠道载荷、同名不同 ID、未知变量、旧模板回显、中英日切换、光标插入、整体删除、复制粘贴、撤销重做、中文组合事件、JSON 转义、长度边界和只读约束；最终编辑 / 渠道切片 75 项与模板切片 52 项通过，其余切片沿用本轮有效验证结果。模块生产构建通过（39.04 秒，保留既有大 chunk 告警，`-build-final.log`），13 个改动 Vue 的定向样式门禁（`-style-final.log`）、中英日语言键一致性及 `git diff --check` 通过。无独立 lint 脚本；完整 `vue-tsc` 修改前后均有 195 项既有诊断，忽略行列后无新增或移除（`-types-before.log` / `-types-final.log`），需修复既有错误后重跑。
+
+浏览器已验证真实 9201 邮件主题 / 正文蓝色中文变量、指定位置插入、Backspace 整体删除及恢复原文后保存按钮禁用，验证后取消编辑，未保存真实通知配置或发送消息。隔离浏览器夹具已完成邮件插入 → 保存 → 重新编辑：名称仍显示中文、节点 title 保留 `${detail.levelText}`，再次进入编辑无脏状态；钉钉工作通知 / 群机器人、语音、企业微信、短信和 Webhook JSON 的变量回显正常。测试覆盖组合输入事件，尚未以真实操作系统输入法及真实通知后端进行联调。
+
+可复现命令（从 `runtime-ui/` 执行）：`node --test modules/notify-manager-ui/tests/messageNotification*.test.mjs`；定向编辑回归为 `node --test modules/notify-manager-ui/tests/messageNotification{VariableEditing,EmailEditor,EmailRichText,VariableAttachments}.test.mjs`。类型命令为 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`。在 `jetlinks-web-core/` 执行 `node --max_old_space_size=16384 ../node_modules/vite/bin/vite.js build --outDir /tmp/notify-variable-editor-build -- --module-name notify-manager-ui`。日志前缀 `/tmp/notify-variable-editor-`；真实页面截图 `/Users/fuhao/.codex/visualizations/2026/11/17/01a1e913-30e7-7972-a924-db07180ae4a2/notification-variable-editing.jpg`。
+
 渠道模板配置平铺（2026-11-13）：`Templates/components/channels/{DingTalk,Wechat,Voice,Sms}TemplateEditor.vue` 已移除“更多模板字段 / 发送选项”的折叠包装，将原有配置字段直接放在标题、正文或服务商模板内容之前；`components/TemplateEditor.vue` 的缺绑定必要选择项也前移到渠道编辑器之前。字段值、必填 / 禁用条件、远程选项及变量插入沿用现有实现，邮件和 Webhook 已平铺，无须增加配置项；不恢复已移除的通用“更多设置”。
 
 平铺验证：从 `runtime-ui/` 执行 `node --test modules/notify-manager-ui/tests/messageNotification{Templates,BusinessWorkspace,TemplatePresentation,VoiceVisual,SmsVisual,DingTalkVisual,WechatVisual}.test.mjs`，113/113 通过；上述 5 个 Vue 文件的定向样式检查及模块 `git diff --check` 通过。沿用本节构建命令、输出至 `/tmp/notification-template-flat-fields-build`，构建通过（1 分 28 秒，保留既有 chunk 告警）；沿用类型命令仍有 194 条既有诊断，对比上一轮基线忽略行列后新增 0、移除 0，完整类型检查尚未通过，修复既有问题后重跑。模块无独立 lint 脚本。浏览器在独立临时标签中核对语音、企业微信、钉钉工作 / 群消息及短信，配置先于正文显示且无渠道折叠项，未修改字段、保存真实配置或发送消息。语音截图：`/Users/fuhao/.codex/visualizations/2026/11/11/01a1caae-7901-7753-a763-5ff87ae35585/notification-template-flat-fields.jpg`；日志前缀 `/tmp/notification-template-flat-fields-`。
@@ -245,7 +279,15 @@ Quill 验证（2026-11-12）：统一消息通知回归 **254/254 通过**，其
 
 消息模板入口为 `views/system/MessageNotification/Templates/index.vue`，owning module 为 `runtime-ui/modules/notify-manager-ui`。页面沿用左侧 `TemplateDirectory.vue` 的树结构、样式、搜索和展开规则，所有非文件夹业务节点均可选择，包括尚未绑定模板的业务；首次进入默认选择树中的首个业务，显式业务 / templateId 深链优先。设备告警和告警解除仍是独立业务及模板，展示层保持父子排列。
 
+目录分类：`templateDirectoryModel.ts` 按实际业务 provider 将设备告警、告警解除、场景联动归入“物联告警”，合规告警、安全告警归入“视联告警”，系统公告归入“系统公告”，三类按此顺序展示。仅展示实际含有下级业务的分类，空分类自动隐藏；已存在但尚未配置渠道模板的业务仍保留入口。未知扩展业务仍保留接口原分组。分类不改写接口 `type`、业务 key、模板绑定和草稿身份；分类名已有中英日翻译。
+
+分类验证（2026-11-17）：`tests/messageNotificationTemplates.test.mjs` 52/52 通过，覆盖旧接口分组、固定顺序、空分类隐藏、未配置业务入口、原业务身份与绑定、扩展业务、搜索和独立选择；BusinessWorkspace / PrototypeDefaults 43/43 沿用上轮未受影响的证据。模块生产构建通过（1 分 2 秒，保留既有 chunk 告警），命令沿用上文并输出至 `/tmp/notify-template-empty-groups-build`；`vue-tsc` 对比分类调整前的基线仍为 195 项既有诊断，新增 / 移除均为 0，完整类型检查未通过，修复既有问题后需重跑。模块没有独立 lint 脚本；本次无 Vue / CSS 修改，复用前轮样式门禁，`git diff --check` 通过，三语沿用前轮各 1096 个键一致的结果。真实 9201 页面已确认空的视联分类隐藏，物联 / 系统分类及其业务仍可见，保持原解除业务选中；分类搜索与切换沿用前轮页面验证及本轮回归。日志前缀 `/tmp/notify-template-empty-groups-`，截图 `notification-template-hide-empty-categories.jpg` 位于本轮可视化输出目录。
+
 右侧以当前业务与渠道为上下文，优先展示已保存模板；确实未配置时使用原型 `shared/notify.js` 的默认文案，按后端真实变量适配。原型未覆盖的业务或提供商保留入口，显示未配置并允许按实际字段编辑。邮件使用单封邮件卡及附件列表，钉钉 / 微信使用手机消息卡片，语音使用来电界面及播报原文，短信使用手机气泡及字数，Webhook 使用 HTTP 请求卡及请求体，其他提供商展示字段摘要。编辑与预览实时联动；变量点击插入当前光标位置，预览样例不进入保存值；邮件仅渲染净化后的 HTML，其他渠道继续按文本或有限 Markdown 展示。
+
+默认模板保存状态：`Templates/index.vue` 复用 `isDefault`（有预置内容且尚未持久化），仅在标题旁显示“默认模板 · 未保存”标签。预览 / 编辑区不展示黄色提醒横幅及“编辑并保存”按钮，保存入口沿用原有“编辑”与底部“保存模板”。保存成功后随真实持久化状态切换为已保存，取消编辑或尚未保存时仍显示未保存标签；已保存模板和恢复默认的已有模板沿用原有反馈。横幅专用的中英日文案已清理。
+
+状态展示验证（2026-11-17）：移除横幅后，页面 SFC 编译、单文件样式门禁、模块构建（46.44 秒，保留既有 chunk 告警）及 `git diff --check` 通过，三语各 1096 个键一致，无残留横幅文案引用。模板回归沿用上一轮 52/52，业务保存状态沿用 BusinessWorkspace 首次保存回归；本轮仅删除展示节点及文案，脚本 / 类型未变，未重复运行 `vue-tsc`，上一轮仍有 195 项既有诊断，完整类型检查尚未通过，既有错误修复后需重跑本节类型命令。模块没有独立 lint 脚本。真实 9201 场景联动语音模板已确认横幅和按钮移除、标题未保存标签保留；未保存真实配置。日志前缀 `/tmp/notify-default-label-only-`，截图 `notification-default-label-only.jpg` 位于本轮可视化输出目录。
 
 钉钉工作通知、企业微信的标题 / 正文表单由真实 `message` 的首行 / 余文适配，保存仍合回原字段，进入编辑不改动原值。短信保留真实服务商模板编号、签名远程选择和只读审核原文；短信 / 语音的变量对应表仅展示现有引用，实际发送参数仍由业务 `channel.channelConfiguration.variables` 提供，不新增后端未支持的变量映射字段。Webhook 保留 `contextAsBody` 模式，历史对象请求体的文本读取与变量插入统一使用格式化 JSON，进入编辑不改写原数据；请求地址预览隐藏账号、查询参数和片段，不展示虚构签名头。截图中的站内信、服务商演示参数和后端不可用变量不新增为业务能力。
 
@@ -289,7 +331,7 @@ Quill 验证（2026-11-12）：统一消息通知回归 **254/254 通过**，其
 
 ### 消息模板目录
 
-`views/system/MessageNotification/Templates/components/TemplateDirectory.vue` 直接使用 Ant Design Vue `a-tree`，以现有业务目录的 `type.id/name` 显示灰色分组标题、普通业务行和缩进子级，选中项沿用浅蓝圆角背景与主题色文字。设备告警和告警解除依据已有 provider 标识作原型中的展示层嵌套，仍使用各自 `channelConfiguration.templateId` 关联当前渠道独立模板；不按名称猜测绑定，不合并父子模板或草稿。目录只展示业务类型及其真实绑定；未绑定业务的模板不生成“其他模板”分组或独立节点，已有 templateId 深链仍可访问原模板。当前渠道没有绑定的业务仍可选择，按上节约定展示默认或未配置，不选择其他业务模板代替。
+`views/system/MessageNotification/Templates/components/TemplateDirectory.vue` 直接使用 Ant Design Vue `a-tree`，按上节“物联告警、视联告警、系统公告”的展示分类显示灰色分组标题、普通业务行和缩进子级，未知扩展业务沿用接口 `type.id/name` 分组，选中项沿用浅蓝圆角背景与主题色文字。设备告警和告警解除依据已有 provider 标识作原型中的展示层嵌套，仍使用各自 `channelConfiguration.templateId` 关联当前渠道独立模板；不按名称猜测绑定，不合并父子模板或草稿。目录只展示业务类型及其真实绑定；未绑定业务的模板不生成“其他模板”分组或独立节点，已有 templateId 深链仍可访问原模板。当前渠道没有绑定的业务仍可选择，按上节约定展示默认或未配置，不选择其他业务模板代替。
 
 `templateDirectoryModel.ts` 负责真实分组 / 绑定与搜索保留父链；`hooks/useTemplateDirectory.ts` 管理展开、搜索和选中。分组默认展开，设备告警可展开 / 收起；搜索子项自动展开祖先，清空搜索保留原展开状态，显式选中子模板时展开其父级。`hooks/useTemplateBusinessDirectory.ts` 通过 `messageNotificationApi.queryTemplateDirectory` 读取已有 `GET /notify/channel/all-for-save`，具备刷新、权限和卸载后的迟到响应保护；目录读取失败显示可重试提示；左侧不回退拼接独立模板，已通过深链打开的模板仍可操作。业务模板读写使用上节的业务单渠道 / 首次聚合接口；未绑定独立模板深链继续沿用 `/notifier/template` 接口。
 

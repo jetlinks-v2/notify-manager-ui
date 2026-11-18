@@ -57,6 +57,8 @@ const channelPreview = computed(() => channelPreviews[preview.kind.value])
 .template-preview__fields { display: grid; grid-template-columns: minmax(5rem, 1fr) minmax(0, 2fr); gap: var(--space-2) var(--space-3); margin: var(--space-4); }
 .template-preview__fields dt { color: var(--text-color-secondary); overflow-wrap: anywhere; }
 .template-preview__fields dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.template-preview--editing .template-preview__canvas { padding: var(--space-4); }
+.template-preview--editing { min-height: 0; }
+.template-preview--editing .template-preview__label { flex: 0 0 auto; }
+.template-preview--editing .template-preview__canvas { min-height: 0; padding: var(--space-4); overflow: auto; }
 @media (max-width: 48rem) { .template-preview__canvas { padding: var(--space-3); } }
 </style>

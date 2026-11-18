@@ -2,17 +2,17 @@
   <div class="sms-editor">
     <a-alert class="sms-editor__notice" type="info" :message="t('messageNotification.templates.visual.smsApprovalHint')" />
     <a-form-item v-for="field in advancedFields" :key="field.key" :label="t(field.labelKey)" :required="field.required">
-      <TemplateFieldRenderer :field="field" :value="fieldValue(field)" @update="changeField(field, $event)" @activate="activateProviderField" @load-options="loadRemoteOptions" />
+      <TemplateProviderField :field="field" :editor="editor" />
     </a-form-item>
     <a-form-item v-for="field in mainFields" :key="field.key" :label="field.key === 'code' ? t('messageNotification.templates.visual.supplierTemplateCode') : field.key === 'message' ? t('messageNotification.templates.visual.approvedContent') : t(field.labelKey)" :required="field.required">
-      <TemplateFieldRenderer :field="field" :value="fieldValue(field)" @update="changeField(field, $event)" @activate="activateProviderField" @load-options="loadRemoteOptions" />
+      <TemplateProviderField :field="field" :editor="editor" />
       <p v-if="field.key === 'message'" class="sms-editor__hint">{{ t('messageNotification.templates.visual.smsApprovedContentHint') }}</p>
     </a-form-item>
     <section class="sms-editor__mapping" :aria-label="t('messageNotification.templates.visual.variableMapping')">
       <h3>{{ t('messageNotification.templates.visual.variableMapping') }}</h3>
       <table v-if="mappings.length">
         <thead><tr><th>{{ t('messageNotification.templates.visual.supplierVariable') }}</th><th>{{ t('messageNotification.templates.visual.platformVariable') }}</th></tr></thead>
-        <tbody><tr v-for="row in mappings" :key="row.id"><td><code>{{ '${' + row.id + '}' }}</code></td><td>{{ row.available ? row.label : t('messageNotification.templates.visual.providedAtSendTime') }}</td></tr></tbody>
+        <tbody><tr v-for="row in mappings" :key="row.id"><td><TemplateVariableText :value="'${' + row.id + '}'" /></td><td><TemplateVariableText v-if="row.available" :value="'${' + row.id + '}'" /><template v-else>{{ t('messageNotification.templates.visual.providedAtSendTime') }}</template></td></tr></tbody>
       </table>
       <p v-else class="sms-editor__hint">{{ t('messageNotification.templates.visual.noSupplierVariables') }}</p>
       <p class="sms-editor__hint">{{ t('messageNotification.templates.visual.smsMappingHint') }}</p>
@@ -24,10 +24,11 @@
 import type { TemplateDraft } from '../../model'
 import type { TemplateEditorController } from '../../channelViewTypes'
 import { useSmsTemplateEditorVisual } from '../../hooks/useSmsTemplateVisual'
-import TemplateFieldRenderer from '../../../../../notice/template/components/TemplateFieldRenderer.vue'
+import TemplateVariableText from '../../variables/TemplateVariableText.vue'
+import TemplateProviderField from '../../variables/TemplateProviderField.vue'
 
 const props = defineProps<{ draft: TemplateDraft; editor: TemplateEditorController; disabled?: boolean }>()
-const { t, fieldValue, changeField, activateProviderField, loadRemoteOptions } = props.editor
+const { t } = props.editor
 const { mainFields, advancedFields, mappings } = useSmsTemplateEditorVisual(props.editor)
 </script>
 
