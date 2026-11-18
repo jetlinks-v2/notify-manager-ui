@@ -17,7 +17,6 @@ export function useRecordsPage() {
   ])
   const columns = computed(() => [
     { title: t('messageNotification.records.field.notifyTime'), dataIndex: 'notifyTime', key: 'notifyTime', scopedSlots: true, width: 175 },
-    { title: t('messageNotification.records.field.bizType'), dataIndex: 'bizType', key: 'bizType', scopedSlots: true, ellipsis: true, width: 120 },
     { title: t('messageNotification.records.field.channel'), dataIndex: 'channel', key: 'channel', scopedSlots: true, width: 140 },
     { title: t('messageNotification.records.field.receiver'), dataIndex: 'receiver', key: 'receiver', scopedSlots: true, ellipsis: true, width: 180 },
     { title: t('messageNotification.records.field.notifyMessage'), dataIndex: 'notifyMessage', key: 'notifyMessage', scopedSlots: true, ellipsis: true },

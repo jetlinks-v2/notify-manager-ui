@@ -339,20 +339,39 @@ test('real page renders unavailable HTTP feedback with zero default counts and n
   mounted.unmount()
 })
 
-test('real detail renders the requested fields and only sent content, retaining exit focus restoration', async () => {
+test('real detail renders requested fields and failure reasons only for failed records, retaining exit focus restoration', async () => {
   const Detail = load(resolve(pageRoot, 'components/RecordDetail.vue')).default
   let closed = 0
-  const mounted = mount(Detail, { open: true, record: fixture('saved', { value: 'cancel', text: 'Cancelled on server' }), onClosed: () => closed++ })
+  const props = vue.reactive({ open: true, record: fixture('saved', { value: 'cancel', text: 'Cancelled on server' }), onClosed: () => closed++ })
+  const mounted = mount(Detail, props)
   await flush()
   const blocks = walk(mounted.rootNode, node => node.type === 'CodeBlock')
   assert.deepEqual(blocks.map(block => block.props.content), ['Saved saved'])
   assert.ok(walk(mounted.rootNode, node => node.type === 'a-button').some(button => walk(button, node => node.text === 'Template display name').length))
   assert.deepEqual(walk(mounted.rootNode, node => node.type === 'dt').map(node => node.text), [
     'messageNotification.records.field.notifyTime', 'messageNotification.records.detail.notificationType',
-    'messageNotification.records.detail.channel', 'messageNotification.records.field.receiver',
-    'messageNotification.records.detail.relatedObject', 'messageNotification.records.detail.messageTemplate',
+    'messageNotification.records.field.channel', 'messageNotification.records.field.receiver',
+    'messageNotification.records.detail.messageTemplate',
     'messageNotification.records.detail.retryCount',
   ])
+  assert.deepEqual(walk(mounted.rootNode, node => node.type === 'h3').map(node => node.text), ['messageNotification.records.field.notifyMessage'])
+  for (const [record, reason] of [
+    [{ state: 'error', errorMessage: 'Provider rejected\nCheck recipient', errorType: 'providerError' }, 'Provider rejected\nCheck recipient'],
+    [{ state: { value: 'error', text: '发送失败' }, errorType: 'timeout' }, 'timeout'],
+    [{ state: 'error' }, 'messageNotification.records.detail.unreported'],
+    [{ state: 'success', errorMessage: 'Previous failure' }, undefined],
+    [{ state: 'retrying', errorType: 'timeout' }, undefined],
+    [{ state: { value: 'cancel', text: '已取消' }, errorMessage: 'Previous failure' }, undefined],
+  ]) {
+    props.record = { ...fixture('saved'), ...record }
+    await flush()
+    assert.deepEqual(walk(mounted.rootNode, node => node.type === 'h3').map(node => node.text), [
+      'messageNotification.records.field.notifyMessage', ...(reason ? ['messageNotification.records.detail.failureReason'] : []),
+    ])
+    assert.deepEqual(walk(mounted.rootNode, node => node.type === 'CodeBlock').map(node => node.props.content), [
+      'Saved saved', ...(reason ? [reason] : []),
+    ])
+  }
   const drawer = walk(mounted.rootNode, node => node.type === 'JlDrawerShell')[0]
   assert.equal(drawer.props.keyboard, true)
   assert.equal(drawer.props.autofocus, true)
@@ -497,7 +516,7 @@ test('details preserve reported values, fill missing fields and navigate by actu
   await flush()
   const values = () => Object.fromEntries(detail.summary.value.map(item => [item.key, item.value]))
   assert.equal(values().notificationType, 'alarm')
-  assert.equal(values().relatedObject, 'alarm-1')
+  assert.equal(Object.hasOwn(values(), 'relatedObject'), false)
   assert.equal(values().receiver, 'user@example.org')
   assert.equal(values().messageTemplate, 'Template display name')
   assert.deepEqual(io.templateCalls, ['template/#'])
@@ -518,7 +537,6 @@ test('details preserve reported values, fill missing fields and navigate by actu
     notificationType: 'messageNotification.records.detail.unreported',
     channel: 'messageNotification.records.detail.unconfigured',
     receiver: 'messageNotification.records.detail.unreported',
-    relatedObject: 'messageNotification.records.detail.unreported',
     messageTemplate: 'messageNotification.records.detail.unconfigured',
     retryCount: 'messageNotification.records.detail.unreported',
   })

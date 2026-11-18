@@ -2,7 +2,7 @@
   <FullPage :flex="true" transparentBackground class="notification-page notification-records">
     <j-pro-table
       class="notification-records__table pro-table__no-padding" mode="TABLE" row-key="id" :columns="columns" :alert-render="false"
-      :data-source="rows" :loading="state === 'loading'" :no-pagination="true" :scroll="{ x: 1420 }" :row-selection="rowSelection"
+      :data-source="rows" :loading="state === 'loading'" :no-pagination="true" :scroll="{ x: 1300 }" :row-selection="rowSelection"
     >
       <template #headerLeftRender>
         <div class="notification-page__toolbar notification-records__toolbar">
@@ -23,7 +23,6 @@
         </div>
       </template>
       <template #notifyTime="row">{{ historyTime(row.notifyTime) }}</template>
-      <template #bizType="row">{{ row.bizType || '—' }}</template>
       <template #channel="row"><span class="notification-records__channel"><AIcon :type="historyChannelIcon(row.notifyType)" aria-hidden="true" />{{ historyChannelLabel(row.notifyType, row.provider, t) }}</span></template>
       <template #errorMessage="row"><span :title="row.errorMessage || row.errorType">{{ row.errorMessage || row.errorType || '—' }}</span></template>
       <template #state="row"><j-badge-status class="notification-records__status" :text="historyStateLabel(row.state, t)" :status="notificationEnumValue(row.state)" :status-names="{ success: 'success', error: 'error', retrying: 'processing', cancel: 'default' }" /></template>

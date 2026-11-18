@@ -40,6 +40,16 @@ export function useRecordDetail(record: Ref<NotificationHistory | undefined>, op
   }, { immediate: true, flush: 'sync' })
   const channelIcon = computed(() => historyChannelIcon(record.value?.notifyType))
   const sentContent = computed(() => record.value?.notifyMessage?.trim() ? record.value.notifyMessage : t('messageNotification.records.detail.unreported'))
+  const contentSections = computed(() => {
+    const sections = [{ key: 'notifyMessage', label: t('messageNotification.records.field.notifyMessage'), content: sentContent.value }]
+    if (notificationEnumValue(record.value?.state) === 'error') {
+      sections.push({
+        key: 'errorMessage', label: t('messageNotification.records.detail.failureReason'),
+        content: record.value?.errorMessage || record.value?.errorType || t('messageNotification.records.detail.unreported'),
+      })
+    }
+    return sections
+  })
   const summary = computed(() => {
     const current = record.value
     const field = (key: string, label: string, value?: string, fallback = 'unreported') => ({
@@ -53,9 +63,8 @@ export function useRecordDetail(record: Ref<NotificationHistory | undefined>, op
     return [
       field('notifyTime', 'field.notifyTime', time === '—' ? undefined : time),
       field('notificationType', 'detail.notificationType', current?.bizType),
-      field('channel', 'detail.channel', notificationEnumValue(current?.notifyType) ? historyChannelLabel(current?.notifyType, current?.provider, t) : undefined, 'unconfigured'),
+      field('channel', 'field.channel', notificationEnumValue(current?.notifyType) ? historyChannelLabel(current?.notifyType, current?.provider, t) : undefined, 'unconfigured'),
       field('receiver', 'field.receiver', current?.receiver?.filter(value => value.trim()).join(', ')),
-      field('relatedObject', 'detail.relatedObject', current?.bizId),
       template,
       field('retryCount', 'detail.retryCount'),
     ]
@@ -77,5 +86,5 @@ export function useRecordDetail(record: Ref<NotificationHistory | undefined>, op
     closeButton.value?.focus()
   }
 
-  return { summary, channelIcon, sentContent, closeButton, afterOpenChange, canGoChannel, canGoTemplate, navigate }
+  return { summary, channelIcon, sentContent, contentSections, closeButton, afterOpenChange, canGoChannel, canGoTemplate, navigate }
 }

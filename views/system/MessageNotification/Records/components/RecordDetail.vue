@@ -17,9 +17,9 @@
           </dd>
         </div>
       </KvGrid>
-      <section class="record-detail__section">
-        <h3>{{ t('messageNotification.records.detail.sentContent') }}</h3>
-        <CodeBlock variant="light" :content="sentContent" />
+      <section v-for="section in contentSections" :key="section.key" class="record-detail__section">
+        <h3>{{ section.label }}</h3>
+        <CodeBlock variant="light" :content="section.content" />
       </section>
     </template>
     <template #foot>
@@ -48,7 +48,7 @@ const emit = defineEmits<{
   (event: 'closed'): void
 }>()
 const { t } = useI18n()
-const { summary, channelIcon, sentContent, closeButton, afterOpenChange, canGoChannel, canGoTemplate, navigate } = useRecordDetail(toRef(props, 'record'), toRef(props, 'open'), () => emit('closed'))
+const { summary, channelIcon, contentSections, closeButton, afterOpenChange, canGoChannel, canGoTemplate, navigate } = useRecordDetail(toRef(props, 'record'), toRef(props, 'open'), () => emit('closed'))
 </script>
 
 <style scoped>
