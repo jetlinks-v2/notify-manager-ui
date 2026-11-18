@@ -11,8 +11,8 @@
     </div>
     <div v-for="row in variableAttachments" :key="row.index" class="template-attachments__variable">
       <div class="template-attachments__reference">
-        <span class="template-attachments__name">{{ row.item.name }}</span>
-        <code>{{ row.item.location || t('messageNotification.templates.variableAttachment.runtimeSource') }}</code>
+        <TemplateVariableText class="template-attachments__name" :value="row.item.name" />
+        <TemplateVariableText :value="row.item.location || t('messageNotification.templates.variableAttachment.runtimeSource')" />
       </div>
       <div class="template-attachments__row-actions">
         <a-button type="link" size="small" :disabled="disabled" @click="openVariable(row.index)">{{ t('messageNotification.templates.variableAttachment.edit') }}</a-button>
@@ -31,10 +31,12 @@
           </a-radio-group>
         </a-form-item>
         <a-form-item :label="t('messageNotification.templates.variableAttachment.variable')" required>
-          <a-select v-model:value="variableSource" :options="variableOptions" :disabled="disabled" show-search option-filter-prop="label" :placeholder="t('messageNotification.templates.variableAttachment.selectVariable')" />
+          <a-select v-model:value="variableSource" class="template-attachments__variable-select" :options="variableOptions" :disabled="disabled" show-search option-filter-prop="label" :placeholder="t('messageNotification.templates.variableAttachment.selectVariable')">
+            <template #option="option"><TemplateVariableText :value="option.value" /></template>
+          </a-select>
         </a-form-item>
         <a-form-item v-if="placement === 'attachment'" :label="t('messageNotification.templates.variableAttachment.filename')" required>
-          <a-input v-model:value="filename" :disabled="disabled" :maxlength="255" :placeholder="t('messageNotification.templates.variableAttachment.filenameHint')" @press-enter="confirmVariable" />
+          <TemplateVariableInput v-model:value="filename" :disabled="disabled" :maxlength="255" :placeholder="t('messageNotification.templates.variableAttachment.filenameHint')" @press-enter="confirmVariable" />
         </a-form-item>
         <p class="template-attachments__hint">{{ t('messageNotification.templates.variableAttachment.' + (placement === 'inline' ? 'inlineHint' : 'attachmentHint')) }}</p>
         <a-alert v-if="modalError" type="error" show-icon :message="t('messageNotification.templates.variableAttachment.' + modalError)" />
@@ -49,6 +51,8 @@ import FileUpload from '@jetlinks-web-core/components/Upload/File/index.vue'
 import type { NotificationAttachment } from '../../shared'
 import type { TemplateEditorController } from '../channelViewTypes'
 import { useTemplateAttachments } from '../hooks/useTemplateAttachments'
+import TemplateVariableInput from '../variables/TemplateVariableInput.vue'
+import TemplateVariableText from '../variables/TemplateVariableText.vue'
 
 const props = defineProps({
   attachments: { type: Array as PropType<NotificationAttachment[]>, default: () => [] },
@@ -69,6 +73,7 @@ const { t, error, files, beforeUpload, uploadChanged, removeAttachment, variable
 .template-attachments__reference { min-width: 0; flex: 1; display: flex; flex-direction: column; overflow-wrap: anywhere; }
 .template-attachments__reference code { color: var(--jet-theme-text-secondary); }
 .template-attachments__name { color: var(--jet-theme-text); }
+.template-attachments__variable-select :deep(.ant-select-selection-item) { color: var(--jet-theme-primary); }
 .template-attachments__row-actions { display: flex; align-items: center; flex-wrap: wrap; }
 .template-attachments__hint { margin: 0; color: var(--text-color-secondary); }
 </style>

@@ -5,8 +5,10 @@ import { createTemplateDraft, insertTemplateVariable, isEmailDraft } from '../mo
 import { builtinEmailTemplates } from '../../shared/builtinEmailTemplates'
 import { matchesTemplateConfiguration } from './templatePresentation'
 import { useTemplateProviderEditor, type ProviderEditorProps } from './useTemplateProviderEditor'
+import type { NoticeChannelConfig } from '../../../../../api/notice-center'
+import { resolveTemplateVariables, templateVariableNames } from '../variables/catalog'
 
-interface EditorProps extends ProviderEditorProps { configState: NotificationLoadState; availableVariables?: NotificationVariable[]; existing?: boolean; businessMode?: boolean }
+interface EditorProps extends ProviderEditorProps { configState: NotificationLoadState; availableVariables?: NotificationVariable[]; existing?: boolean; businessMode?: boolean; business?: NoticeChannelConfig }
 type TextField = 'subject' | 'text' | 'templateJson'
 interface Caret { field: TextField; path?: string[]; start: number; end: number; element?: HTMLInputElement | HTMLTextAreaElement; custom?: TemplateCustomCaret }
 export interface TemplateCustomCaret {
@@ -42,6 +44,8 @@ export function useTemplateEditor(props: EditorProps, emit: (event: 'uploading',
     for (const variable of props.draft.variables) if (variable.id) variables.set(variable.id, variable)
     return [...variables.values()]
   })
+  const displayVariables = computed(() => resolveTemplateVariables(props.availableVariables ?? [], props.draft.variables, props.business?.provider, t))
+  const variableNames = templateVariableNames(() => displayVariables.value)
   const configFailure = computed(() => ['forbidden', 'unavailable', 'error'].includes(props.configState))
   const configOptions = computed(() => {
     const options = props.configs.filter(item => matchesTemplateConfiguration(props.draft, item))
@@ -140,6 +144,6 @@ export function useTemplateEditor(props: EditorProps, emit: (event: 'uploading',
     target.element?.setSelectionRange(nextCaret, nextCaret)
   }
 
-  return { t, emailDraft, builtinOptions, selectBuiltin, insertableVariables, canInsertVariable, configFailure, configOptions, setUploading,
+  return { t, emailDraft, builtinOptions, selectBuiltin, insertableVariables, displayVariables, variableNames, canInsertVariable, configFailure, configOptions, setUploading,
     captureCaret, captureProviderCaret, captureCustomCaret, activateProviderField, insertVariable, registerVariable, ...providerEditor }
 }

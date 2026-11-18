@@ -1,6 +1,8 @@
 <template>
+  <slot v-if="['input', 'textarea', 'monaco'].includes(field.kind) && $slots['text-input']"
+    name="text-input" :field="field" :value="stringValue" :placeholder="placeholder" />
   <a-input
-    v-if="field.kind === 'input'"
+    v-else-if="field.kind === 'input'"
     :value="stringValue"
     :placeholder="placeholder"
     :disabled="field.disabled"

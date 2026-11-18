@@ -317,7 +317,7 @@ test('actual editor setup restores focus and inserts a variable over the selecte
   let focused = false
   let selection
   const setup = Editor.setup({ draft, existing: true, configs: [], configState: 'ready' }, { expose() {}, emit() {} })
-  setup.captureCaret({ target: { selectionStart: 4, selectionEnd: 12, focus: () => { focused = true }, setSelectionRange: (...args) => { selection = args } } }, 'text')
+  setup.editor.captureCaret({ target: { selectionStart: 4, selectionEnd: 12, focus: () => { focused = true }, setSelectionRange: (...args) => { selection = args } } }, 'text')
   await setup.insertVariable('device.name')
   assert.equal(draft.text, 'abc ${device.name} xyz')
   assert.equal(focused, true)
@@ -1045,26 +1045,50 @@ test('standalone new drafts can be cancelled without a write and read-only users
 
 
 test('business directory retains only business groups and actual bindings without guessing name associations', () => {
-  const { buildTemplateDirectory, filterTemplateDirectory, flattenTemplateDirectory } = load(resolve(templatesRoot, 'templateDirectoryModel.ts'))
+  const { buildTemplateDirectory, filterTemplateDirectory, flattenTemplateDirectory, templateBusinessKey } = load(resolve(templatesRoot, 'templateDirectoryModel.ts'))
   const templates = [record('template-alarm'), ...directoryFixture.templates, record('template-maintenance'), record('unbound', { name: '设备告警 · 邮件' })]
-  const tree = buildTemplateDirectory(templates, directoryFixture.businessTypes, { other: '其他' }, key => key)
-  assert.deepEqual(tree.map(node => node.title), ['物联告警', '视联告警', '其他'])
+  const names = { iot: '物联告警', video: '视联告警', system: '系统公告' }
+  const translate = key => names[key.split('.').at(-1)] || key
+  // 覆盖当前接口仍返回旧分组，且公告先于告警返回的情况。
+  const businesses = [
+    { id: 'bulletin-config', provider: 'SystemBulletin', name: '系统公告', type: { id: 'SystemBulletin', name: '系统公告' }, channels: [] },
+    ...directoryFixture.businessTypes.map(item => ({ ...item, type: item.provider === 'scene'
+      ? { id: 'business', name: '业务监控' } : item.type.id === 'other' ? item.type : { id: 'alarm', name: '告警' } })),
+  ]
+  const before = structuredClone(businesses)
+  const tree = buildTemplateDirectory(templates, businesses, { other: '其他' }, translate)
+  assert.deepEqual(tree.map(node => node.title), ['物联告警', '视联告警', '系统公告', '其他'])
+  assert.deepEqual(businesses, before)
   const alarm = tree[0].children[0]
   assert.equal(alarm.title, '设备告警')
   assert.equal(alarm.templateId, 'template-alarm')
+  assert.equal(alarm.business, businesses[1])
+  assert.equal(alarm.key, templateBusinessKey(businesses[1]))
   assert.equal(alarm.children[0].title, '告警解除')
   assert.equal(alarm.children[0].templateId, 'template-relieve')
+  assert.equal(alarm.children[0].key, templateBusinessKey(businesses[2]))
+  assert.equal(tree[0].children[1].business.provider, 'scene')
+  assert.deepEqual(tree[1].children.map(node => node.business.provider), ['aiComplianceAlarm', 'aiSecurityAlarm'])
+  assert.equal(tree[2].children[0].business.provider, 'SystemBulletin')
+  assert.equal(tree[3].children[0].templateId, 'template-maintenance')
   assert.equal(tree[1].children[0].selectable, true)
   assert.ok(flattenTemplateDirectory(tree).every(node => node.templateId !== 'unbound'))
-  assert.deepEqual(buildTemplateDirectory(templates, [], { other: '其他' }, key => key), [])
+  assert.deepEqual(buildTemplateDirectory(templates, [], { other: '其他' }, translate), [])
   const filtered = filterTemplateDirectory(tree, 'TEMPLATE-RELIEVE')
   assert.equal(filtered.length, 1)
   assert.equal(filtered[0].title, '物联告警')
   assert.equal(filtered[0].children[0].children[0].templateId, 'template-relieve')
   assert.deepEqual(filterTemplateDirectory(tree, 'missing-value'), [])
   assert.equal(filterTemplateDirectory(tree, '视联告警')[0].children.length, 2)
-  const orphan = buildTemplateDirectory(templates, [directoryFixture.businessTypes[1]], { other: '其他' }, key => key)
+  assert.equal(filterTemplateDirectory(tree, '系统公告')[0].children[0].business.provider, 'SystemBulletin')
+  assert.equal(filterTemplateDirectory(tree, '场景联动')[0].title, '物联告警')
+  const orphan = buildTemplateDirectory(templates, [directoryFixture.businessTypes[1]], { other: '其他' }, translate)
   assert.equal(orphan[0].children[0].templateId, 'template-relieve')
+  assert.deepEqual(orphan.map(node => node.title), ['物联告警'])
+  assert.deepEqual(filterTemplateDirectory(orphan, '视联告警'), [])
+  const english = buildTemplateDirectory([], [businesses[0]], { other: 'Other' }, key => `English ${key.split('.').at(-1)}`)
+  assert.deepEqual(english.map(node => node.title), ['English system'])
+  assert.equal(english[0].children[0].selectable, true)
 })
 
 test('directory selects the child actual ID, preserves group and business collapse on search and reveals deep-linked children', async () => {
