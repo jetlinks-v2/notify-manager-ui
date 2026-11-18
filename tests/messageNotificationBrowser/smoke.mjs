@@ -109,9 +109,13 @@ async function selectTemplate(page, name) {
 try {
   if (!process.env.SMOKE_CHANNELS_ONLY) {
   const records = await open('records')
-  await eventually(async () => assert.equal(await records.locator('.ant-table-row').count(), 1))
-  assert.match(await records.locator('.ant-table-row').innerText(), /设备 B 温度告警发送失败/)
-  pass('records: default failure filter renders the saved failure and reason')
+  const rows = records.locator('.ant-table-row')
+  await eventually(async () => assert.equal(await rows.count(), 3))
+  assert.equal(await records.locator('.notification-records__toolbar .switch-group button').first().getAttribute('aria-pressed'), 'true')
+  assert.match((await rows.allTextContents()).join('\n'), /设备 B 温度告警发送失败/)
+  const initialQuery = await records.evaluate(() => window.__notificationSmoke.calls.find(([method]) => method === 'queryHistory')?.[1])
+  assert.deepEqual(initialQuery.terms, [])
+  pass('records: all is selected by default and the first request is unfiltered')
   const cancelLabel = await translation(records, 'messageNotification.records.state.cancel')
   await records.locator('.notification-records__toolbar .switch-group').getByRole('button', { name: new RegExp(cancelLabel) }).click()
   await eventually(async () => {

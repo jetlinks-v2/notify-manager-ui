@@ -79,9 +79,7 @@ export function useNotificationRecords(fields: Ref<ConditionFilterField[]>) {
   const pageSize = computed(() => historyPage(route.query.size, 12, 100))
   const terms = computed(() => {
     const decoded = decodeConditionFilterQuery(route.query.q, fields.value)
-    if (navigation.value.state) return replaceHistoryState(decoded, navigation.value.state)
-    // An explicit all/search URL survives reload; only an untouched entry defaults to failures.
-    return route.query.state === 'all' || route.query.q ? decoded : replaceHistoryState(decoded, 'error')
+    return navigation.value.state ? replaceHistoryState(decoded, navigation.value.state) : decoded
   })
   const selectedState = computed(() => selectedHistoryState(terms.value))
   const query = computed(() => buildHistoryQuery(buildQueryFilter(terms.value, fields.value).terms, navigation.value, pageIndex.value, pageSize.value))

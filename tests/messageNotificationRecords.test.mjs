@@ -261,13 +261,14 @@ test.beforeEach(() => {
   io = { route: vue.reactive({ query: {} }), routes: [], jumps: [], permission: vue.ref(true), calls: [], templateCalls: [], countCalls: [], countResponse: '', response: { success: true, result: { data: [], total: 0 } } }
 })
 
-test('the default page queries real history with filters and pagination while permission denial prevents HTTP', async () => {
+test('the default page selects all and queries real history without a status filter', async () => {
   io.response = { success: true, result: { data: [fixture('global')], total: 25 } }
   const Page = load(resolve(pageRoot, 'index.vue')).default
   const mounted = mount(Page)
   await flush()
   assert.equal(io.calls.length, 1)
-  assert.deepEqual(io.calls[0].data, { paging: true, pageIndex: 0, pageSize: 12, sorts: [{ name: 'notifyTime', order: 'desc' }], terms: [{ type: 'and', terms: [{ column: 'state', termType: 'eq', value: 'error' }] }] })
+  assert.deepEqual(io.calls[0].data, { paging: true, pageIndex: 0, pageSize: 12, sorts: [{ name: 'notifyTime', order: 'desc' }], terms: [] })
+  assert.equal(walk(mounted.rootNode, node => node.type === 'SwitchGroup')[0].props['model-value'], 'all')
   assert.equal(io.countCalls.length, 1)
   assert.deepEqual(io.countCalls[0].data.filter.terms, [])
   assert.equal(walk(mounted.rootNode, node => node.type === 'j-pro-table')[0].props.dataSource[0].id, 'global')
@@ -312,12 +313,18 @@ test('route codec, status and pagination produce one request per committed chang
   assert.equal(requests.length, 4)
   assert.equal(requests.at(-1).pageIndex, 1)
   assert.equal(requests.at(-1).terms[0].terms.some(term => term.column === 'state' && term.value === 'cancel'), true)
+  const filteredQuery = requests.at(-1)
+  mounted.unmount()
+  const reloaded = mount(Harness, {}, adapter)
+  await flush()
+  assert.equal(page.selectedState.value, 'cancel')
+  assert.deepEqual(requests.at(-1), filteredQuery)
   page.changeState('cancel')
   await flush()
-  assert.equal(requests.length, 5)
+  assert.equal(requests.length, 6)
   assert.equal(io.route.query.page, undefined)
   assert.equal(page.selectedState.value, undefined)
-  mounted.unmount()
+  reloaded.unmount()
 })
 
 test('real page renders unavailable HTTP feedback with zero default counts and no statistics retry or enabled export', async () => {
@@ -412,7 +419,7 @@ test('injected rows exercise the actual page filters, clickable content and retu
   mounted.unmount()
 })
 
-test('default failure and explicit all round-trip while counts retain search scope and ignore status/paging', async () => {
+test('default and explicit all preserve linked filters while counts ignore status/paging', async () => {
   const requests = [], counts = []
   const adapter = { available: true,
     query: async query => { requests.push(query); return { data: [], total: 0 } },
@@ -423,8 +430,9 @@ test('default failure and explicit all round-trip while counts retain search sco
   const Harness = vue.defineComponent({ setup() { page = useNotificationRecords(vue.ref(fields)); return () => null } })
   let mounted = mount(Harness, {}, adapter)
   await flush()
-  assert.equal(page.selectedState.value, 'error')
+  assert.equal(page.selectedState.value, undefined)
   assert.deepEqual(counts[0].terms.map(term => term.column), ['notifyType', 'provider', 'notifierId', 'templateId'])
+  assert.deepEqual(requests[0].terms, counts[0].terms)
   page.changeState('success')
   await flush()
   page.changePage(2, 12)
