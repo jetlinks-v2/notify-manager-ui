@@ -4,6 +4,8 @@ import type { Delta, Range } from 'quill'
 import type { TemplateDraft } from '../model'
 import type { TemplateEditorController } from '../channelViewTypes'
 import { isEmailImageSource, normalizeEmailImageSource, toEmailBodyHtml } from '../definition/emailTemplateContent'
+import { bindTemplateVariableClipboard, copyTemplateEditorHistory as copyHistory, createTemplateVariableBlot,
+  promoteTemplateVariables, refreshTemplateVariableLabels, templateVariableDisplayText, tokenizeTemplateDelta } from '../variables/quillVariables'
 
 interface EmailRichTextProps { draft: TemplateDraft; editor: TemplateEditorController; disabled?: boolean }
 export interface EmailImageSelection { draft: TemplateDraft; editor: Quill; range: { index: number; length: number }; active: boolean }
@@ -14,10 +16,6 @@ const formats: { key: FormatAction; icon: string }[] = [
   { key: 'bulletList', icon: 'UnorderedListOutlined' }, { key: 'orderedList', icon: 'OrderedListOutlined' },
   { key: 'undo', icon: 'UndoOutlined' }, { key: 'redo', icon: 'RedoOutlined' },
 ]
-function copyHistory(stack: Quill['history']['stack']): Quill['history']['stack'] {
-  const copy = (items: Quill['history']['stack']['undo']) => items.map(item => ({ ...item, range: item.range && { ...item.range } }))
-  return { undo: copy(stack.undo), redo: copy(stack.redo) }
-}
 
 /** Quill owns document positions; the draft only receives accepted semantic HTML edits. */
 export function useEmailRichTextEditor(props: EmailRichTextProps) {
@@ -30,8 +28,10 @@ export function useEmailRichTextEditor(props: EmailRichTextProps) {
   let lastRange = { index: 0, length: 0 }, syncing = false, disposed = false
   let DeltaClass: typeof import('quill')['Delta'] | undefined
   let acceptedDelta: Delta, acceptedHtml = '', acceptedHistory: Quill['history']['stack']
+  let loadedDelta: Delta, loadedText = props.draft.text, publishedText = props.draft.text
   let imageSelection: EmailImageSelection | undefined
   let uploadHandler: ((files: File[], selection: EmailImageSelection) => void) | undefined
+  let unbindClipboard: (() => void) | undefined
   const enabled = () => !props.disabled && !disposed && !!richEditor.value
   const html = () => richEditor.value?.getSemanticHTML() ?? ''
   function remember() {
@@ -45,14 +45,19 @@ export function useEmailRichTextEditor(props: EmailRichTextProps) {
     if (!instance) return
     syncing = true
     try {
-      instance.setContents(instance.clipboard.convert({ html: toEmailBodyHtml(props.draft.text) }), 'silent')
+      instance.setContents(tokenizeTemplateDelta(instance.clipboard.convert({ html: toEmailBodyHtml(props.draft.text) }), DeltaClass!), 'silent')
+      loadedDelta = instance.getContents(); loadedText = props.draft.text; publishedText = props.draft.text
       instance.history.clear(); lastRange = { index: 0, length: 0 }; remember()
     } finally { syncing = false }
     limitReached.value = false; revision.value++
   }
-  function textChanged(delta: Delta) {
+  function textChanged() {
     const instance = richEditor.value
-    if (!instance || syncing) return
+    if (!instance || syncing || instance.composition.isComposing || !DeltaClass) return
+    // 完整表达式键入后也使用变量节点；输入法可能合并多次变更，选区须相对上次接受的文档移动。
+    syncing = true
+    try { promoteTemplateVariables(instance, DeltaClass) }
+    finally { syncing = false }
     const nextHtml = instance.getSemanticHTML()
     if (props.disabled || nextHtml.length > 5120 && nextHtml.length >= acceptedHtml.length) {
       syncing = true
@@ -60,11 +65,14 @@ export function useEmailRichTextEditor(props: EmailRichTextProps) {
       finally { syncing = false }
       limitReached.value = !props.disabled; revision.value++; return
     }
+    const delta = acceptedDelta.diff(instance.getContents())
     for (const item of bookmarks) {
       const end = delta.transformPosition(item.range.index + item.range.length)
       item.range.index = delta.transformPosition(item.range.index); item.range.length = Math.max(0, end - item.range.index)
     }
-    props.draft.text = nextHtml; limitReached.value = false; remember(); revision.value++
+    // 撤销到加载文档时恢复原始 HTML / 纯文本，不能把一次可撤销编辑变成历史模板格式迁移。
+    publishedText = loadedDelta.diff(instance.getContents()).ops.length ? nextHtml : loadedText
+    props.draft.text = publishedText; limitReached.value = false; remember(); revision.value++
     captureBodySelection()
   }
   function selectionChanged(range: Range | null) {
@@ -82,6 +90,7 @@ export function useEmailRichTextEditor(props: EmailRichTextProps) {
     if (eventName === 'selection-change' && (value === null || 'index' in value)) selectionChanged(value)
   }
   function focusBody() { if (!syncing) { closeImage(); captureBodySelection() } }
+  function compositionEnd() { queueMicrotask(() => { if (!disposed && DeltaClass) { richEditor.value?.update('user'); textChanged() } }) }
   onMounted(async () => {
     // Quill binds document listeners at import time, so keep it out of SSR/setup execution.
     const [{ default: QuillClass, Delta: QuillDelta, Parchment }, { default: Image }] = await Promise.all([import('quill'), import('quill/formats/image.js')])
@@ -91,7 +100,7 @@ export function useEmailRichTextEditor(props: EmailRichTextProps) {
       static sanitize(value: string) { return isEmailImageSource(value) ? value : '' }
       static create(value: string) {
         const node = super.create(value)
-        if (/\$\{[^{}]+\}/.test(value)) { node.setAttribute('data-email-template-src', value); node.removeAttribute('src'); node.setAttribute('alt', value); node.setAttribute('title', value) }
+        if (/\$\{[^{}]+\}/.test(value)) { node.setAttribute('data-email-template-src', value); node.removeAttribute('src'); node.setAttribute('alt', templateVariableDisplayText(value, props.editor.variableNames.value)); node.setAttribute('title', value) }
         return node
       }
       static formats(node: Element) {
@@ -117,6 +126,7 @@ export function useEmailRichTextEditor(props: EmailRichTextProps) {
       if (definition.requiredContainer) registry.register(definition.requiredContainer)
     }
     registry.register(TemplateImage)
+    registry.register(createTemplateVariableBlot(QuillClass, () => props.editor.variableNames.value))
     const instance = new QuillClass(editorElement.value, { registry, readOnly: !!props.disabled, modules: {
       toolbar: false, history: { userOnly: true, delay: 500 },
       uploader: { mimetypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], handler: (range: Range, files: File[]) => {
@@ -128,15 +138,19 @@ export function useEmailRichTextEditor(props: EmailRichTextProps) {
     instance.root.setAttribute('aria-label', props.editor.t('messageNotification.templates.richText.bodyLabel'))
     instance.root.setAttribute('aria-multiline', 'true')
     instance.clipboard.addMatcher('IMG', (node, delta) => node instanceof Element && isEmailImageSource(node.getAttribute('src') ?? '') ? delta : new QuillDelta())
+    instance.clipboard.addMatcher(Node.TEXT_NODE, (_node, delta) => tokenizeTemplateDelta(delta, QuillDelta))
     loadContent()
+    unbindClipboard = bindTemplateVariableClipboard(instance, enabled)
     instance.on('text-change', textChanged); instance.on('editor-change', editorChanged); instance.root.addEventListener('focus', focusBody)
+    instance.root.addEventListener('compositionend', compositionEnd)
     captureBodySelection()
   })
   onBeforeUnmount(() => {
-    disposed = true; invalidateImages()
+    disposed = true; invalidateImages(); unbindClipboard?.()
     const instance = richEditor.value
     if (instance) {
       instance.off('text-change', textChanged); instance.off('editor-change', editorChanged); instance.root.removeEventListener('focus', focusBody)
+      instance.root.removeEventListener('compositionend', compositionEnd)
       instance.disable(); instance.scroll.observer.disconnect(); instance.emitter.removeAllListeners()
       instance.container.replaceChildren(); instance.container.classList.remove('ql-container')
     }
@@ -151,14 +165,25 @@ export function useEmailRichTextEditor(props: EmailRichTextProps) {
       insert: token => {
         if (!enabled() || props.draft !== draft || !DeltaClass) return false
         const range = currentBodyRange(), before = html(), attributes = instance.getFormat(range)
-        instance.updateContents(new DeltaClass().retain(range.index).delete(range.length).insert(token, attributes), 'user')
+        instance.history.cutoff()
+        const inserted = tokenizeTemplateDelta(new DeltaClass().insert(token, attributes), DeltaClass)
+        instance.updateContents(new DeltaClass().retain(range.index).delete(range.length).concat(inserted), 'user')
         const accepted = html() !== before
-        if (accepted) { lastRange = { index: range.index + token.length, length: 0 }; instance.setSelection(lastRange, 'silent'); instance.focus({ preventScroll: true }) }
+        if (accepted) { lastRange = { index: range.index + inserted.length(), length: 0 }; instance.setSelection(lastRange, 'silent'); instance.focus({ preventScroll: true }) }
+        instance.history.cutoff()
         return accepted
       },
     })
   }
-  watch(() => props.draft.text, value => { if (richEditor.value && html() !== value) { if (imageOpen.value) closeImage(); invalidateImages(); loadContent() } })
+  watch(() => props.draft.text, value => { if (richEditor.value && publishedText !== value) { if (imageOpen.value) closeImage(); invalidateImages(); loadContent() } })
+  watch(props.editor.variableNames, names => {
+    const instance = richEditor.value
+    if (!instance) return
+    refreshTemplateVariableLabels(instance, names)
+    instance.root.querySelectorAll('img[data-email-template-src]').forEach(node => {
+      node.setAttribute('alt', templateVariableDisplayText(node.getAttribute('data-email-template-src') || '', names))
+    })
+  })
   watch(() => props.disabled, disabled => { if (disabled) invalidateImages(); richEditor.value?.enable(!disabled); if (!disabled) captureBodySelection(); revision.value++ })
   watch(() => props.draft, () => { invalidateImages(); loadContent(); linkOpen.value = false; imageOpen.value = false; captureBodySelection() }, { flush: 'post' })
   const bodyLength = computed(() => toEmailBodyHtml(props.draft.text).length)

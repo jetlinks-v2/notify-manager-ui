@@ -5,6 +5,7 @@ import { getFileDownloadUrl } from '@jetlinks-web-core/components/Upload/File/us
 import type { NotificationAttachment } from '../../shared'
 import type { TemplateEditorController } from '../channelViewTypes'
 import { attachmentFromUpload, attachmentToUploadFile } from '../model'
+import { templateVariableDisplayText } from '../variables/quillVariables'
 
 interface AttachmentProps {
   attachments: NotificationAttachment[]
@@ -34,9 +35,11 @@ export function useTemplateAttachments(props: AttachmentProps, emit: AttachmentE
   const files = computed<UploadFile[]>(() => [...accepted.value.flatMap((item, index) => isVariableAttachment(item) ? [] : [attachmentToUploadFile(item, index)]), ...pending.values()])
   const variableAttachments = computed(() => accepted.value.flatMap((item, index) => isVariableAttachment(item) ? [{ item, index }] : []))
   const variableOptions = computed(() => {
-    const options = (props.editor?.insertableVariables.value ?? []).map(item => ({ label: item.name ? `${item.name} (${item.id})` : item.id, value: '${' + item.id + '}' }))
+    const variables = props.editor?.insertableVariables.value ?? []
+    const names = props.editor?.variableNames?.value ?? new Map(variables.map(item => [item.id, item.name || item.id]))
+    const options = variables.map(item => ({ label: templateVariableDisplayText('${' + item.id + '}', names), title: item.id, value: '${' + item.id + '}' }))
     // A stored expression remains editable even if its variable is no longer in the current catalog.
-    if (variableSource.value && !options.some(item => item.value === variableSource.value)) options.unshift({ label: variableSource.value, value: variableSource.value })
+    if (variableSource.value && !options.some(item => item.value === variableSource.value)) options.unshift({ label: templateVariableDisplayText(variableSource.value, names), title: variableSource.value, value: variableSource.value })
     return options
   })
 

@@ -44,13 +44,23 @@ export function useTemplatePreview(props: PreviewProps) {
   const parsed = computed(() => readPresentationTemplate(props.draft))
   const template = computed(() => parsed.value.template)
   const emailDraft = computed(() => isEmailDraft(props.draft))
-  const examples = computed(() => {
+  const exampleValues = computed(() => {
     const builtin = props.business ? undefined : builtinEmailTemplates(t).find(item => item.key === props.draft.builtinKey)
-    const values = builtin ? { ...builtin.examples } : { ...prototypePreviewExamples(props.business) }
+    return builtin ? builtin.examples : prototypePreviewExamples(props.business)
+  })
+  /** 历史变量可能没有 detail 前缀；只借用当前业务已有的示例，不改变插入或保存的 ID。 */
+  function variableExample(variable: NotificationVariable): string | undefined {
+    const values = exampleValues.value
+    const source = [variable.expands?.mockValue, values[variable.id],
+      variable.id.startsWith('detail.') ? undefined : values[`detail.${variable.id}`], variable.defaultValue]
+      .find(value => value != null && (typeof value !== 'string' || value.trim() !== ''))
+    return source === undefined ? undefined : templatePreviewExample(source, variable)
+  }
+  const examples = computed(() => {
+    const values = { ...exampleValues.value }
     for (const variable of props.draft.variables) {
-      const source = variable.expands?.mockValue ?? values[variable.id] ?? variable.defaultValue
+      values[variable.id] = variableExample(variable)
         ?? t('messageNotification.templates.sample', { name: variable.name || variable.id })
-      values[variable.id] = templatePreviewExample(source, variable)
     }
     return values
   })
@@ -122,6 +132,6 @@ export function useTemplatePreview(props: PreviewProps) {
     catch { return '' }
   })
   const playTimes = computed(() => Number(template.value.playTimes) || 1)
-  return { t, kind, parsed, emailDraft, subject, showInstantSubject, text, providerContent, attachmentNames, recipients, sender, displayTime, applicationName, webhookUrl, playTimes, examples,
+  return { t, kind, parsed, emailDraft, subject, showInstantSubject, text, providerContent, attachmentNames, recipients, sender, displayTime, applicationName, webhookUrl, playTimes, examples, variableExample,
     channelName, markdown, signature, code, caller, messageUrl, webhookBody, webhookMethod, contextAsBody, summary }
 }

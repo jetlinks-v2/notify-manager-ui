@@ -4,7 +4,7 @@
       <template #label>
         <span class="email-editor__label"><span>{{ t('messageNotification.templates.visual.subject') }}</span><span class="email-editor__count">{{ draft.subject.length }} / 255</span></span>
       </template>
-      <a-input v-model:value="draft.subject" :maxlength="255" :disabled="disabled" @focus="closeImage(); captureCaret($event, 'subject')" @click="captureCaret($event, 'subject')" @keyup="captureCaret($event, 'subject')" @input="captureCaret($event, 'subject')" />
+      <TemplateVariableInput v-model:value="draft.subject" :maxlength="255" :disabled="disabled" :aria-label="t('messageNotification.templates.visual.subject')" @focus="closeImage" />
     </a-form-item>
     <a-form-item>
       <template #label>
@@ -20,7 +20,7 @@
           <a-popover :open="linkOpen" trigger="click" :title="t('messageNotification.templates.richText.link')" @open-change="openLink">
             <template #content>
               <div class="email-editor__link-form">
-                <a-input v-model:value="linkUrl" :disabled="disabled" :aria-label="t('messageNotification.templates.richText.linkUrl')" :placeholder="t('messageNotification.templates.richText.linkUrl')" @press-enter="applyLink" />
+                <TemplateVariableInput v-model:value="linkUrl" :disabled="disabled" :aria-label="t('messageNotification.templates.richText.linkUrl')" :placeholder="t('messageNotification.templates.richText.linkUrl')" @press-enter="applyLink" />
                 <a-button type="primary" size="small" :disabled="disabled || !linkValid" @click="applyLink">{{ t('messageNotification.templates.richText.applyLink') }}</a-button>
               </div>
             </template>
@@ -43,7 +43,7 @@
                   <a-button :loading="imageUploading" :disabled="disabled"><template #icon><AIcon type="UploadOutlined" /></template>{{ t('messageNotification.templates.richText.uploadImage') }}</a-button>
                 </a-upload>
                 <div class="email-editor__link-form">
-                  <a-input v-model:value="imageUrl" :disabled="disabled" :aria-label="t('messageNotification.templates.richText.imageUrl')" :placeholder="t('messageNotification.templates.richText.imageUrl')" @focus="captureImageCaret" @click="captureImageCaret" @keyup="captureImageCaret" @input="captureImageCaret" @press-enter="insertImageSource" @keydown.esc.stop="closeImage" />
+                  <TemplateVariableInput v-model:value="imageUrl" :disabled="disabled" :aria-label="t('messageNotification.templates.richText.imageUrl')" :placeholder="t('messageNotification.templates.richText.imageUrl')" @press-enter="insertImageSource" @escape="closeImage" />
                   <a-button type="primary" size="small" :disabled="disabled || !imageSourceValid" @click="insertImageSource">{{ t('messageNotification.templates.richText.insertImage') }}</a-button>
                 </div>
                 <div class="email-editor__hint">{{ t('messageNotification.templates.richText.imageHint') }}</div>
@@ -74,11 +74,12 @@ import { useEmailRichTextEditor } from '../../hooks/useEmailRichTextEditor'
 import type { TemplateDraft } from '../../model'
 import type { TemplateEditorController } from '../../channelViewTypes'
 import AttachmentEditor from '../AttachmentEditor.vue'
+import TemplateVariableInput from '../../variables/TemplateVariableInput.vue'
 
 const props = defineProps<{ draft: TemplateDraft; editor: TemplateEditorController; disabled?: boolean }>()
-const { t, captureCaret, setUploading } = props.editor
+const { t, setUploading } = props.editor
 const { editorElement, richEditor, bodyLength, toolbarActions, runFormat, linkOpen, linkUrl, linkActive, linkValid, openLink, applyLink, removeLink, limitReached,
-  imageOpen, imageUrl, imageSourceValid, openImage, closeImage, toggleImage, captureImageCaret, insertImageSource, captureImageSelection, insertImage, insertAttachmentImage, setImageUploadHandler } = useEmailRichTextEditor(props)
+  imageOpen, imageUrl, imageSourceValid, openImage, closeImage, toggleImage, insertImageSource, captureImageSelection, insertImage, insertAttachmentImage, setImageUploadHandler } = useEmailRichTextEditor(props)
 const { beforeImageUpload, customImageRequest, uploadImageFiles, imageUploading, imageError } = useEmailTemplateImages(props, {
   capture: captureImageSelection, insert: insertImage, editable: () => !props.disabled,
 })
@@ -102,7 +103,7 @@ setImageUploadHandler((files, selection) => { void uploadImageFiles(files, selec
 .email-editor__content :deep(h2) { margin: var(--space-3) 0 var(--space-2); font-weight: 600; }
 .email-editor__content :deep(ul), .email-editor__content :deep(ol) { padding-inline-start: var(--space-6); }
 .email-editor__content :deep(img) { max-width: 100%; height: auto; }
-.email-editor__content :deep(img[data-email-template-src]) { min-width: 8rem; min-height: 3rem; border: 1px dashed var(--line); }
+.email-editor__content :deep(img[data-email-template-src]) { min-width: 8rem; min-height: 3rem; border: 1px dashed var(--line); color: var(--jet-theme-primary); }
 .email-editor__content :deep(a) { color: var(--jet-theme-primary); text-decoration: underline; }
 .email-editor__rich-text--disabled { background: var(--jet-theme-bg-layout); opacity: 0.65; }
 .email-editor__image-title { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }

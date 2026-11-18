@@ -14,7 +14,7 @@
             </template>
             <template #titleExtra>
               <a-tag v-if="dirty" color="processing">{{ t('messageNotification.templates.unsaved') }}</a-tag>
-              <a-tag v-else-if="draft">{{ t(isDefault ? 'messageNotification.templates.defaultContent' : entry?.existing ? 'messageNotification.templates.configured' : 'messageNotification.templates.unconfigured') }}</a-tag>
+              <a-tag v-else-if="draft" :color="isDefault ? 'warning' : undefined">{{ t(isDefault ? 'messageNotification.templates.defaultContent' : entry?.existing ? 'messageNotification.templates.configured' : 'messageNotification.templates.unconfigured') }}</a-tag>
               <a-tag v-if="business" class="message-templates__business-state" :color="businessEnabled ? 'success' : undefined"
                 :title="t(businessEnabled ? 'messageNotification.templates.businessEnabled' : 'messageNotification.templates.businessDisabled')">
                 {{ t(businessEnabled ? 'messageNotification.templates.businessStateEnabled' : 'messageNotification.templates.businessStateDisabled') }}
@@ -64,7 +64,7 @@
           <a-alert v-if="listFailure" type="warning" show-icon :message="t(`messageNotification.templates.${catalogState}`)">
             <template #action><a-button size="small" :disabled="busy" @click="reload">{{ t('messageNotification.templates.reload') }}</a-button></template>
           </a-alert>
-          <a-spin wrapper-class-name="notification-page__body message-templates__detail" :spinning="detailState === 'loading' || catalogState === 'loading' || directoryState === 'loading'">
+          <a-spin :wrapper-class-name="`notification-page__body message-templates__detail${editing ? ' message-templates__detail--editing' : ''}`" :spinning="detailState === 'loading' || catalogState === 'loading' || directoryState === 'loading'">
             <a-alert v-if="detailFailure" type="warning" show-icon :message="t(`messageNotification.templates.${feedbackState}`)">
               <template #action><a-button size="small" :disabled="busy" @click="reload">{{ t('messageNotification.templates.reload') }}</a-button></template>
             </a-alert>
@@ -78,7 +78,7 @@
                 <template #action><a-button type="link" size="small" :disabled="busy || !canConfigure" @click="goConfigure">{{ t('messageNotification.templates.configure') }}</a-button></template>
               </a-alert>
               <div :key="activeKey" class="message-templates__content" :class="{ 'message-templates__content--editing': editing }">
-                <TemplateEditor v-if="editing" ref="contentEditor" :draft="draft" :existing="entry?.existing" :business-mode="!!business" :configs="configs" :config-state="configState" :metadata="metadata" :metadata-state="metadataState" :available-variables="availableVariables" :disabled="!canEdit || saving" @uploading="setUploading" />
+                <TemplateEditor v-if="editing" ref="contentEditor" :draft="draft" :existing="entry?.existing" :business="business" :business-mode="!!business" :configs="configs" :config-state="configState" :metadata="metadata" :metadata-state="metadataState" :available-variables="availableVariables" :disabled="!canEdit || saving" @uploading="setUploading" />
                 <TemplateVariablePanel v-if="editing" :draft="draft" :business="business" :variables="availableVariables" :disabled="busy || !contentEditor?.canInsertVariable" @insert="contentEditor?.insertVariable($event)" />
                 <TemplatePreview v-if="hasContent || editing" :draft="draft" :editing="editing" :business="business" :channel="currentChannel" :config="activeConfig" />
                 <CloudEmpty v-else class="notification-page__feedback" :description="t('messageNotification.templates.noDefault')" />
@@ -132,14 +132,30 @@ const {
 .message-templates__channels { flex-shrink: 0; overflow-x: auto; min-width: 0; max-width: 100%; padding-bottom: var(--space-1); }
 .message-templates__detail :deep(.ant-spin-container) { display: flex; flex-direction: column; gap: var(--space-4); min-height: 100%; }
 .message-templates__detail :deep(.ant-spin-container > *) { flex-shrink: 0; }
+.message-templates__detail--editing { overflow: hidden; }
+.message-templates__detail--editing :deep(.ant-spin-container) { height: 100%; min-height: 0; }
+.message-templates__detail--editing .message-templates__content { flex-shrink: 1; }
 .message-templates__mobile-picker { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .message-templates__mobile-picker :deep(.ant-select) { width: 100%; }
 .message-templates__content { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .message-templates__source { min-width: 12rem; max-width: 100%; }
 .message-templates__workspace { container-type: inline-size; }
-.message-templates__content--editing { display: grid; grid-template-columns: minmax(15rem, 1.15fr) minmax(10rem, .55fr) minmax(17rem, 1fr); align-items: start; gap: var(--space-4); }
-@container (max-width: 48rem) { .message-templates__content--editing { grid-template-columns: minmax(0, 1fr) minmax(10rem, .7fr); } .message-templates__content--editing > .template-preview { grid-column: 1 / -1; } }
+.message-templates__content--editing { display: grid; grid-template-columns: minmax(15rem, 1.15fr) minmax(10rem, .55fr) minmax(17rem, 1fr); grid-template-rows: minmax(0, 1fr); align-items: stretch; gap: var(--space-4); min-height: 0; }
+.message-templates__content--editing > .template-editor { min-height: 0; overflow: auto; }
+@container (max-width: 48rem) {
+  .message-templates__detail--editing { overflow: auto; }
+  .message-templates__detail--editing :deep(.ant-spin-container) { height: auto; min-height: 100%; }
+  .message-templates__content--editing { grid-template-columns: minmax(0, 1fr) minmax(10rem, .7fr); grid-template-rows: none; align-items: start; }
+  .message-templates__content--editing > .template-variables { max-height: 28rem; }
+  .message-templates__content--editing > .template-preview { grid-column: 1 / -1; }
+}
+@media (max-width: 62rem) {
+  .message-templates__detail--editing { overflow: auto; }
+  .message-templates__detail--editing :deep(.ant-spin-container) { height: auto; min-height: 100%; }
+  .message-templates__content--editing { grid-template-columns: minmax(0, 1fr) minmax(10rem, .7fr); grid-template-rows: none; align-items: start; }
+  .message-templates__content--editing > .template-variables { max-height: 28rem; }
+  .message-templates__content--editing > .template-preview { grid-column: 1 / -1; }
+}
 @container (max-width: 34rem) { .message-templates__content--editing { grid-template-columns: minmax(0, 1fr); } .message-templates__content--editing > .template-preview { grid-column: auto; } }
-@media (max-width: 62rem) { .message-templates__content--editing { grid-template-columns: minmax(0, 1fr) minmax(10rem, .7fr); } .message-templates__content--editing > .template-preview { grid-column: 1 / -1; } }
 @media (max-width: 40rem) { .message-templates__content--editing { grid-template-columns: minmax(0, 1fr); } .message-templates__content--editing > .template-preview { grid-column: auto; } }
 </style>
