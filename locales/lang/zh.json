@@ -1,4 +1,16 @@
 {
+  "NotifyDocumentHelp": {
+    "channels": "通知渠道",
+    "templates": "消息模板",
+    "records": "通知记录",
+    "channelTest": "渠道测试",
+    "templateEditor": "模板编辑",
+    "recordDetails": "记录详情",
+    "testParameters": "渠道测试参数",
+    "configuration": "模板绑定通知配置",
+    "variables": "模板变量与插入",
+    "recordState": "通知发送结果"
+  },
   "NoticeCenter.channel.config.select": "请选择通知配置",
   "NoticeCenter.channel.config.create": "新建通知配置",
   "NoticeCenter.template.pageTitle": "消息模板",

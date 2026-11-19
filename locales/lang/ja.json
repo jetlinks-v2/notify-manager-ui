@@ -1,4 +1,16 @@
 {
+  "NotifyDocumentHelp": {
+    "channels": "通知チャネル",
+    "templates": "メッセージテンプレート",
+    "records": "通知履歴",
+    "channelTest": "チャネルテスト",
+    "templateEditor": "テンプレート編集",
+    "recordDetails": "履歴詳細",
+    "testParameters": "チャネルテストのパラメーター",
+    "configuration": "テンプレートに関連付ける通知設定",
+    "variables": "テンプレート変数の挿入",
+    "recordState": "通知の送信結果"
+  },
   "NoticeCenter.template.pageTitle": "メッセージテンプレート",
   "NoticeCenter.template.pageDescription": "アラームタイプごとに通知チャネル別のテンプレート内容を管理し、ポリシーに一致したときに正しいメッセージを送信できるようにします。",
   "NoticeCenter.template.group.default": "デフォルトグループ",

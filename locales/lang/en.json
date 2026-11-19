@@ -1,4 +1,16 @@
 {
+  "NotifyDocumentHelp": {
+    "channels": "Notification channels",
+    "templates": "Message templates",
+    "records": "Notification records",
+    "channelTest": "Channel testing",
+    "templateEditor": "Template editor",
+    "recordDetails": "Record details",
+    "testParameters": "Channel test parameters",
+    "configuration": "Template notification configuration",
+    "variables": "Template variables and insertion",
+    "recordState": "Notification delivery result"
+  },
   "NoticeCenter.channel.config.select": "Select a notification configuration",
   "NoticeCenter.channel.config.create": "Create a notification configuration",
   "NoticeCenter.template.pageTitle": "Message Templates",

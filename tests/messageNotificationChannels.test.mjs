@@ -21,6 +21,9 @@ coreInput.Password = builtinControl('a-input-password')
 coreInput.TextArea = builtinControl('a-textarea')
 const dependencies = {
   vue,
+  '@jetlinks-web-core/components/DocumentHelp': { __esModule: true, default: vue.defineComponent({
+    props: ['code', 'helpKey'], setup: props => () => vue.h('span', { 'data-help-code': props.code, 'data-help-key': props.helpKey }),
+  }) },
   'ant-design-vue': { Input: coreInput, InputNumber: builtinControl('a-input-number'), Select: builtinControl('a-select'), Button: builtinControl('a-button') },
   'vue-i18n': { useI18n: () => ({ t: (key, args) => args ? `${key}:${JSON.stringify(args)}` : key, te: key => Object.hasOwn(locale, key) }) },
   'vue-router': { onBeforeRouteLeave: guard => { routeGuard = guard }, useRoute: () => pageContext.route, useRouter: () => pageContext.router },
