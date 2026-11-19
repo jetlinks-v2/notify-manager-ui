@@ -27,7 +27,7 @@ export const prototypeDefaultMessages = {
   recovered: '{device} 已恢复正常',
   alarmName: '告警名称：{value}',
   device: '设备：{value}',
-  channel: '通道：{value}',
+  sourceName: '来源：{value}',
   value: '告警值：{value}',
   currentValue: '当前值：{value}',
   alarmTime: '告警时间：{value}',
@@ -72,7 +72,7 @@ export const prototypeBusinessNames = {
 } as const
 
 export type PrototypeBusiness = keyof typeof prototypeBusinessNames
-export type PrototypeTokens = Partial<Record<'name' | 'level' | 'device' | 'deviceId' | 'product' | 'value' | 'time' | 'relieveTime' | 'channel' | 'scene' | 'trigger' | 'title' | 'summary' | 'kind', string>>
+export type PrototypeTokens = Partial<Record<'name' | 'level' | 'device' | 'deviceId' | 'product' | 'value' | 'time' | 'relieveTime' | 'sourceName' | 'scene' | 'trigger' | 'title' | 'summary' | 'kind', string>>
 
 export interface PrototypeContent {
   title: string
@@ -124,7 +124,7 @@ export function buildPrototypeContent(business: PrototypeBusiness, token: Protot
   const relieve = business === 'alarm-device-relieve'
   const device = business === 'alarm-device' || relieve
   const title = text(relieve ? 'relieveTitle' : 'alarmTitle', { level: token.level, name: token.name })
-  const target = device ? token.device : token.channel
+  const target = device ? token.device : token.sourceName
   const subject = text(relieve ? 'relieveSubject' : 'alarmSubject', {
     level: token.level, name: token.name, target: target ? ` - ${target}` : '',
   })
@@ -132,12 +132,12 @@ export function buildPrototypeContent(business: PrototypeBusiness, token: Protot
   const intro = text(introKey, { level: token.level })
   const details = lines(
     field('alarmName', token.name),
-    field(device ? 'device' : 'channel', target ? target + (device && token.product ? `（${token.product}）` : '') : undefined),
+    field(device ? 'device' : 'sourceName', target ? target + (device && token.product ? `（${token.product}）` : '') : undefined),
     !relieve && field('value', token.value),
     field('alarmTime', token.time), relieve && field('relieveTime', token.relieveTime),
   )
   const recovered = relieve && token.device ? text('recovered', { device: token.device }) : ''
-  const body = lines(recovered || intro, !relieve && device && field('device', token.device), !device && field('channel', token.channel), !relieve && field('currentValue', token.value),
+  const body = lines(recovered || intro, !relieve && device && field('device', token.device), !device && field('sourceName', token.sourceName), !relieve && field('currentValue', token.value),
     field(relieve ? 'relieveTime' : 'alarmTime', relieve ? token.relieveTime : token.time))
   const smsKey = relieve ? 'relieveSms' : device ? 'alarmSms' : business === 'aiComplianceAlarm' ? 'complianceSms' : 'securitySms'
   const voiceKey = relieve ? 'relieveVoice' : device ? 'alarmVoice' : business === 'aiComplianceAlarm' ? 'complianceVoice' : 'securityVoice'
@@ -148,7 +148,7 @@ export function buildPrototypeContent(business: PrototypeBusiness, token: Protot
     webhook: presentFields({
       type: kind, name: token.name, level: token.level,
       ...(device && Object.keys(deviceFields).length ? { device: deviceFields } : {}),
-      ...(!device ? { channel: token.channel } : {}),
+      ...(!device ? { channel: token.sourceName } : {}),
       ...(relieve ? { alarmTime: token.time, recoverTime: token.relieveTime } : { value: token.value, time: token.time }),
     }),
   }
@@ -181,7 +181,7 @@ export function prototypePreviewExamples(business?: NoticeChannelConfig): Record
     selected = {
       message: security ? 'AI 安全告警：明火识别' : 'AI 合规告警：收银台离岗', notifyTime: values.notifyTime,
       'detail.alarmConfigName': security ? '明火识别' : '收银台离岗', 'detail.level': 4, 'detail.alarmTime': values['detail.alarmTime'],
-      ...(!security ? { 'detail.mediaChannelName': '收银台 · 通道 03' } : {}),
+      ...(!security ? { 'detail.sourceName': '收银台 · 通道 03' } : {}),
     }
   } else if (code === 'scene') selected = {
     message: '场景 闭店后有人进入 已执行', notifyTime: values.notifyTime,
@@ -212,7 +212,7 @@ const variableNames: Record<string, string> = {
   'detail.alarmConfigName': '告警名称', 'detail.level': '告警级别', 'detail.levelText': '级别名称',
   'detail.targetName': '设备名称', 'detail.targetId': '设备 ID', 'detail.productName': '产品名称',
   'detail.propertyValue': '属性原始值', 'detail.propertyValueText': '属性显示值', 'detail.propertyUnit': '属性单位',
-  'detail.alarmTime': '告警时间', 'detail.relieveTime': '解除时间', 'detail.mediaChannelName': '通道名称',
+  'detail.alarmTime': '告警时间', 'detail.relieveTime': '解除时间', 'detail.sourceName': '来源名称',
   'detail.sceneName': '场景名称', 'detail.triggerType': '触发方式',
   'detail.title': '公告标题', 'detail.summary': '公告摘要', 'detail.type': '公告类型',
 }
@@ -258,7 +258,7 @@ function mappedTokens(code: PrototypeBusiness, variables: Map<string, Notificati
   if (code === 'scene') return { scene: token('detail.sceneName'), trigger: token('detail.triggerType') }
   if (code === 'SystemBulletin') return { title: token('detail.title'), summary: token('detail.summary'), kind: token('detail.type') }
   const common: PrototypeTokens = { name: token('detail.alarmConfigName'), level: token('detail.level'), time: token('detail.alarmTime') }
-  if (code === 'aiComplianceAlarm') return { ...common, channel: token('detail.mediaChannelName') }
+  if (code === 'aiComplianceAlarm') return { ...common, sourceName: token('detail.sourceName') }
   // 安全告警复判不能稳定提供通道、空间字段，不因元数据残留而重新引入。
   if (code === 'aiSecurityAlarm') return common
   return {

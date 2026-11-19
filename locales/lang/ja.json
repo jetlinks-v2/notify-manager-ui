@@ -1021,7 +1021,7 @@
   "messageNotification.templates.visual.supplierVoiceFile": "プロバイダー音声ファイル",
   "messageNotification.templates.defaults.relieveSms": "アラーム解除：{device} の{name}は正常に戻りました。",
   "messageNotification.templates.configured": "保存済み",
-  "messageNotification.templates.defaults.channel": "チャネル：{value}",
+  "messageNotification.templates.defaults.sourceName": "ソース：{value}",
   "messageNotification.templates.defaults.bulletinSms": "お知らせ：{title}。詳細はログインして確認してください。",
   "messageNotification.templates.visual.contentOnlyHint": "ここではメッセージの表示内容を設定します。送信先とチャネルは通知設定で指定します。",
   "messageNotification.templates.visual.advancedFields": "その他のテンプレート項目",

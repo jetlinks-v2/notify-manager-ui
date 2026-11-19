@@ -1021,7 +1021,7 @@
   "messageNotification.templates.visual.supplierVoiceFile": "服务商语音文件",
   "messageNotification.templates.defaults.relieveSms": "告警解除：{device} {name}已恢复正常。",
   "messageNotification.templates.configured": "已保存",
-  "messageNotification.templates.defaults.channel": "通道：{value}",
+  "messageNotification.templates.defaults.sourceName": "来源：{value}",
   "messageNotification.templates.defaults.bulletinSms": "平台公告：{title}，详情请登录平台查看。",
   "messageNotification.templates.visual.contentOnlyHint": "这里配置消息发出去的样子；发送渠道和接收对象由通知配置决定。",
   "messageNotification.templates.visual.advancedFields": "更多模板字段",

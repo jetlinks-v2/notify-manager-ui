@@ -279,6 +279,8 @@ node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/sy
 
 Commit：`79bbbea`（本地 `2.20`，未推送）。提交快照验证（2026-11-16）：提交只包含本节改动，不含工作区内其他未提交改动；将提交内容导出到 `runtime-ui/` 下的临时目录运行同一组测试，356/359 通过，失败的 3 项为 `messageNotificationIntegration.test.mjs` 中读取真实 `modules/` 目录的菜单 / 路由聚合用例，临时目录不在 `modules/` 下，判断与导出位置有关而非本次改动；这 3 项在工作区原位置通过。日志 `/tmp/notification-business-toggle-commit-snapshot-test.log`。
 
+合规告警默认模板使用 `${detail.sourceName}`，邮件和即时消息以「来源」显示，预览使用同一个变量。默认 Webhook JSON 的 `channel` 键也取该变量。默认模板、模板编辑和 Webhook 的 70 项定向测试通过。
+
 ### 业务节点联动与模板预览
 
 交付复核（2026-11-18）：以 `origin/2.20` 的 `f5f4eb5` 为基线，使用 `codex/notification-template-variable-editing-2.20` 交付。模块根目录执行 `node --test tests/messageNotification*.test.mjs`，384/384 通过；15 个改动或新增 Vue 的 script/template/style 编译、16 个文件的定向样式门禁、中英日各 1096 个语言键一致性及 `git diff --check` 通过，相关 Vue 均少于 300 行。复用 `/tmp/notify-variable-panel-build-final.log` 的最终模块构建（9,373 个模块、42.45 秒）及 `/tmp/notify-variable-panel-types-final.log` 的类型记录，所覆盖生产源码未再修改；类型日志与变量编辑前基线归一化行列号后完全一致，仍为 195 条既有诊断。完整类型检查尚未通过，真实通知后端保存 / 发送及系统输入法联调仍待验收；重跑命令与边界见下文。

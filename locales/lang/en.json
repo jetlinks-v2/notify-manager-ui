@@ -1021,7 +1021,7 @@
   "messageNotification.templates.visual.supplierVoiceFile": "Provider voice file",
   "messageNotification.templates.defaults.relieveSms": "Alarm cleared: {device} {name} has returned to normal.",
   "messageNotification.templates.configured": "Saved",
-  "messageNotification.templates.defaults.channel": "Channel: {value}",
+  "messageNotification.templates.defaults.sourceName": "Source: {value}",
   "messageNotification.templates.defaults.bulletinSms": "Announcement: {title}. Sign in to view details.",
   "messageNotification.templates.visual.contentOnlyHint": "Configure the message appearance here. Notification settings determine delivery channels and recipients.",
   "messageNotification.templates.visual.advancedFields": "More template fields",
