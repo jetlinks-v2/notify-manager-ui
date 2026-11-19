@@ -15,7 +15,7 @@ import {
 import { TemplateValidationError } from '../model'
 import { buildTemplateDirectory, flattenTemplateDirectory, templateBusinessKey } from '../templateDirectoryModel'
 import { useTemplateWorkspace } from '../useTemplateWorkspace'
-import { useTemplateBusinessDirectory } from './useTemplateBusinessDirectory'
+import { hasInsideMailChannel, useTemplateBusinessDirectory } from './useTemplateBusinessDirectory'
 import { useTemplateBusinessNavigation } from './useTemplateBusinessNavigation'
 
 const identity = (business?: NoticeChannelConfig) => business?.id || business?.providerId || business?.provider || ''
@@ -39,16 +39,20 @@ export function useTemplatePage() {
   const configurationNavigation = useNotificationConfigNavigation(() => workspace.refreshConfigs(), 'system/MessageNotification/Channels')
   const canConfigure = computed(() => canQueryConfig.value && configurationNavigation.available.value)
   const changingBusiness = ref(false)
+  const fillingInsideMail = ref(false)
   const businessActionState = ref('idle')
   const selectedBusinessId = computed(() => identity(business.value))
   const businessEnabled = computed(() => !!business.value?.id && (typeof business.value.state === 'string' ? business.value.state : business.value.state?.value) !== 'disabled')
+  const canFillInsideMail = computed(() => Boolean(canQuery.value && canUpdate.value && directory.insideMailChannel.value
+    && business.value?.id && !hasInsideMailChannel(business.value)))
   const uploading = ref(false)
   const editing = ref(false)
   const initialized = ref(false)
   const selectionUnavailable = ref(false)
   const validationMessage = ref('')
   const confirmation = reactive({ open: false })
-  const busy = computed(() => saving.value || uploading.value || changingBusiness.value)
+  const busy = computed(() => saving.value || uploading.value || changingBusiness.value || fillingInsideMail.value)
+  const pendingChannelRefresh = ref('')
   const navigation = computed(() => normalizeNotificationNavigation(route.query, channels.value))
   const directoryNodes = computed(() => flattenTemplateDirectory(buildTemplateDirectory(templates.value, directory.businessTypes.value,
     { other: t('messageNotification.templates.otherGroup') }, t)))
@@ -84,7 +88,7 @@ export function useTemplatePage() {
 
   /** 显式旧 templateId 优先解析真实业务绑定；没有显式选择时取树中的首个业务。 */
   async function synchronizeSelection() {
-    if (!initialized.value || directory.directoryState.value === 'loading' || changingBusiness.value) return
+    if (!initialized.value || directory.directoryState.value === 'loading' || changingBusiness.value || fillingInsideMail.value) return
     const current = ++revision
     const requested = businessNavigation.requested.value
     const channel = requested ? businessNavigation.channel.value : queryText(route.query.channel) || navigation.value.channel || channels.value[0]?.id || ''
@@ -124,7 +128,15 @@ export function useTemplatePage() {
     () => route.query.topicProvider, () => route.query.channelProvider, () => route.query.aiAlarmType, () => route.query.visualAlarmSession, () => route.query.businessSelection,
     directory.businessTypes, directory.directoryState], synchronizeSelection, { immediate: true })
   watch(notificationConfigurationChange, change => {
-    if (change?.channel) void workspace.refreshConfigs()
+    if (change?.action === 'message-templates-created') pendingChannelRefresh.value = change.channel
+    else if (change?.channel) void workspace.refreshConfigs()
+  })
+  watch([pendingChannelRefresh, canManage, busy, workspace.hasDirtyDrafts], ([channel, allowed, locked, dirty]) => {
+    if (!channel || !allowed || locked || dirty) return
+    pendingChannelRefresh.value = ''
+    loadedSelection = ''
+    workspace.refreshUnboundTemplates(channel)
+    void directory.reloadDirectory()
   })
 
   function selectionQuery(channel: string, selectedBusiness?: NoticeChannelConfig, templateId?: string): LocationQueryRaw {
@@ -251,13 +263,33 @@ export function useTemplatePage() {
     } catch (error) { businessActionState.value = classifyNotificationFailure(error) }
     finally { changingBusiness.value = false }
   }
+  async function fillInsideMail() {
+    const selected = business.value
+    const id = selected?.id
+    if (!id || !canFillInsideMail.value || busy.value) return
+    const active = () => !disposed && canQuery.value && canUpdate.value && business.value?.id === id
+    fillingInsideMail.value = true
+    businessActionState.value = 'loading'
+    try {
+      const result = await directory.fillInsideMail(id, active)
+      if (!result || !active()) return
+      workspace.resetBusinessIdentity(result.business, selected)
+      businessActionState.value = 'ready'
+      if (result.created) onlyMessage(t('messageNotification.templates.fillInsideMailSucceeded'), 'success')
+    } catch (error) {
+      if (active()) businessActionState.value = classifyNotificationFailure(error)
+    } finally {
+      fillingInsideMail.value = false
+      if (businessActionState.value === 'loading') businessActionState.value = 'idle'
+    }
+  }
   async function importTemplate(value: unknown) {
     if (busy.value || !canEdit.value) return
     await workspace.importTemplate(String(value))
     editing.value = true
   }
   onBeforeRouteUpdate(() => !busy.value)
-  onBeforeRouteLeave(async () => !saving.value && (!workspace.hasDirtyDrafts.value && !uploading.value || await confirmDiscard()))
+  onBeforeRouteLeave(async () => !saving.value && !fillingInsideMail.value && (!workspace.hasDirtyDrafts.value && !uploading.value || await confirmDiscard()))
   function beforeUnload(event: BeforeUnloadEvent) {
     if (workspace.hasDirtyDrafts.value || busy.value) { event.preventDefault(); event.returnValue = '' }
   }
@@ -274,6 +306,7 @@ export function useTemplatePage() {
     canManage, selectedBusiness: business, selectedBusinessId, businessEnabled, changingBusiness, businessActionState, toggleBusiness,
     businessLinkPending: businessNavigation.requested, businessLinkState: businessNavigation.state, importOptions,
     t, compact, workspace, ...workspace, ...directory, canQuery, canAdd, canEdit, canConfigure, busy, uploading,
+    canFillInsideMail, fillingInsideMail, fillInsideMail,
     editing, title, description, activeConfig, selectedDirectoryKey, selectedTemplateId, templateOptions,
     validationMessage, channelOptions, listFailure, detailFailure, feedbackState, saveFailure,
     missingConfiguration, confirmation, setUploading, reload, changeChannel, selectTemplate, createTemplate,

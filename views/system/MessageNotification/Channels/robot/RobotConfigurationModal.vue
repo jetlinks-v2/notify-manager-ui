@@ -7,6 +7,7 @@
       <a-form-item :label="t('messageNotification.channels.robot.webhook')" :validate-status="model.urlError ? 'error' : undefined" :help="model.urlError" :extra="t(model.isNew ? 'messageNotification.channels.robot.webhookHint' : 'messageNotification.channels.robot.keepWebhook')">
         <a-input :value="model.url" :disabled="model.disabled" :aria-label="t('messageNotification.channels.robot.webhook')" :aria-invalid="!!model.urlError" :placeholder="model.savedUrl || 'https://oapi.dingtalk.com/robot/send?access_token=…'" autocomplete="off" @update:value="emit('change', 'url', $event)" />
       </a-form-item>
+      <slot name="template-defaults" />
       <a-alert v-if="model.error" type="error" show-icon :message="model.error" role="alert" />
     </a-form>
     <template #footer>

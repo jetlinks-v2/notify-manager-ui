@@ -21,6 +21,7 @@ import type { NoticeChannelConfig, NoticeChannelTemplateItem, NoticeProviderTemp
 
 export interface CurrentNotificationBinding { type: string; provider: string; providerName?: string; thirdPartyUserId: string }
 interface BusinessVariableMetadata extends NotificationVariable { valueType?: { type?: string; format?: string } }
+export const insideMailChannelProvider = 'inside-mail'
 
 /** Preserve platform request behavior, but require success before a page updates its saved baseline. */
 export async function checked<T>(operation: Promise<AxiosResponseRewrite<T>>): Promise<T> {
@@ -42,6 +43,12 @@ function idSegment(id: string): string {
 
 function nonemptyString(value: unknown): value is string {
   return typeof value === 'string' && !!value.trim()
+}
+
+export function isEnabledInsideMailChannel(channel: NoticeChannelConfig, providerId: string): boolean {
+  const state = typeof channel.state === 'string' ? channel.state : channel.state?.value
+  return channel.channelProvider === insideMailChannelProvider && channel.providerId === providerId
+    && nonemptyString(channel.id) && state === 'enabled'
 }
 
 function enumIdentity(value: unknown): boolean {
@@ -88,6 +95,17 @@ export const messageNotificationApi = {
       || (item.channels !== undefined && !Array.isArray(item.channels)))) throw new NotificationRequestError('error')
     return result
   },
+  /** The provider directory respects deployments that have disabled the built-in channel. */
+  async queryInsideMailChannel(): Promise<NoticeChannelConfig | undefined> {
+    const providers = directory(await checked<unknown>(request.get('/notify/channel/providers', { hiddenError: true })))
+    const insideMail = providers.find(provider => provider.id === insideMailChannelProvider)
+    if (!insideMail) return
+    if (!nonemptyString(insideMail.name)) throw new NotificationRequestError('error', insideMail)
+    return { channelProvider: insideMail.id, name: insideMail.name, state: 'enabled' }
+  },
+  saveBusinessChannel(providerId: string, channel: NoticeChannelConfig): Promise<unknown> {
+    return checked(request.patch(`/notify/channel/${idSegment(providerId)}`, [channel], { hiddenError: true }))
+  },
   async queryTypes(): Promise<NotificationProvider[]> {
     return directory(await checked<unknown>(request.get('/notifier/config/types')))
   },
@@ -115,15 +133,22 @@ export const messageNotificationApi = {
     if (!result?.template) throw new NotificationRequestError('error', result)
     return result
   },
-  /** First save creates one enabled topic and its current channel in the backend transaction. */
+  /** First save creates the topic and its channels in one transaction. The built-in channel has no template. */
   async saveBusinessTemplates(topicProvider: string, payload: NoticeProviderTemplateInfo): Promise<NoticeProviderTemplateInfo> {
     const result = await checked<NoticeProviderTemplateInfo>(request.put(`/notify/channel/${idSegment(topicProvider)}/_save-with-templates`, payload))
     if (!result?.provider || !nonemptyString(result.provider.id) || !Array.isArray(result.channels)) throw new NotificationRequestError('error', result)
     result.channels = result.channels.map(item => {
       const normalized = businessTemplate(item)
-      if (!normalized?.template) throw new NotificationRequestError('error', item)
+      if (!normalized || (!normalized.template && normalized.channel.channelProvider !== insideMailChannelProvider)) {
+        throw new NotificationRequestError('error', item)
+      }
       return normalized
     })
+    const providerId = result.provider.id
+    if (payload.channels.some(({ channel }) => channel.channelProvider === insideMailChannelProvider)
+      && !result.channels.some(({ channel }) => isEnabledInsideMailChannel(channel, providerId))) {
+      throw new NotificationRequestError('error', result)
+    }
     return result
   },
   async queryBusinessVariables(providerId: string): Promise<NotificationVariable[]> {

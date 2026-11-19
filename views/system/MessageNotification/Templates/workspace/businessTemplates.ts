@@ -12,8 +12,6 @@ export interface TemplateDraftEntry {
   baseline: string
   baselineDraft: TemplateDraft
   existing: boolean
-  enabled?: boolean
-  baselineEnabled?: boolean
   businessIdentity?: string
   channel?: NoticeChannelConfig
   prototype?: NotificationTemplate
@@ -58,15 +56,16 @@ export function readBusinessTemplate(business: NoticeChannelConfig, channel: Not
   } }
 }
 
-/** Retain channel state, grant and explicit variable expressions while updating the current binding. */
+/** New bindings start enabled. Existing bindings keep their saved state, grant and variable expressions. */
 export function buildBusinessTemplateItem(business: NoticeChannelConfig, channel: NotificationChannel,
   entry: TemplateDraftEntry, payload: NotificationTemplatePayload): NoticeChannelTemplateItem {
   const original = cloneNotificationValue(entry.channel || {})
+  const state = typeof original.state === 'string' ? original.state : original.state?.value
   return {
     channel: {
       ...original, providerId: business.id,
       name: original.name || channel.name || channel.typeName || channel.type,
-      channelProvider: channelProviderFor(channel), state: entry.enabled === undefined ? original.state ?? 'enabled' : entry.enabled ? 'enabled' : 'disabled',
+      channelProvider: channelProviderFor(channel), state: state === 'disabled' ? 'disabled' : 'enabled',
       channelConfiguration: {
         ...original.channelConfiguration, notifierId: payload.configId,
         variables: buildNoticeTemplateChannelVariables({

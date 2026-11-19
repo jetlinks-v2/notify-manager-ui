@@ -1,4 +1,4 @@
-import { beginChannelEdit, saveChannelDraft } from './channelEditing.mjs'
+import { beginChannelEdit, editButton, saveChannelDraft } from './channelEditing.mjs'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { mkdir, writeFile } from 'node:fs/promises'
@@ -6,19 +6,36 @@ import { fileURLToPath } from 'node:url'
 
 const { chromium } = createRequire(import.meta.url)(process.env.SMOKE_PLAYWRIGHT_MODULE || 'playwright')
 const baseURL = process.env.SMOKE_BASE_URL || 'http://localhost:9200'
-const output = process.env.SMOKE_OUTPUT || '/tmp/webhook-example-browser'
+const output = process.env.SMOKE_OUTPUT || '/tmp/webhook-channel-browser'
 const entryURL = new URL(`/@fs${fileURLToPath(new URL('./index.html', import.meta.url))}`, baseURL)
 const report = { checks: [], errors: [], screenshots: [] }
-const browser = await chromium.launch({ headless: true })
+const browser = await chromium.launch({ channel: process.env.SMOKE_CHROMIUM_CHANNEL })
 await mkdir(output, { recursive: true })
 
+const address = page => page.getByRole('textbox', { name: '地址', exact: true })
+const templateRegion = page => page.getByRole('region', { name: '消息模板', exact: true })
+async function checkChannelFields(page) {
+  await address(page).waitFor()
+  assert.equal(await page.locator('.webhook-preview').count(), 0)
+  assert.equal(await page.getByText('请求示例', { exact: true }).count(), 0)
+  assert.equal(await page.getByRole('textbox', { name: '请求体', exact: true }).count(), 0)
+}
+
 async function open(mode = 'saved') {
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, serviceWorkers: 'block', permissions: ['clipboard-read', 'clipboard-write'] })
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, serviceWorkers: 'block' })
   const page = await context.newPage()
   page.setDefaultTimeout(10000)
   page.on('pageerror', error => report.errors.push(error.message))
   // All business operations are provided by the existing in-memory fixture.
-  await page.route('**/*', route => ['fetch', 'xhr'].includes(route.request().resourceType()) || new URL(route.request().url()).origin !== new URL(baseURL).origin ? route.abort() : route.continue())
+  await page.routeWebSocket('**/*', () => {})
+  await page.route('**/*', route => {
+    const request = route.request()
+    if (['fetch', 'xhr'].includes(request.resourceType()) || new URL(request.url()).origin !== entryURL.origin) {
+      report.errors.push(`Unexpected request ${request.url()}`)
+      return route.abort()
+    }
+    return route.continue()
+  })
   await page.goto(`${entryURL}?${mode === 'fresh' ? 'fresh' : 'clearMessages'}&directory=tree${mode === 'denied' ? '&permission=no-template' : ''}#/channels?channel=email:embedded`)
   await page.waitForFunction(() => document.documentElement.dataset.notificationSmoke === 'ready')
   await page.locator('.channel-configuration').waitFor()
@@ -27,14 +44,10 @@ async function open(mode = 'saved') {
     const config = fixture.configs.find(item => item.type === 'webhook')
     if (config) config.configuration = { url: 'https://receiver.example.test/hooks', headers: [{ key: 'Authorization', value: 'fixture-private-token' }] }
     fixture.templates.splice(0)
-    fixture.failures.add('queryTemplates')
-    fixture.failures.add('getTemplate')
     await fixture.router.push({ path: '/channels', query: { channel: 'webhook:http', ...(config ? { configId: config.id } : {}) } })
   })
-  await page.locator('.webhook-preview .cb-body').waitFor()
+  await checkChannelFields(page)
   assert.equal(await page.evaluate(() => window.__notificationSmoke.calls.filter(([method]) => ['queryTemplates', 'getTemplate', 'queryTemplateDirectory', 'getBusinessTemplate'].includes(method)).length), 0)
-  assert.equal(await page.locator('.webhook-preview .ant-select, .webhook-preview .cloud-empty, .webhook-preview__hint').count(), 0)
-  assert.equal(await page.getByRole('button', { name: '去消息模板 ›', exact: true }).count(), 0)
   return page
 }
 async function screenshot(page, name) {
@@ -48,37 +61,42 @@ try {
   assert.equal(await page.locator('.notification-channels__title-row h2').innerText(), 'Webhook')
   assert.match(await page.locator('.channel-configuration').innerText(), /接收地址/)
   assert.doesNotMatch(await page.locator('.channel-configuration').innerText(), /超时|签名/)
-  const initial = await page.locator('.webhook-preview .cb-body').innerText()
-  assert.match(initial, /^POST https:\/\/receiver.example.test\/hooks/)
-  assert.match(initial, /Content-Type: application\/json/)
-  assert.equal(JSON.parse(initial.split('\n\n')[1]).detail.targetId, 'device-001')
-  assert.doesNotMatch(initial, /fixture-private-token|X-Signature/)
-  await page.getByTitle('复制请求示例', { exact: true }).click()
-  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), initial)
-  report.checks.push('example visible without saved templates or template/directory reads; masked copy')
+  assert.equal(await address(page).inputValue(), 'https://receiver.example.test/hooks')
+  assert.equal(await page.locator('.channel-configuration input').evaluateAll(inputs => inputs.some(input => input.value === 'fixture-private-token')), false)
+  report.checks.push('saved channel shows address and protects header credentials without rendering a request example')
   await screenshot(page, 'webhook-desktop')
 
   await beginChannelEdit(page)
-  await page.getByRole('textbox', { name: '地址', exact: true }).fill('https://receiver.example.test/updated')
-  assert.equal(await page.locator('.webhook-preview .cb-body').innerText(), initial)
-  await page.getByRole('textbox', { name: '地址', exact: true }).press('Enter')
-  assert.equal(await page.locator('.webhook-preview .cb-body').innerText(), initial)
+  await address(page).fill('https://receiver.example.test/updated')
   await saveChannelDraft(page)
-  await page.waitForFunction(() => document.querySelector('.webhook-preview .cb-body')?.textContent?.startsWith('POST https://receiver.example.test/updated'))
-  assert.equal(await page.evaluate(() => window.__notificationSmoke.calls.some(([method]) => ['queryTemplates', 'getTemplate', 'queryTemplateDirectory'].includes(method))), false)
-  report.checks.push('address follows saved configuration without querying templates')
+  const templateLink = editButton(templateRegion(page), '消息模板')
+  await templateLink.waitFor()
+  const saved = await page.evaluate(() => window.__notificationSmoke.configs.find(config => config.type === 'webhook').configuration)
+  assert.deepEqual(saved, { url: 'https://receiver.example.test/updated', headers: [{ key: 'Authorization', value: 'fixture-private-token' }] })
+  await checkChannelFields(page)
+  report.checks.push('saving a changed address preserves the saved header and fills missing templates')
   await page.setViewportSize({ width: 390, height: 844 })
   await page.waitForFunction(() => document.documentElement.scrollWidth <= innerWidth + 1)
   await screenshot(page, 'webhook-mobile')
   report.checks.push('390px layout has no horizontal overflow')
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await templateLink.click()
+  const preview = page.locator('.message-templates__workspace .webhook-preview')
+  await preview.waitFor()
+  assert.match(await preview.innerText(), /https:\/\/receiver\.example\.test\/updated/)
+  await editButton(page.locator('.message-templates__header'), '编辑').click()
+  const requestBody = page.getByRole('textbox', { name: '请求体', exact: true })
+  await requestBody.waitFor()
+  assert.equal(await requestBody.isEditable(), true)
+  report.checks.push('the generated request body can be previewed and edited on the message templates page')
 
   const fresh = await open('fresh')
-  assert.match(await fresh.locator('.webhook-preview .cb-body').innerText(), /^POST 接收地址\n/)
-  report.checks.push('new configuration shows a local example immediately')
+  assert.equal(await address(fresh).inputValue(), '')
+  report.checks.push('new configuration shows channel inputs without a request example')
   const denied = await open('denied')
-  assert.equal(await denied.getByRole('button', { name: '去消息模板 ›', exact: true }).count(), 0)
-  assert.match(await denied.locator('.webhook-preview .cb-body').innerText(), /^POST https:/)
-  report.checks.push('no template hint or navigation; example independent of template permission')
+  assert.equal(await editButton(templateRegion(denied), '补齐消息模板').count(), 0)
+  assert.equal(await editButton(templateRegion(denied), '消息模板').count(), 0)
+  report.checks.push('channel configuration remains available without template permission')
   assert.deepEqual(report.errors, [])
 } finally {
   await writeFile(`${output}/report.json`, JSON.stringify(report, null, 2))

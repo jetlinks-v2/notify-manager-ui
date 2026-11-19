@@ -66,6 +66,7 @@ const { robotWebhookSummary } = load(resolve(root, 'robot/robotPresentation.ts')
 const { createChannelConfigDraft, channelConfigPayload, validateChannelDraft } = load(resolve(root, 'channelSchema.ts'))
 const { useChannelLeaveGuard } = load(resolve(root, 'useChannelLeaveGuard.ts'))
 const { useChannelsPage } = load(resolve(root, 'useChannelsPage.ts'))
+const { readWechatAgentId, validWechatAgentId } = load(resolve(root, 'wechat/templateDefaults.ts'))
 const { useConfigurationPairs } = load(resolve(root, 'useConfigurationPairs.ts'))
 const { notificationChannels, notificationPermissions } = load(resolve(root, '../shared/index.ts'))
 const ChannelConfiguration = load(resolve(root, 'ChannelConfiguration.vue')).default
@@ -772,7 +773,7 @@ test('WeChat keeps the original two credentials with old or extended metadata an
     const definition = channelDefinition(channel, metadata)
     assert.deepEqual(definition.fields.map(field => field.key), ['corpId', 'corpSecret'])
     const help = channelHelp(channel, definition, key => locale[key] || key)
-    assert.deepEqual(help.sections.map(section => section.id), ['corpId', 'corpSecret'])
+    assert.deepEqual(help.sections.map(section => section.id), ['corpId', 'corpSecret', 'weixinAgentId'])
     const fresh = { id: 'new-corp', name: 'WeChat', type: 'weixin', provider: 'corpMessage', configuration: { corpId: 'corp', corpSecret: 'new-secret' } }
     assert.deepEqual(validateChannelDraft(fresh, undefined, definition), [])
     assert.deepEqual(channelConfigPayload(fresh, undefined, definition).configuration, fresh.configuration)
@@ -789,6 +790,14 @@ test('WeChat keeps the original two credentials with old or extended metadata an
   }
 })
 
+test('WeCom AgentId reads previous configurations and respects an explicitly cleared draft', () => {
+  assert.equal(readWechatAgentId({ agentId: 1000002 }), '1000002')
+  assert.equal(readWechatAgentId({ agentId: 1000002, alarmTemplateDefaults: { agentId: ' 8000001 ' } }), '8000001')
+  assert.equal(readWechatAgentId({ agentId: 1000002, alarmTemplateDefaults: { agentId: '' } }), '')
+  assert.equal(validWechatAgentId('8000001'), true)
+  for (const invalid of ['', '0', '-1', '3.5', 'not-an-id']) assert.equal(validWechatAgentId(invalid), false)
+})
+
 test('backend additions remain visible alongside explicit channel test settings', () => {
   const known = notificationChannels.find(item => item.id === 'dingTalk:dingTalkMessage')
   const metadata = clone(channelMetadata[known.id])
@@ -797,7 +806,7 @@ test('backend additions remain visible alongside explicit channel test settings'
   assert.deepEqual(definition.fields.map(item => item.key), ['appKey', 'appSecret', 'newSetting', 'agentId'])
   assert.deepEqual(definition.secretFields, ['appSecret'])
   assert.equal(definition.fields.some(item => item.key === 'agentId'), true)
-  const fields = validateChannelDraft({ id: 'generated', name: 'Generated', type: known.type, provider: known.provider, configuration: { appKey: 'key', appSecret: 'secret' } }, undefined, definition)
+  const fields = validateChannelDraft({ id: 'generated', name: 'Generated', type: known.type, provider: known.provider, configuration: { appKey: 'key', appSecret: 'secret', agentId: '1000002' } }, undefined, definition)
   assert.deepEqual(fields, [{ path: 'newSetting', key: 'required' }])
   const unknownProvider = { ...customChannel, id: 'sms:custom', type: 'sms' }
   assert.equal(channelDefinition(unknownProvider, extensionMetadata).fields.every(field => field.group === 'configuration'), true)
@@ -1678,8 +1687,9 @@ test('document anchors follow actual credential IDs, extensions and SMTP control
   const translate = key => locale[key] || key
   const corp = notificationChannels.find(channel => channel.id === 'weixin:corpMessage')
   const help = channelHelp(corp, channelDefinition(corp, channelMetadata[corp.id]), translate)
+  assert.deepEqual(help.sections.map(section => section.id), ['corpId', 'corpSecret', 'weixinAgentId'])
   assert.equal(channelHelpSection(help, 'config:corpId'), 'corpId')
-  assert.equal(channelHelpSection(help, 'config:agentId'), undefined)
+  assert.equal(channelHelpSection(help, 'agentId'), 'weixinAgentId')
   assert.equal(channelHelpSection(help, 'config:corpSecret'), 'corpSecret')
   assert.equal(channelHelpSection(help, 'config:missing'), undefined)
   assert.equal(channelHelpSection(help, ''), undefined)

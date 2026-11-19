@@ -30,6 +30,11 @@ export const notificationChannels: readonly NotificationChannel[] = [
 
 export const notificationStates: readonly NotifyState[] = ['success', 'error', 'retrying', 'cancel']
 
+/** 渠道配置与消息模板共用服务商入口，企业微信使用工作通知。 */
+export function isConfigurableNotificationProvider(type: string, provider: string): boolean {
+  return type !== 'weixin' || provider !== 'officialMessage'
+}
+
 export const notificationCapabilities = {
   config: { query: true, create: true, update: true, delete: true, send: true },
   template: { query: true, create: true, update: true, delete: true, send: true },

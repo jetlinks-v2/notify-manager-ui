@@ -21,26 +21,29 @@
               </a-tag>
             </template>
             <template #actions>
+              <template v-if="business">
+                <a-button :disabled="!canRestoreDefault || !canEdit || busy" :aria-label="t('messageNotification.templates.restoreDefault')" @click="restoreDefault">
+                  <AIcon type="UndoOutlined" aria-hidden="true" /> {{ t('messageNotification.templates.restoreDefault') }}
+                </a-button>
+                <a-button v-if="canFillInsideMail" :disabled="busy" :loading="fillingInsideMail" :aria-label="t('messageNotification.templates.fillInsideMail')" @click="fillInsideMail">
+                  <AIcon type="InboxOutlined" aria-hidden="true" /> {{ t('messageNotification.templates.fillInsideMail') }}
+                </a-button>
+                <a-button :disabled="!canManage || busy" :aria-label="t(businessEnabled ? 'messageNotification.templates.disableBusiness' : 'messageNotification.templates.enableBusiness')" @click="toggleBusiness">
+                  <AIcon :type="businessEnabled ? 'StopOutlined' : 'CheckCircleOutlined'" aria-hidden="true" />
+                  {{ t(businessEnabled ? 'messageNotification.templates.disableBusiness' : 'messageNotification.templates.enableBusiness') }}
+                </a-button>
+              </template>
               <a-button v-if="draft && !editing && detailState === 'ready'" type="primary" :disabled="!canEdit || busy" @click="startEditing">
                 {{ t('messageNotification.templates.edit') }}
               </a-button>
               <a-button v-else-if="!draft && !business && !businessLinkPending" type="primary" :disabled="!canAdd || !canQuery || busy" @click="createTemplate">
                 {{ t('messageNotification.templates.create') }}
               </a-button>
-              <a-dropdown :trigger="['click']" placement="bottomRight">
+              <a-dropdown v-if="!business" :trigger="['click']" placement="bottomRight">
                 <a-button type="text" :aria-label="t('messageNotification.templates.more')"><AIcon type="EllipsisOutlined" /></a-button>
                 <template #overlay>
                   <a-menu>
-                    <template v-if="business">
-                      <a-menu-item key="restore" :disabled="!canRestoreDefault || !canEdit || busy" @click="restoreDefault">
-                        <AIcon type="UndoOutlined" /> {{ t('messageNotification.templates.restoreDefault') }}
-                      </a-menu-item>
-                      <a-menu-item key="business-state" :disabled="!canManage || busy" @click="toggleBusiness">
-                        <AIcon :type="businessEnabled ? 'StopOutlined' : 'CheckCircleOutlined'" />
-                        {{ t(businessEnabled ? 'messageNotification.templates.disableBusiness' : 'messageNotification.templates.enableBusiness') }}
-                      </a-menu-item>
-                    </template>
-                    <a-menu-item v-else key="create" :disabled="!canAdd || !canQuery || busy" @click="createTemplate">
+                    <a-menu-item key="create" :disabled="!canAdd || !canQuery || busy" @click="createTemplate">
                       <AIcon type="PlusOutlined" /> {{ t('messageNotification.templates.create') }}
                     </a-menu-item>
                   </a-menu>
@@ -69,11 +72,6 @@
               <template #action><a-button size="small" :disabled="busy" @click="reload">{{ t('messageNotification.templates.reload') }}</a-button></template>
             </a-alert>
             <template v-else-if="draft && detailState === 'ready'">
-<!--              <a-space v-if="business" wrap>-->
-<!--                <span>{{ t('messageNotification.templates.channelEnabled') }}</span>-->
-<!--                <a-switch v-model:checked="channelEnabled" :disabled="!editing || !canSave || busy" />-->
-<!--                <a-select v-if="editing" :value="undefined" :options="importOptions" :disabled="!canSave || busy" :placeholder="t('messageNotification.templates.importTemplate')" show-search option-filter-prop="label" class="message-templates__source" @change="importTemplate" />-->
-<!--              </a-space>-->
               <a-alert v-if="missingConfiguration" type="warning" show-icon :message="t('messageNotification.templates.missingConfiguration')">
                 <template #action><a-button type="link" size="small" :disabled="busy || !canConfigure" @click="goConfigure">{{ t('messageNotification.templates.configure') }}</a-button></template>
               </a-alert>
@@ -112,7 +110,8 @@ const TemplateEditor = defineAsyncComponent(() => import('./components/TemplateE
 const contentEditor = ref<{ insertVariable(id: string): Promise<void>; canInsertVariable: boolean }>()
 const {
   canManage, selectedTemplateId, businessEnabled, changingBusiness, businessActionState, toggleBusiness,
-  businessLinkPending, businessLinkState, importOptions, channelEnabled, importTemplate,
+  canFillInsideMail, fillingInsideMail, fillInsideMail,
+  businessLinkPending, businessLinkState, importOptions,
   t, compact, workspace, channels, channelId, templates, configs, listState, configState, channelConfigurationStates, businessTypes, directoryState,
   detailState, activeKey, draft, entry, business, dirty, saving, canSave, canQuery, editing, title, description,
   canAdd, canEdit, canConfigure, busy, uploading, validationMessage, channelOptions, templateOptions,
@@ -138,7 +137,6 @@ const {
 .message-templates__mobile-picker { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .message-templates__mobile-picker :deep(.ant-select) { width: 100%; }
 .message-templates__content { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-.message-templates__source { min-width: 12rem; max-width: 100%; }
 .message-templates__workspace { container-type: inline-size; }
 .message-templates__content--editing { display: grid; grid-template-columns: minmax(15rem, 1.15fr) minmax(10rem, .55fr) minmax(17rem, 1fr); grid-template-rows: minmax(0, 1fr); align-items: stretch; gap: var(--space-4); min-height: 0; }
 .message-templates__content--editing > .template-editor { min-height: 0; overflow: auto; }

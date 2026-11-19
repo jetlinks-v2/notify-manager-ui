@@ -86,7 +86,7 @@ try {
   for (const id of ['one', 'two', 'unsigned']) {
     await action(page, `robot-${id}`, 'edit')
     await assertHidden(page)
-    assert.equal(await modal(page).locator('input').count(), 2)
+    assert.equal(await modal(page).locator('.ant-form-item input').count(), 2)
     await fill(page, 'webhook', `https://oapi.dingtalk.com/robot/send?access_token=private-${id}-1234`)
     await save(page)
     await modal(page).waitFor({ state: 'hidden' })
@@ -94,7 +94,7 @@ try {
     assert.match(await row(page, `robot-${id}`).innerText(), /access_token=…1234/)
     assert.doesNotMatch(await row(page, `robot-${id}`).innerHTML(), new RegExp(`private-${id}`))
   }
-  pass('list rows replace the selector; two-field modal edits preserve isolated signed and unsigned configuration, and redact URLs')
+  pass('robot credential edits preserve each signing configuration and redact URLs')
   await snapshot(page, 'robot-list')
   await action(page, 'robot-two', 'edit')
   await fill(page, 'name', 'Cancel this name')
@@ -137,7 +137,7 @@ try {
     await page.evaluate(language => { window.__notificationSmoke.i18n.global.locale.value = language }, language)
     await action(page, 'robot-one', 'edit')
     await assertHidden(page)
-    assert.equal(await modal(page).getByRole('textbox').count(), 2)
+    assert.equal(await modal(page).locator('.ant-form-item input').count(), 2)
     await page.setViewportSize({ width: 390, height: 844 })
     await snapshot(page, `robot-edit-${language}-mobile`)
     const dimensions = await modal(page).evaluate(el => ({ left: el.getBoundingClientRect().left, right: el.getBoundingClientRect().right, viewport: innerWidth, document: document.documentElement.scrollWidth }))

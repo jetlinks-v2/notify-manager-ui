@@ -1,5 +1,6 @@
 import corpId from '../../../../../assets/notice/doc/config/weixin-corp/01-corpId.jpg'
 import corpSecret from '../../../../../assets/notice/doc/config/weixin-corp/02-corpSecret.jpg'
+import weixinAgentId from '../../../../../assets/notice/doc/template/weixin-corp/01-Agentid.jpg'
 import officialAppId from '../../../../../assets/notice/doc/config/weixin-official/01-AppID.jpg'
 import officialAppSecret from '../../../../../assets/notice/doc/config/weixin-official/02-AppSecret.jpg'
 import dingTalkAppKey from '../../../../../assets/notice/doc/config/dingTalk-message/01-AppKey.jpg'
@@ -14,6 +15,7 @@ import aliyunAccessKey from '../../../../../assets/notice/doc/config/aliyun-sms-
 export const channelHelpImages: Record<string, { src: string; width: number; height: number }> = {
   corpId: { src: corpId, width: 1244, height: 937 },
   corpSecret: { src: corpSecret, width: 1232, height: 460 },
+  weixinAgentId: { src: weixinAgentId, width: 1234, height: 655 },
   officialAppId: { src: officialAppId, width: 1855, height: 761 },
   officialAppSecret: { src: officialAppSecret, width: 1848, height: 765 },
   dingTalkAppKey: { src: dingTalkAppKey, width: 1897, height: 621 },

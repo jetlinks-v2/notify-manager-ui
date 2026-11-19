@@ -1,7 +1,7 @@
 import { computed, reactive, ref, shallowRef, type Ref } from 'vue'
 import { messageNotificationApi, type MessageNotificationApi } from '../../../../api/notice/messageNotification'
 import {
-  classifyNotificationFailure, findNotificationChannel, notificationEnumValue,
+  classifyNotificationFailure, findNotificationChannel, isConfigurableNotificationProvider, notificationEnumValue,
   type NotificationChannel, type NotificationConfigMetadata, type NotificationLoadState,
   type NotificationProvider, type NotifierConfig,
 } from '../shared'
@@ -60,8 +60,7 @@ export function useChannelCatalog(permitted: Ref<boolean>, api: MessageNotificat
     if (!permitted.value) return
     providerStates.set(type, 'loading')
     try {
-      // Official-account messaging is not supported by the runtime channel configuration page.
-      const result = (await api.queryProviders(type)).filter(provider => type !== 'weixin' || provider.id !== 'officialMessage')
+      const result = (await api.queryProviders(type)).filter(provider => isConfigurableNotificationProvider(type, provider.id))
       if (version !== revision || !permitted.value) return
       providers.set(type, result)
       providerStates.set(type, result.length ? 'ready' : 'empty')

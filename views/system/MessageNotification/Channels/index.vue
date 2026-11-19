@@ -72,12 +72,15 @@
                 <div class="notification-channels__content notification-channels__content--help">
                   <div v-if="isRobot" class="notification-channels__editor">
                     <a-alert v-if="['unavailable', 'forbidden', 'error'].includes(detailState)" type="error" show-icon :message="t(`messageNotification.state.${detailState}`)" class="notification-channels__alert"><template #action><a-button :disabled="operationBusy" @click="refresh">{{ t('messageNotification.common.retry') }}</a-button></template></a-alert>
-                    <RobotConfigurationList v-if="configs.length" :items="robotRows" :disabled="operationBusy || robotModal.open" @action="robot.act" />
+                    <RobotConfigurationList v-if="configs.length" :items="robotRows" :disabled="operationBusy || robotModal.open" :can-fill-templates="canFillRobotTemplates" @action="robot.act" />
                     <CloudEmpty v-else :description="t('messageNotification.channels.empty')" />
+                    <ChannelTemplateSetup v-if="templateSetupModel.available && !robotModal.open" :model="templateSetupModel" mode="feedback"
+                      @fill="templateSetup.fill()" @view="viewMessageTemplates" />
                   </div>
                   <div v-else-if="entry" class="notification-channels__editor">
-                    <ChannelConfiguration :entry="entry" :disabled="!canEdit || sending" :busy="busy" :submit="saveFields" @field="workspace.changeField" @focus="focusField" />
-                    <WebhookRequestPreview v-if="channelId === 'webhook:http'" :model="webhookPreviewModel" />
+                    <ChannelConfiguration :entry="entry" :disabled="!canEdit || sending || fillingTemplates" :busy="busy" :submit="saveFields" @field="workspace.changeField" @focus="focusField" />
+                    <ChannelTemplateSetup v-if="templateSetupModel.available" :model="templateSetupModel"
+                      @change="templateSetup.change" @focus="focusField" @fill="templateSetup.fill()" @view="viewMessageTemplates" />
                     <section v-if="channelId === 'weixin:corpMessage'" class="notification-channels__members" :aria-label="t('messageNotification.members.section')">
                       <h3>{{ t('messageNotification.members.section') }}</h3>
                       <p>{{ t('messageNotification.members.sectionHelp') }}</p>
@@ -94,7 +97,7 @@
                 </div>
               </div>
               <StickyActionBar v-if="!isRobot && entry && canEdit" position="inline" class="notification-page__footer notification-channels__footer">
-                <j-permission-button type="primary" :has-permission="[entry.isNew ? notificationPermissions.channels.add : notificationPermissions.channels.update]" :loading="busy" :disabled="(!entry.isNew && !dirty) || !canEdit || operationBusy" @click="save">{{ t('messageNotification.common.save') }}</j-permission-button>
+                <j-permission-button type="primary" :has-permission="[entry.isNew ? notificationPermissions.channels.add : notificationPermissions.channels.update]" :loading="busy || fillingTemplates" :disabled="(!entry.isNew && !dirty) || !canEdit || operationBusy" @click="save">{{ t('messageNotification.common.save') }}</j-permission-button>
               </StickyActionBar>
             </template>
             <CloudEmpty v-else-if="multipleConfigurations && state === 'empty'" class="notification-page__feedback" :description="t('messageNotification.channels.empty')">
@@ -105,7 +108,11 @@
         </section>
       </template>
     </EqualHeightColumns>
-    <RobotConfigurationModal :model="robotModal" @close="robot.close" @save="robot.save" @change="robot.change" />
+    <RobotConfigurationModal :model="robotModal" @close="robot.close" @save="robot.save" @change="robot.change">
+      <template #template-defaults>
+        <ChannelTemplateSetup v-if="robotModal.open" :model="templateSetupModel" mode="fields" @change="templateSetup.change" />
+      </template>
+    </RobotConfigurationModal>
     <ChannelTestModal :model="testModel" @close="trial.close()" @recipient="trial.selectRecipient" @address="trial.setAddress" @validate="trial.validateRecipient" @retry-identity="trial.loadIdentity" @send="trial.send" @again="trial.again" @fix="fixTestConfiguration" @closed="afterTestClosed" />
     <WechatMembersDrawer :model="memberDrawer" @close="closeMembers" @reload="reloadMembers" @save="members.save" @unbind="members.unbind" @assign="members.assign" @filter="updateMemberFilters" @match="members.autoMatch" @status="updateMemberStatus" @reset-filters="resetMemberFilters" />
     <JlConfirmDialog :open="memberDiscardOpen" :title="t('messageNotification.members.discardTitle')" :message="t('messageNotification.members.discardMessage')" :confirm-text="t('messageNotification.channels.leave')" :cancel-text="t('messageNotification.channels.stay')" @confirm="decideMemberDiscard(true)" @cancel="decideMemberDiscard(false)" @update:open="!$event && decideMemberDiscard(false)" />
@@ -117,24 +124,25 @@
 </template>
 
 <script setup lang="ts">
+import { defineAsyncComponent } from 'vue'
 import { DeleteOutlined, PlusOutlined, SendOutlined } from '@ant-design/icons-vue'
 import { DingTalk, Email, Sms, Voice, Webhook, WeixinCorp } from '@jetlinks-web-core/assets/notice'
 import AutoTree from '@jetlinks-web-core/components/AutoTree'
 import { useChannelsPage } from './useChannelsPage'
 import ChannelConfiguration from './ChannelConfiguration.vue'
-import WebhookRequestPreview from './webhook/WebhookRequestPreview.vue'
 import ChannelTestModal from './testing/ChannelTestModal.vue'
 import ChannelHelp from './configuration/ChannelHelp.vue'
 import WechatMembersDrawer from './members/WechatMembersDrawer.vue'
 import WechatMembersSummary from './members/WechatMembersSummary.vue'
 import RobotConfigurationList from './robot/RobotConfigurationList.vue'
 import RobotConfigurationModal from './robot/RobotConfigurationModal.vue'
+const ChannelTemplateSetup = defineAsyncComponent(() => import('./templateSetup/ChannelTemplateSetup.vue'))
 defineOptions({ name: 'MessageNotificationChannels' })
 const channelIcons: Record<string, string> = { email: Email, dingTalk: DingTalk, weixin: WeixinCorp, voice: Voice, sms: Sms, webhook: Webhook }
 const channelIcon = (type: string) => channelIcons[type]
 const {
+  templateSetup, templateSetupModel, fillingTemplates, viewMessageTemplates, canFillRobotTemplates,
   robot, isRobot, robotRows, robotModal, robotCanAdd,
-  webhookPreviewModel,
   t, notificationPermissions, isNarrow, channelOptions, channelSearch, filteredChannelTree, openChannelKeys, selectChannel, configurationOptions,
   canQuery, channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId,
   busy, dirty, canEdit, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave,

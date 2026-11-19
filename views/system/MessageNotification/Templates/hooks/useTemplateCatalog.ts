@@ -1,7 +1,7 @@
 import { computed, reactive, ref, type Ref } from 'vue'
 import { messageNotificationApi, type MessageNotificationApi } from '../../../../../api/notice/messageNotification'
 import {
-  classifyNotificationFailure, findNotificationChannel, notificationEnumValue, NotificationRequestError,
+  classifyNotificationFailure, findNotificationChannel, isConfigurableNotificationProvider, notificationEnumValue, NotificationRequestError,
   type NotificationChannel, type NotificationConfigMetadata, type NotificationLoadState, type NotifierConfig,
 } from '../../shared'
 
@@ -49,7 +49,10 @@ export function useTemplateCatalog(permitted: Ref<boolean>, channelId: Ref<strin
     const request = (async () => {
       try {
         const types = await api.queryTypes()
-        const results = await Promise.allSettled(types.map(async type => ({ type, providers: await api.queryProviders(type.id) })))
+        const results = await Promise.allSettled(types.map(async type => {
+          const providers = await api.queryProviders(type.id)
+          return { type, providers: providers.filter(provider => isConfigurableNotificationProvider(type.id, provider.id)) }
+        }))
         if (version !== revision || !permitted.value) return
         const groups = results.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
         channels.value = groups.flatMap(({ type, providers }) => providers.map(provider => {
