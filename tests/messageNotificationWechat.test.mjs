@@ -489,7 +489,7 @@ test('channel AgentId round-trips with legacy metadata and preserves the credent
   const { createChannelConfigDraft, channelConfigPayload } = load(resolve(base, 'channelSchema'))
   const legacy = { properties: ['corpId', 'corpSecret'].map(id => ({ id, name: id, valueType: { type: 'string' } })) }
   const definition = channelDefinition({ ...corpChannel, secretFields: ['corpSecret'] }, legacy)
-  assert.deepEqual(definition.fields.map(field => field.key), ['corpId', 'agentId', 'corpSecret'])
+  assert.deepEqual(definition.fields.map(field => field.key), ['corpId', 'corpSecret'])
   const saved = { id: 'corp', name: 'Corp', type: 'weixin', provider: 'corpMessage', configuration: { corpId: 'corp', corpSecret: 'fixture-only' } }
   const draft = createChannelConfigDraft(saved, definition)
   draft.configuration.agentId = '1000002'
@@ -498,7 +498,7 @@ test('channel AgentId round-trips with legacy metadata and preserves the credent
   assert.equal(createChannelConfigDraft(payload, definition).configuration.agentId, '1000002')
   assert.equal(saved.configuration.agentId, undefined)
   assert.equal(legacy.properties.length, 2)
-  assert.equal(channelDefinition({ ...corpChannel, secretFields: [] }, { properties: [...legacy.properties, { id: 'agentId', name: 'App', valueType: { type: 'string' } }] }).fields.length, 3)
+  assert.equal(channelDefinition({ ...corpChannel, secretFields: [] }, { properties: [...legacy.properties, { id: 'agentId', name: 'App', valueType: { type: 'string' } }] }).fields.length, 2)
 })
 
 test('enterprise template recipients depend on saved channel credentials instead of a duplicate AgentId', () => {

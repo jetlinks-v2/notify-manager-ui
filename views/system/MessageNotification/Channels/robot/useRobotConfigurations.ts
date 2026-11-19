@@ -11,6 +11,9 @@ interface RobotOptions {
   pending: Ref<boolean>
   test: () => void
   remove: () => void
+  prepareTemplates?: () => boolean
+  saved?: (id: string, created: boolean) => Promise<void>
+  fillTemplates?: (id: string) => Promise<void>
 }
 
 export interface RobotConfigurationModalModel {
@@ -60,8 +63,8 @@ export function useRobotConfigurations(options: RobotOptions) {
     if (workspace.entry.value?.isNew) editorKey.value = workspace.entry.value.key
   }
 
-  async function act(id: string, action: 'edit' | 'test' | 'delete') {
-    const allowed = action === 'edit' ? permissions.update : action === 'test' ? permissions.action : permissions.delete
+  async function act(id: string, action: 'edit' | 'test' | 'delete' | 'fill') {
+    const allowed = action === 'edit' || action === 'fill' ? permissions.update : action === 'test' ? permissions.action : permissions.delete
     if (!isRobot.value || options.blocked.value || open.value || !permissions.query.value || !allowed.value) return
     const version = ++actionVersion
     options.pending.value = true
@@ -76,6 +79,7 @@ export function useRobotConfigurations(options: RobotOptions) {
         // Selection has settled; the existing test/delete guards may now accept the requested record.
         options.pending.value = false
         if (action === 'test') options.test()
+        else if (action === 'fill') await options.fillTemplates?.(id)
         else options.remove()
       }
     } finally { if (version === actionVersion) options.pending.value = false }
@@ -92,16 +96,18 @@ export function useRobotConfigurations(options: RobotOptions) {
   }
 
   async function save() {
-    if (!open.value || !modal.value.canSave) return
+    const entry = workspace.entry.value
+    if (!open.value || !modal.value.canSave || !entry || options.prepareTemplates?.() === false) return
+    const id = entry.draft.id?.trim()
+    const created = entry.isNew
     const version = ++actionVersion
     options.pending.value = true
     try {
-      if (await workspace.save()) {
-        if (version !== actionVersion) return
-        editorKey.value = ''
-        onlyMessage(t('messageNotification.channels.saveSuccess'), 'success')
-      }
+      if (!await workspace.save() || version !== actionVersion) return
+      editorKey.value = ''
+      onlyMessage(t('messageNotification.channels.saveSuccess'), 'success')
     } finally { if (version === actionVersion) options.pending.value = false }
+    if (id) await options.saved?.(id, created)
   }
 
   /** The test dialog's Fix action must return to this editor, rather than a hidden inline form. */

@@ -55,6 +55,27 @@ export const channelHelpGuides: Record<string, ChannelHelpGuide> = {
             "image": "corpSecret"
           }
         ]
+      },
+      {
+        "id": "weixinAgentId",
+        "fields": [
+          "agentId"
+        ],
+        "titleKey": "NoticeCenter.template.field.agentId",
+        "blocks": [
+          {
+            "type": "text",
+            "key": "messageNotification.channels.document.weixin.agentId.description"
+          },
+          {
+            "type": "text",
+            "key": "messageNotification.channels.document.weixin.agentId.path"
+          },
+          {
+            "type": "image",
+            "image": "weixinAgentId"
+          }
+        ]
       }
     ],
     "link": {

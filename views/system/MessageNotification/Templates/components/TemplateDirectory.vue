@@ -25,7 +25,7 @@
         @select="select"
       >
         <template #title="node">
-          <span class="template-directory__node" :class="{ 'template-directory__node--unconfigured': node.kind === 'business' && !node.templateId && !node.children?.length }" :title="node.kind === 'business' && !node.templateId && !node.children?.length ? t('messageNotification.templates.channelUnconfigured', { name: node.title }) : node.title">
+          <span class="template-directory__node" :class="{ 'template-directory__node--unconfigured': node.kind === 'business' && !node.hasTemplate }" :title="node.kind === 'business' && !node.hasTemplate ? t('messageNotification.templates.channelUnconfigured', { name: node.title }) : node.title">
             <AIcon class="template-directory__icon" :type="node.kind === 'group' ? 'FolderFilled' : 'FileTextOutlined'" aria-hidden="true" />
             <span class="template-directory__name">{{ node.title }}</span>
           </span>

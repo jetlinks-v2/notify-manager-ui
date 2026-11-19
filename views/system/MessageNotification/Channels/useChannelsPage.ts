@@ -6,8 +6,9 @@ import { usePermission } from '@jetlinks-web/hooks'
 import { useWindowSize } from '@vueuse/core'
 import { onlyMessage } from '@jetlinks-web/utils'
 import { useAuthStore } from '@jetlinks-web-core/store/auth'
+import { useMenuStore } from '@jetlinks-web-core/store/menu'
 import { useSystemStore } from '@jetlinks-web-core/store/system'
-import { findNotificationChannel, resolveNotificationChannel, notificationPermissions, notificationQuery, normalizeNotificationNavigation, type NotificationChannel, type NotificationNavigation } from '../shared'
+import { findNotificationChannel, resolveNotificationChannel, notificationNavigationTarget, notificationPermissions, notificationQuery, normalizeNotificationNavigation, type NotificationChannel, type NotificationNavigation } from '../shared'
 import { useChannelWorkspace, type ChannelFieldChange } from './useChannelWorkspace'
 import { useChannelCatalog } from './useChannelCatalog'
 import { useChannelTest } from './testing/useChannelTest'
@@ -18,8 +19,9 @@ import type { WechatMembersDrawerModel } from './members/useWechatMembersDrawer'
 import { useChannelLeaveGuard } from './useChannelLeaveGuard'
 import { channelHelp, channelHelpSection } from './configuration/channelHelp'
 import { classifyNotificationFailure, notificationFailureMessage } from '../../../../api/notice/messageNotificationState'
-import { useWebhookPreview } from './webhook/useWebhookPreview'
 import { useRobotConfigurations } from './robot/useRobotConfigurations'
+import { dingTalkRobotChannel } from './templateSetup/templateDefaults'
+import { useChannelTemplateSetup } from './templateSetup/useChannelTemplateSetup'
 
 /** Own backend directory, routing, permissions and draft effects outside rendering components. */
 export function useChannelsPage() {
@@ -30,6 +32,7 @@ export function useChannelsPage() {
   const { width } = useWindowSize()
   const isNarrow = computed(() => width.value < 768)
   const auth = useAuthStore()
+  const menu = useMenuStore()
   // Trial permissions must react to session/role changes; usePermission with a fixed code is a snapshot.
   const permissions = {
     query: computed(() => auth.hasPermission(notificationPermissions.channels.query)),
@@ -75,7 +78,8 @@ export function useChannelsPage() {
   const trial = useChannelTest()
   const members = useWechatMembers()
   const sending = trial.sending
-  const externalBusy = computed(() => sending.value || members.busy.value)
+  const fillingTemplates = ref(false)
+  const externalBusy = computed(() => sending.value || members.busy.value || fillingTemplates.value)
   const workspace = useChannelWorkspace({
     permissions, navigate, blocked: externalBusy, channels: catalog.channels, loadConfigs: catalog.loadConfigs,
     loadDefinition: catalog.loadDefinition, channelName: channelTitle,
@@ -84,7 +88,19 @@ export function useChannelsPage() {
   const { channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId, busy, dirty, hasUnsavedChanges, canEdit, editing } = workspace
   const robotPending = ref(false)
   const operationBusy = computed(() => busy.value || externalBusy.value || robotPending.value)
-  const robot = useRobotConfigurations({ workspace, permissions, blocked: operationBusy, pending: robotPending, test: showSend, remove: requestRemove })
+  const canFillTemplates = computed(() => canQuery.value
+    && auth.hasPermission(notificationPermissions.templates.query)
+    && (auth.hasPermission(notificationPermissions.templates.add) || auth.hasPermission(notificationPermissions.templates.update)))
+  const templateSetup = useChannelTemplateSetup(workspace, {
+    channel, permitted: canFillTemplates, blocked: operationBusy, generating: fillingTemplates, translate: t,
+  })
+  const robot = useRobotConfigurations({
+    workspace, permissions, blocked: operationBusy, pending: robotPending, test: showSend, remove: requestRemove,
+    prepareTemplates: templateSetup.prepareForSave,
+    saved: (id, created) => fillSavedTemplates(dingTalkRobotChannel, id, created),
+    fillTemplates: id => templateSetup.fill(id),
+  })
+  const canFillRobotTemplates = computed(() => canFillTemplates.value && permissions.update.value)
   const deleteOpen = ref(false)
   const clearChannelName = computed(() => {
     if (!channel.value) return ''
@@ -114,11 +130,10 @@ export function useChannelsPage() {
     }
   }
   const configurationVisible = computed(() => !!entry.value && ![state.value, detailState.value].some(value => ['loading', 'unavailable', 'forbidden', 'error'].includes(value)))
-  const webhookPreviewModel = useWebhookPreview(entry, t)
   const { leaveOpen, decideLeave } = useChannelLeaveGuard(computed(() => hasUnsavedChanges.value || members.dirty.value), operationBusy)
   const trialSupported = computed(() => {
     const adapter = channelTestAdapters[channelId.value]
-    // The two-field WeChat form cannot supply AgentId for an inline trial; only saved legacy values can.
+    // Inline tests use the AgentId stored in the trial configuration.
     if (channelId.value === 'weixin:corpMessage') return !!adapter && !!entry.value?.baseline && !adapter.missing(entry.value.baseline.configuration).length
     return !!adapter
   })
@@ -209,7 +224,27 @@ export function useChannelsPage() {
     }
     await workspace.activate(channelId.value, selectedConfigId.value, true)
   }
-  async function save() { if (await workspace.save()) onlyMessage(t('messageNotification.channels.saveSuccess'), 'success') }
+  async function save() {
+    if (operationBusy.value) return
+    const savedChannel = channelId.value
+    const configId = entry.value?.draft.id?.trim()
+    const created = !!entry.value?.isNew
+    if (!templateSetup.prepareForSave()) return
+    if (!await workspace.save()) return
+    onlyMessage(t('messageNotification.channels.saveSuccess'), 'success')
+    if (configId) await fillSavedTemplates(savedChannel, configId, created)
+  }
+  async function fillSavedTemplates(savedChannel: string, id: string, created: boolean) {
+    if (channelId.value !== savedChannel || selectedConfigId.value !== id) return
+    await templateSetup.fill(id, () => (created ? permissions.add : permissions.update).value)
+  }
+  function viewMessageTemplates() {
+    if (!canFillTemplates.value || operationBusy.value || !selectedConfigId.value) return
+    const target = notificationNavigationTarget('templates', {
+      channel: channelId.value, configId: selectedConfigId.value,
+    })
+    void menu.jumpPage(target.name, target.options)
+  }
   async function saveFields(changes: ChannelFieldChange[], errorPath: string) {
     const ok = await workspace.saveFields(changes, errorPath)
     if (ok) onlyMessage(t('messageNotification.channels.saveSuccess'), 'success')
@@ -261,8 +296,8 @@ export function useChannelsPage() {
   })
 
   return {
+    templateSetup, templateSetupModel: templateSetup.model, fillingTemplates, viewMessageTemplates, canFillRobotTemplates,
     robot, isRobot: robot.isRobot, robotRows: robot.rows, robotModal: robot.modal, robotCanAdd: robot.canAdd,
-    webhookPreviewModel,
     t, notificationPermissions, isNarrow, channelOptions, channelSearch, filteredChannelTree, openChannelKeys, selectChannel, configurationOptions,
     canQuery, channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId,
     busy, dirty, canEdit, editing, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave,

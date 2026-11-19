@@ -92,6 +92,26 @@ if (flags.has('wechat')) {
   templates.push({ id: 'corp-template', name: '企业微信测试模板', type: 'weixin', provider: 'corpMessage', configId: 'corp-fixture', template: { message: '隔离测试 ${message}' }, variableDefinitions: [{ id: 'message', name: '消息内容', type: 'string', required: true }, { id: 'toUser', name: '企微成员 ID', type: 'string' }] })
 }
 const businessTypes = clone(flags.get('directory') === 'tree' ? templateDirectoryFixture.businessTypes : [])
+if (flags.has('wechatTemplates')) {
+  businessTypes.push(
+    { id: 'wechat-device-topic', provider: 'alarm-device', name: '设备告警', state: 'enabled', channels: [] },
+    { provider: 'alarm-device-relieve', name: '设备告警解除', state: 'disabled', channels: [] },
+    { id: 'wechat-scene-topic', provider: 'scene', name: '场景联动', state: 'enabled', channels: [] },
+    { provider: 'SystemBulletin', name: '系统公告', state: 'disabled', channels: [] },
+  )
+  if (flags.has('existingWechatTemplates')) {
+    for (const business of businessTypes.filter(row => ['alarm-device', 'alarm-device-relieve'].includes(row.provider))) {
+      business.id ??= `wechat-${business.provider}-topic`
+      persistBusinessTemplate(business.id, {
+        channel: { channelProvider: 'notifier-weixin', state: 'disabled' },
+        template: {
+          name: business.name, type: 'weixin', provider: 'corpMessage', configId: 'corp-fixture',
+          template: { agentId: '1000002', message: '${message}' },
+        },
+      })
+    }
+  }
+}
 if (flags.get('directory') === 'tree') templates.push(...clone(templateDirectoryFixture.templates))
 const emailImageFixture = new URL('./email-image.png', import.meta.url).href
 if (flags.has('emailImages')) {
@@ -167,21 +187,30 @@ if (flags.has('emailImages')) notificationRequest.post = async (path, data) => {
 }
 
 
+function persistBusinessChannel(providerId, value) {
+  const business = businessTypes.find(row => row.id === providerId)
+  if (!business) throw new Error('Business fixture not found')
+  business.channels ??= []
+  const index = business.channels.findIndex(row => row.channelProvider === value.channelProvider)
+  const id = business.channels[index]?.id || `fixture-channel-${providerId}-${value.channelProvider}`
+  const channel = { ...clone(value), providerId, id }
+  if (index >= 0) business.channels[index] = channel
+  else business.channels.push(channel)
+  return channel
+}
+
 function persistBusinessTemplate(providerId, item) {
+  if (!item.template) return { channel: clone(persistBusinessChannel(providerId, item.channel)), template: null }
   const business = businessTypes.find(row => row.id === providerId)
   if (!business) throw new Error('Business fixture not found')
   const previous = business.channels?.find(row => row.channelProvider === item.channel.channelProvider)
   const id = previous?.channelConfiguration?.templateId || `fixture-template-${providerId}-${item.channel.channelProvider}`
   const template = { ...clone(item.template), id }
-  const channel = { ...clone(item.channel), providerId, id: previous?.id || `fixture-channel-${providerId}-${item.channel.channelProvider}`,
-    channelConfiguration: { ...clone(item.channel.channelConfiguration || {}), templateId: id, notifierId: template.configId } }
+  const channel = persistBusinessChannel(providerId, { ...item.channel,
+    channelConfiguration: { ...item.channel.channelConfiguration, templateId: id, notifierId: template.configId } })
   const templateIndex = templates.findIndex(row => row.id === id)
   if (templateIndex >= 0) templates[templateIndex] = template
   else templates.push(template)
-  const index = business.channels?.findIndex(row => row.channelProvider === channel.channelProvider) ?? -1
-  business.channels ??= []
-  if (index >= 0) business.channels[index] = channel
-  else business.channels.push(channel)
   return { channel: clone(channel), template: clone(template) }
 }
 
@@ -202,6 +231,14 @@ Object.assign(messageNotificationApi, {
     business.state = enabled ? 'enabled' : 'disabled'
   },
   queryTemplateDirectory: async () => { record('queryTemplateDirectory', {}); return clone(businessTypes) },
+  queryInsideMailChannel: async () => {
+    record('queryInsideMailChannel', {})
+    if (flags.has('wechatTemplates')) return { channelProvider: 'inside-mail', name: '站内信', state: 'enabled' }
+  },
+  saveBusinessChannel: async (providerId, channel) => {
+    record('saveBusinessChannel', { providerId, channel })
+    persistBusinessChannel(providerId, channel)
+  },
   queryTypes: async () => { record('queryTypes', {}); return clone(flags.get('catalog') === 'extended' ? [...channelTypes, extensionType] : channelTypes) },
   queryProviders: async type => { record('queryProviders', type); if (flags.get('providerError') === type) throw new Error('Provider fixture failure'); return clone(type === extensionType.id ? extensionProviders : flags.has('unifiedTests') && type === 'weixin' ? [...channelProviders.weixin, { id: 'officialMessage', name: '微信服务号' }] : channelProviders[type] || []) },
   queryAllConfigs: async () => { record('queryAllConfigs', {}); return clone(configs) },

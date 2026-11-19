@@ -11,7 +11,7 @@ const baseURL = process.env.SMOKE_BASE_URL || 'http://127.0.0.1:9200'
 const output = process.env.SMOKE_OUTPUT || '/tmp/channel-unified-browser'
 const entry = new URL(`/@fs${fileURLToPath(new URL('./index.html', import.meta.url))}`, baseURL)
 const report = { assertions: [], screenshots: [], errors: [], blockedRequests: [] }
-const browser = await chromium.launch({ headless: true })
+const browser = await chromium.launch({ headless: true, channel: process.env.SMOKE_CHROMIUM_CHANNEL })
 await mkdir(output, { recursive: true })
 const pass = value => report.assertions.push(value)
 const button = (scope, text) => scope.getByRole('button', { name: new RegExp(`^${text.split('').join('\\s*')}$`) })
@@ -161,24 +161,28 @@ try {
 
   }
   const corpPage = await open('&missingTestSettings', trialRecords.find(record => record.provider === 'corpMessage'))
+  const corpAgentId = corpPage.getByRole('textbox', { name: 'AgentId', exact: true })
   for (const language of ['zh', 'en', 'ja']) {
     await corpPage.evaluate(language => { window.__notificationSmoke.i18n.global.locale.value = language }, language)
     const testLabel = await corpPage.evaluate(() => window.__notificationSmoke.i18n.global.t('messageNotification.channels.test'))
-    assert.equal(await button(corpPage, testLabel).count(), 0, 'two-field configurations do not offer a trial that requires a hidden AgentId')
+    assert.equal(await button(corpPage, testLabel).count(), 0, 'configurations without a saved trial AgentId do not offer a trial')
     assert.equal(await corpPage.locator('.channel-configuration input').count(), 2)
-    assert.doesNotMatch(await corpPage.locator('.channel-configuration').innerText(), /AgentId/i)
-    assert.deepEqual(await corpPage.locator('[data-help-section]').evaluateAll(sections => sections.map(section => section.dataset.helpSection)), ['corpId', 'corpSecret'])
+    await corpAgentId.waitFor()
+    assert.deepEqual(await corpPage.locator('[data-help-section]').evaluateAll(sections => sections.map(section => section.dataset.helpSection)), ['corpId', 'corpSecret', 'weixinAgentId'])
   }
   await corpPage.locator('.channel-configuration input').first().fill('updated-corp-fixture')
+  await corpAgentId.fill('8000001')
   await saveChannelDraft(corpPage)
   await corpPage.locator('.notification-channels__footer .ant-btn-primary:disabled:not(.ant-btn-loading)').waitFor()
-  assert.deepEqual(await corpPage.evaluate(() => window.__notificationSmoke.configs.find(row => row.provider === 'corpMessage').configuration), { corpId: 'updated-corp-fixture', corpSecret: 'fixture-only' })
+  assert.deepEqual(await corpPage.evaluate(() => window.__notificationSmoke.configs.find(row => row.provider === 'corpMessage').configuration), {
+    corpId: 'updated-corp-fixture', corpSecret: 'fixture-only', alarmTemplateDefaults: { agentId: '8000001' },
+  })
   await corpPage.setViewportSize({ width: 390, height: 844 })
   assert.equal(await corpPage.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
-  await snapshot(corpPage, 'corp-two-fields-mobile')
+  await snapshot(corpPage, 'corp-agent-id-mobile')
   assert.deepEqual(await sends(corpPage), [])
   await corpPage.close()
-  pass('WeChat shows only corpId and corpSecret in three languages, saves without AgentId and hides unavailable trials')
+  pass('WeCom documents AgentId in three languages, saves the template AgentId and protects the existing Secret')
 
   const voicePage = await open('', trialRecords[5])
   for (const language of ['zh', 'en', 'ja']) {
@@ -236,7 +240,7 @@ try {
     assert.equal(await node.locator('.ant-tree-switcher-noop').count(), 1)
     assert.equal(await node.locator('.ant-tree-node-selected').count(), 1)
     assert.doesNotMatch(await officialPage.locator('.notification-channels__tree').innerText(), /officialMessage|微信服务号/)
-    assert.equal(await officialPage.locator('.channel-help__section').count(), 2)
+    await officialPage.locator('[data-help-section="weixinAgentId"]').waitFor()
     assert.match(await officialPage.locator('.channel-help').innerText(), /corpId/i)
     assert.doesNotMatch(await officialPage.locator('.channel-help').innerText(), /mp\.weixin\.qq\.com/)
   }

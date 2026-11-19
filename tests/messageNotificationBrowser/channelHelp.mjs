@@ -9,10 +9,10 @@ const base = process.env.SMOKE_BASE_URL || 'http://127.0.0.1:9200'
 const output = process.env.SMOKE_OUTPUT || '/tmp/jetlinks-channel-help/browser'
 const entry = new URL(`/@fs${fileURLToPath(new URL('./index.html', import.meta.url))}`, base)
 const report = { checks: [], screenshots: [], errors: [], blockedRequests: [] }
-const browser = await chromium.launch({ headless: true })
+const browser = await chromium.launch({ headless: true, channel: process.env.SMOKE_CHROMIUM_CHANNEL })
 await mkdir(output, { recursive: true })
 const cases = [
-  ['weixin:corpMessage', [['corpId','corpId'], ['corpSecret','corpSecret']], 2],
+  ['weixin:corpMessage', [['corpId','corpId'], ['corpSecret','corpSecret'], ['weixinAgentId','weixinAgentId']], 3],
   ['dingTalk:dingTalkMessage', [['appKey','appKey'], ['agentId','dingTalkAgentId'], ['appSecret','appSecret']], 3],
   ['dingTalk:dingTalkRobotWebHook', [], 3],
   ['email:embedded', [['host','host'], ['port','port'], ['username','username'], ['password','password'], ['sender','sender']], 0],
@@ -37,6 +37,7 @@ async function split(page) {
   assert.ok(right.y + right.height <= viewport.height + 1, 'document stays inside the viewport')
 }
 async function field(page, key) {
+  if (key === 'weixinAgentId') return page.getByRole('textbox', { name: 'AgentId', exact: true })
   const label = key.startsWith('App') ? key : await t(page, key === 'webhookAddress' ? 'messageNotification.channels.webhook.address' : `messageNotification.channels.fields.${key}`)
   return channelField(page, label).locator('input, textarea').first()
 }
@@ -83,6 +84,8 @@ try {
       if (id === 'weixin:corpMessage') {
         assert.ok(await doc.evaluate(element => element.scrollTop) > 0)
         const secret = await field(page, 'corpSecret')
+        await secret.focus()
+        await settle(async () => assert.equal(await doc.locator('.channel-help__section--active').getAttribute('data-help-section'), 'corpSecret'))
         await doc.evaluate(element => { element.scrollTop = 0 })
         await secret.fill('draft-fixture-secret')
         await page.waitForTimeout(120)
@@ -93,7 +96,7 @@ try {
         await settle(async () => assert.equal(await doc.locator('.channel-help__section--active').getAttribute('data-help-section'), 'corpId'))
         for (const width of [1280, 1920]) { await page.setViewportSize({ width, height: 1000 }); await split(page); await screenshot(page, `weixin-${width}`) }
         await page.setViewportSize({ width: 1440, height: 1000 })
-        await doc.locator('.ant-image').first().click()
+        await doc.locator('[data-help-section="weixinAgentId"] .ant-image').click()
         await page.locator('.ant-image-preview:visible').waitFor()
         await page.locator('.ant-image-preview-operations-operation').first().click()
         await page.locator('.ant-image-preview:visible').waitFor({ state: 'hidden' })
@@ -107,9 +110,10 @@ try {
       assert.equal(await editButton(doc, await t(page, 'messageNotification.channels.collapseHelp')).count(), 0)
       if (id === 'weixin:corpMessage') {
         assert.equal(await page.locator('.channel-configuration input').count(), 2)
-        assert.deepEqual(await doc.locator('[data-help-section]').evaluateAll(sections => sections.map(section => section.dataset.helpSection)), ['corpId', 'corpSecret'])
-        assert.doesNotMatch(await doc.innerText(), /AgentId/i)
-        assert.doesNotMatch(await page.locator('.channel-configuration').innerText(), /AgentId/i)
+        assert.deepEqual(await doc.locator('[data-help-section]').evaluateAll(sections => sections.map(section => section.dataset.helpSection)), ['corpId', 'corpSecret', 'weixinAgentId'])
+        const agentGuide = doc.locator('[data-help-section="weixinAgentId"]')
+        await agentGuide.getByRole('heading', { name: '3、AgentId', exact: true }).waitFor()
+        await agentGuide.getByText(await t(page, 'messageNotification.channels.document.weixin.agentId.path'), { exact: true }).waitFor()
       }
       await split(page)
     }
@@ -118,13 +122,16 @@ try {
     assert.equal(await editButton(page, await t(page, 'messageNotification.channels.helpTitle')).count(), 0)
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
     if (fields.length) {
-      const input = await field(page, fields[0][0])
+      const input = await field(page, id === 'weixin:corpMessage' ? 'weixinAgentId' : fields[0][0])
       await input.focus()
       await page.waitForTimeout(120)
       const box = await input.boundingBox()
       assert.ok(box.y >= 0 && box.y < 844, 'mobile focus keeps the input visible')
     }
-    if (id === 'weixin:corpMessage') await screenshot(page, 'weixin-mobile')
+    if (id === 'weixin:corpMessage') {
+      await settle(async () => assert.equal(await doc.locator('.channel-help__section--active').getAttribute('data-help-section'), 'weixinAgentId'))
+      await screenshot(page, 'weixin-mobile')
+    }
     assert.equal(await page.evaluate(() => window.__notificationSmoke.calls.filter(([method]) => ['createConfig','updateConfig','send','sendInline'].includes(method)).length), 0)
     report.checks.push(`${id}: equal columns, original images, field anchors, persistent editing, three languages and mobile`)
     await page.close()

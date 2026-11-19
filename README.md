@@ -9,7 +9,9 @@
 
 ## 消息渠道图文说明与常驻编辑
 
-企业微信渠道 `weixin:corpMessage` 仅编辑 `corpId`、`corpSecret`，说明面板对应两节原始文字与截图。`Channels/channelSchema.ts` 与 `configuration/channelMetadata.ts` 不再注入 AgentId，并排除服务端元数据中的该输入及其校验；`configuration/channelHelpGuides.ts`、`channelHelpImages.ts` 移除误用的模板 AgentId 说明和图片引用，三语页头说明同步。保存仍保留历史 AgentId、扩展配置和未重新输入的密钥。`useChannelsPage.ts` 仅在已有配置包含有效 AgentId 时保留企业微信渠道试发入口，避免双字段配置进入无法补齐参数的试发流程。后端与业务模板不变。
+企业微信渠道 `weixin:corpMessage` 的右侧说明按 `CorpID`、`Secret`、`AgentId` 排列。`Channels/configuration/channelHelpGuides.ts` 提供 AgentId 获取路径和企业微信自建应用截图。聚焦 `Channels/templateSetup/ChannelTemplateSetup.vue` 的 AgentId 输入框时，桌面滚动到对应章节，窄屏高亮该章节。AgentId 的填写和保存参见 [企业微信消息模板自动生成](#企业微信消息模板自动生成)。渠道载荷保留已有扩展配置和未修改的已知密钥。企业微信试发继续读取历史 `configuration.agentId`。
+
+AgentId 说明验证（2026-11-19）：模块目录执行 `node --test tests/messageNotification*.test.mjs`，397 项通过。沿用本节浏览器命令运行 `channelHelp.mjs` 和 `TRIAL_SETTINGS_ONLY=1` 的 `trials.mjs`，各 7 组通过，覆盖三语文案、图片预览、桌面聚焦定位、390px 布局和已保存 Secret。实际渠道页已只读确认新增章节。生产构建、定向样式、三语 783 个消息通知键及 `git diff --check` 通过。类型检查仍为相同的 195 项既有诊断，修复基线后重跑下文类型检查命令。
 
 双字段修复验证（2026-11-17）：在模块目录运行 `node --test tests/messageNotificationChannels.test.mjs tests/messageNotificationTrial.test.mjs tests/messageNotificationContracts.test.mjs`，109/109 通过，覆盖旧/新元数据、新建与更新、密钥及历史字段保留。按下述浏览器命令运行 `channelHelp.mjs` 和 `trials.mjs`（`SMOKE_OUTPUT=/tmp/jetlinks-corp-fields/{help,trials}`），8 + 11 组通过，覆盖三语双字段、原图、聚焦定位、保存、试发入口和窄屏；页面错误与业务网络请求为 0。三语资源检查及 `git diff --check` 通过，无独立 lint 脚本。按下述构建命令输出到 `/tmp/jetlinks-corp-fields/build`，模块构建通过（44.02 秒）；类型检查前后均为 196 条诊断，忽略行列无新增或移除，完整类型检查仍未通过，既有问题修复后需重跑下述 `vue-tsc` 命令。日志位于 `/tmp/jetlinks-corp-fields-*.log`，截图与报告位于 `/tmp/jetlinks-corp-fields/`。真实账号保存与消息投递未验证。
 
@@ -33,7 +35,61 @@
 
 完整类型检查仍未通过：在 `runtime-ui/` 执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，修改前后均为 196 条既有诊断，忽略行列比较无新增或移除；修复基线问题后需重跑。类型日志为 `/tmp/jetlinks-channel-help/types-{before,final}.log`。本轮未写入真实渠道配置或发送通知，真实服务商账号与投递仍需环境联调。
 
+## 企业微信消息模板自动生成
+
+交付复核（2026-11-19）：渠道模板联动与站内信补齐通过 `codex/channel-template-setup-2.20` 交付，基于最新 `origin/2.20` 的 `8a3b155`，包含远端通知记录默认“全部”的修复。模块目录执行 `node --test tests/messageNotification*.test.mjs`，397/397 通过；6 个变更 Vue 的 script/template/style 编译和定向样式门禁、14 个测试脚本语法检查、三语各 1167 个键（其中消息通知各 783 个）一致性及差异空白检查通过，相关 Vue 均少于 300 行。在 `runtime-ui/jetlinks-web-core` 执行 `node --max_old_space_size=16384 ../node_modules/vite/bin/vite.js build --outDir /tmp/notify-channel-template-pr-2.20-build -- --module-name notify-manager-ui`，生产构建通过（11,339 个模块，54.60 秒），保留既有分块告警。在 `runtime-ui` 执行 `node --max_old_space_size=8192 node_modules/vue-tsc/bin/vue-tsc.js --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，仍有 195 条既有诊断，统一执行目录与行列号后和 AgentId 说明阶段日志完全一致，完整类型检查未通过。复用下文渠道创建、站内信补齐、模板页启停、导航、图文说明与窄屏的浏览器夹具证据；真实账号保存、服务商投递仍待环境联调。工作区无独立 lint 脚本。
+
+在「消息通知 / 通知渠道」完成企业微信（`weixin:corpMessage`）配置后，运行时前端为「消息模板」目录里的每个业务补齐一份企业微信模板，归属 `runtime-ui/modules/notify-manager-ui`。已保存的渠道也可直接执行「补齐消息模板」。
+
+1. 在 `views/system/MessageNotification/Channels/` 添加必填的企业微信 AgentId，与企业 ID、Secret 一次保存。AgentId 保存到 `configuration.alarmTemplateDefaults.agentId`，已有配置可从历史 `configuration.agentId` 回显。接收部门、用户、标签和内容细节在消息模板中编辑。
+2. 保存成功后，从 `GET /notify/channel/all-for-save` 读取当前账号可管理的消息类型。设备告警、场景联动、设备告警解除、系统公告及其他有专用定义的类型复用 `Templates/definition/templateDefaults.ts`。扩展类型使用通用通知正文变量 `${message}`，每份模板均带入当前 `configId` 和 AgentId。新建企业微信绑定默认启用。已有类型使用单渠道保存接口，首次落库使用聚合保存，将消息类型设为启用并提交 `defaultSubscribed: false`，个人订阅由用户勾选。
+3. 补齐前复查消息类型与微信绑定，跳过已有绑定。保存响应确认状态为启用后计入创建成功。表单反馈模板创建、跳过和失败，结果不明时停止本轮写入，重试从重新校对已保存配置和消息类型目录开始。
+4. 消息模板页统一通过页头「启用 / 禁用」管理消息类型。企业微信模板可编辑内容，保存时沿用已有渠道绑定的状态。个人中心从 `/notify/channel/all` 获取已启用且可访问的消息类型和渠道绑定，按需引导用户绑定微信接收账号。
+
+现有保存接口采用更新式保存，跨会话的读写期间仍可能发生竞态，不同业务也可能部分成功。
+
+运行时前端复用 `views/system/MessageNotification/Channels/templateSetup/` 的模板表单和补齐流程，`Channels/wechat/templateDefaults.ts` 读取既有企业微信 AgentId。`Templates/index.vue` 使用页头消息类型启停，模板保存由 `Templates/useTemplateWorkspace.ts` 和 `Templates/workspace/businessTemplates.ts` 组装现有绑定。已打开的模板页在渠道保存成功后刷新消息类型目录与无修改的默认草稿。
+
+模块目录执行 `node --test tests/messageNotification*.test.mjs`，397 项通过。用 `SMOKE_CHROMIUM_CHANNEL=chrome SMOKE_BASE_URL=http://127.0.0.1:9201 SMOKE_PLAYWRIGHT_MODULE="$PWD/../../../ui/node_modules/playwright" node tests/messageNotificationBrowser/wechatTemplates.mjs` 通过桌面和 390px 窄屏验证，覆盖四项默认启用、补齐缺失项、页头启停、移除独立开关及正文保存回显。同样运行 `tests/messageNotificationBrowser/navigation.mjs`，10 项通过，页面错误和业务网络请求均为 0。
+
+在 `runtime-ui/jetlinks-web-core/` 执行 `node --test src/views/account/center/{personalCenterFlows,notificationSettingsView}.test.mjs`，65 项通过。定向夹具验证微信渠道可用后可勾选，完成对应接收账号绑定后保存订阅。「系统公告」实际页面只读核对页头操作和企业微信预览，启停、保存与订阅使用隔离数据验证。
+
+定向样式门禁、三语 781 个消息通知键一致性、模块生产构建和 `git diff --check` 通过。工作区无独立 lint 脚本。在 `runtime-ui/` 执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，修改前后均为同样的 195 项既有诊断。完整类型检查仍受这些诊断影响，修复后可重跑同一命令。
+
+### 站内信渠道
+
+首次保存消息类型时，`Channels/templateSetup/fillMessageTemplates.ts` 和 `Templates/useTemplateWorkspace.ts` 通过 `/notify/channel/providers` 确认站内信可用，再将启用的站内信渠道和当前外部模板一并提交给聚合保存接口。`api/notice/messageNotification.ts` 验证返回的站内信绑定及状态，内置站内信无需模板。
+
+已保存的消息类型缺少站内信时，具备编辑权限的用户可在模板页头点「补齐站内信」。`Templates/hooks/useTemplateBusinessDirectory.ts` 写入前回读对应类型，遇到已有渠道（含禁用）或默认站内信时直接同步页面。确认缺失后通过 `PATCH /notify/channel/{providerId}` 保存一条渠道，回读确认后提示成功。个人中心按服务端返回的可用渠道开放勾选，用户可将站内信加入个人订阅。
+
+沿用上文命令，通知模块 199 项、个人中心 65 项测试通过。隔离浏览器覆盖首次聚合保存、存量补齐回显、微信绑定和 390px 窄屏，导航 8 项通过。定向订阅验证覆盖补齐后可勾选及与原微信订阅一起保存。在本地「设备告警解除」模板页确认了入口，渠道保存和订阅使用隔离数据验证。
+
+定向样式检查、三语 783 个消息通知键及 `git diff --check` 通过。按下文 Vite 命令构建 `notify-manager-ui` 通过，保留既有分块告警。模块类型检查前后均为同样的 195 项既有诊断，基线修复后可重跑上文命令。
+
+## 邮件、钉钉与 Webhook 随渠道创建消息模板
+
+保存邮件、钉钉工作通知、钉钉群机器人或 Webhook 渠道后，运行时前端按当前账号可管理的消息类型目录逐项创建模板，并绑定刚保存的渠道配置。邮件、钉钉工作通知和 Webhook 采用各消息类型的内置文案或请求体，内容在消息模板页编辑。
+
+| 渠道 | 渠道保存时的模板参数 |
+| --- | --- |
+| 邮件 | 保存 SMTP 渠道配置，系统填入该消息类型的默认主题和正文。 |
+| 钉钉工作通知 | 保存渠道表单中的必填 AgentId，系统填入该消息类型的默认正文。 |
+| 钉钉群机器人 | 在机器人配置弹窗选择消息类型，默认 Markdown。填写正文，Markdown 和链接消息填写标题，链接消息填写跳转地址。标题和正文可预填通用通知变量。 |
+| Webhook | 配置接收地址和请求头。系统填入默认 JSON 请求体，请求示例和编辑入口统一到消息模板页。 |
+
+`Channels/useChannelsPage.ts` 和 `Channels/robot/useRobotConfigurations.ts` 将保存后的当前渠道交给 `Channels/templateSetup/useChannelTemplateSetup.ts`。`Channels/templateSetup/templateDefaults.ts` 按消息类型组装邮件、钉钉工作通知和 Webhook 模板，扩展类型使用通用通知变量。钉钉工作通知从 `configuration.agentId` 取值，群机器人通过 `configuration.messageTemplateDefaults` 保存弹窗中的模板参数，企业微信沿用 `configuration.alarmTemplateDefaults.agentId` 和历史 AgentId 读取规则。
+
+`Channels/templateSetup/fillMessageTemplates.ts` 回读当前渠道和消息类型目录，通过现有单渠道和聚合接口创建缺失的模板。新绑定默认启用，首次创建类型时处理内置站内信，个人订阅由用户勾选。工作通知与群机器人共用每个类型的一条 `notifier-dingTalk` 绑定。已有绑定优先，模板页可显式调整绑定的钉钉配置。渠道和模板分别保存，遇到部分成功可在渠道页或机器人行菜单用「补齐消息模板」重试缺失项。
+
+模块目录执行 `node --test tests/messageNotification*.test.mjs`，397 项通过。沿用上文浏览器环境运行 `tests/messageNotificationBrowser/{channelTemplates,webhook,wechatTemplates}.mjs`。隔离数据覆盖渠道页字段、钉钉 AgentId 校验、四个消息类型逐项创建并启用、重复补齐、失败重试、请求头凭据保留、消息模板页编辑和 390px 布局。真实服务商投递待联调。
+
+定向样式检查、三语 782 个消息通知键一致性、`git diff --check` 和模块生产构建通过。类型检查仍有同样的 195 项既有诊断，基线修复后可重跑上文命令。
+
 ## 微信渠道入口
+
+「消息模板」页在 `Templates/hooks/useTemplateCatalog.ts` 复用 `shared/catalog.ts` 的服务商入口规则，企业微信直接打开工作通知（`weixin:corpMessage`）。显式指向服务号的旧业务模板链接沿用不可用提示。
+
+模板入口验证（2026-11-19）：模块目录执行 `node --test tests/messageNotification*.test.mjs`，397 项通过。隔离浏览器的 `navigation.mjs` 10 项及 `wechatTemplates.mjs` 通过，覆盖双服务商响应、工作通知直达、服务号旧链接、钉钉切换与 390px 布局。本地「设备告警解除」模板页已确认企业微信导航和已保存模板预览。脚本语法、`git diff --check` 和模块生产构建通过，工作区无独立 lint 脚本。`vue-tsc` 改动前后均为相同的 195 项既有诊断，基线修复后重跑上文类型检查命令。
 
 `views/system/MessageNotification/Channels/` 已过滤不支持的 `weixin:officialMessage`，微信只显示一级“微信”，点击打开 `weixin:corpMessage`。旧服务号链接在企业微信可用时跳转到该渠道并清除原配置 ID，保留其他查询条件；企业微信不可用时沿用不可用状态，不选中其他渠道。实现入口为 `useChannelCatalog.ts` 和 `useChannelsPage.ts`，中英日导航文案使用 `messageNotification.channels.wechat`。后端、业务模板、通知记录和历史配置数据不变。
 
@@ -334,7 +390,7 @@ Quill 验证（2026-11-12）：统一消息通知回归 **254/254 通过**，其
 #### 业务入口与个人订阅联动
 
 - `hooks/useTemplateBusinessNavigation.ts` 同时识别 `business`、`topicProvider`、`channelProvider` 与 AI 告警会话参数，优先按实际记录 ID 定位。相同业务代码对应多个资产范围时要求选择具体记录；业务缺失、无权或绑定丢失不回退到其他模板。渠道入口的 `businessSelection=first-alarm` 只在首次落地使用，随后固定实际告警身份。
-- 模板保存与业务启停分离。占位业务首次保存即创建启用业务；“更多”菜单中的“启用 / 禁用”继续显式调用 `/notify/channel/{业务标识或实际ID}/enable`、`disable`。启用占位业务后刷新目录并采用唯一的真实记录 ID，保留编辑草稿。编辑时可单独调整渠道状态，取消恢复原状态；订阅人关系变量、渠道授权与兄弟绑定继续保留。
+- 页头「启用 / 禁用」调用 `/notify/channel/{业务标识或实际ID}/enable` 或 `disable`。启用占位业务后刷新目录并采用唯一的真实记录 ID，保留编辑草稿。占位业务首次保存即创建启用业务。编辑模板时，保存沿用已有的渠道状态、订阅人关系变量和渠道授权。
 - 历史独立模板可作为当前业务的内容来源，`useTemplateWorkspace.ts#importTemplate` 保留当前托管目标 ID，不覆盖历史源记录。新建独立邮件仍可选择 `shared/builtinEmailTemplates.ts` 中的内置内容，预览样例和 `builtinKey` 不进入保存载荷。
 - 只读账号可以查询独立模板，但不请求要求保存权限的 `/notify/channel/all-for-save`。个人中心沿用 `/notify/channel/all` 与个人订阅接口判断可用性，表头“去配置”按真实业务记录导航；模板菜单新增 / 编辑动作保留 `notify-channel:query/save` 映射。部署后需要同步菜单并刷新角色登录态。
 - 缺少发送配置时通过 core 的 `useNotificationConfigNavigation` 在独立标签打开渠道配置，返回后只刷新配置候选并保留模板草稿。原 AI 告警会话仅在对应业务模板保存成功后收到回传；独立模板保存不会触发该回传。
@@ -490,15 +546,11 @@ AgentId 浏览器复核：9200 实际企业微信页已显示新字段和默认�
 
 后端新增 `CorpUserContractTest` 覆盖实际 WebClient 联系方式反序列化、缺字段兼容和跨部门成员去重；定向测试及编译尚未执行成功：缺少 `org.jetlinks.pro:jetlinks-parent:2.20.0-SNAPSHOT`，私服返回 401。恢复 Maven 依赖访问后，在工作区根目录执行 `mvn -f modules/jetlinks-components/notify-component/notify-wechat/pom.xml -Dtest=CorpUserContractTest,WechatMessageTemplateTest,WechatNotifierProviderTest test`（包含编译），详细阻塞见 `/tmp/wechat-channel-backend-tests-online.log`。
 
-### Webhook 原型对齐
+### Webhook 渠道表单
 
-运行时 `runtime-ui/modules/notify-manager-ui` 的 Webhook 渠道页直接展示本地请求示例，不查询或选择已保存消息模板，不以模板是否存在作为显示条件；超时和签名暂不加入。标题为 Webhook，接收地址继续就地保存，请求头沿用已有配置能力。请求示例下方的额外提示、消息模板配置说明及跳转入口全部移除，仅保留示例和复制操作。
+`Channels/index.vue` 的 Webhook 渠道表单用于配置接收地址和 HTTP 请求头。保存成功后按本模块的[模板自动生成规则](#邮件钉钉与-webhook-随渠道创建消息模板)补齐模板。请求体的编辑和预览位于消息模板页，渠道表单已移除本地请求示例。
 
-`Channels/webhook/requestPreview.ts`、`useWebhookPreview.ts` 和 `WebhookRequestPreview.vue` 复用本地告警样例与 core `CodeBlock` 生成 POST / JSON 示例，显示及复制均遮蔽已配置的请求头值。已有配置使用保存值，新配置使用当前输入或地址占位；示例不作为实际发送正文。`Channels/useChannelsPage.ts` 仅装配本地示例；请求示例区不再提供模板导航。渠道页不预读模板或告警目录，也不修改真实模板、配置及发送通知。
-
-验证（2026-11-12）：请求示例下方的模板说明、入口及对应事件、权限和三语文案已移除。Webhook / channels / contracts / integration 回归 81/81 通过，两处 Vue 编译、定向样式检查、三语资源一致性及差异空白检查通过。隔离浏览器脚本 `tests/messageNotificationBrowser/webhook.mjs` 的 5 组检查通过，确认无模板说明和入口、零模板查询、复制与地址保存正常、新配置正常显示及 390px 布局正常，页面错误为空。日志前缀 `/tmp/webhook-remove-template-link-`，未操作真实配置或发送通知。本次删除未重跑全量类型检查和生产构建，下方保留上一轮基线。
-
-三处 Vue 定向样式检查、三语资源键一致性及 `git diff --check` 通过；模块无独立 lint 脚本。模块构建通过（28.67 秒，保留既有构建告警），命令为 core 目录下 `node --max_old_space_size=16384 ../node_modules/vite/bin/vite.js build --outDir /tmp/webhook-example-build -- --module-name notify-manager-ui`。类型检查修改前后均为 213 项既有诊断，按文件、错误码及信息比较无新增或移除；待既有问题修复后，在 `runtime-ui/` 重跑 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`。日志前缀 `/tmp/webhook-example-`。
+使用 `tests/messageNotificationBrowser/webhook.mjs` 验证新建和已有渠道的地址回显、请求头凭据保留、模板权限及 390px 布局。模板创建和请求体由 `tests/messageNotificationBrowser/channelTemplates.mjs` 验证。
 
 ### 已配置渠道回显与整表编辑
 

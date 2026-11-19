@@ -39,6 +39,9 @@ function load(filename) {
 }
 
 const { useTemplateWorkspace } = load(resolve(root, 'views/system/MessageNotification/Templates/useTemplateWorkspace.ts'))
+const { fillMessageTemplates } = load(resolve(root, 'views/system/MessageNotification/Channels/templateSetup/fillMessageTemplates.ts'))
+const { readTemplateSetup, templateSetupIssues } = load(resolve(root, 'views/system/MessageNotification/Channels/templateSetup/templateDefaults.ts'))
+const { notificationChannels } = load(resolve(root, 'views/system/MessageNotification/shared/catalog.ts'))
 const { useTemplateCatalog } = load(resolve(root, 'views/system/MessageNotification/Templates/hooks/useTemplateCatalog.ts'))
 const { messageNotificationApi } = load(resolve(root, 'api/notice/messageNotification.ts'))
 const { NotificationRequestError } = load(resolve(root, 'api/notice/messageNotificationState.ts'))
@@ -67,6 +70,7 @@ function mockApi(initialConfigs = [config()]) {
     async queryAllConfigs() { calls.push(['queryAllConfigs']); return clone(initialConfigs) },
     async getTemplateMetadata(type, provider) { calls.push(['getTemplateMetadata', type, provider]); return { properties: [] } },
     async queryBusinessVariables(id) { calls.push(['queryBusinessVariables', id]); return [{ id: 'message', name: '消息' }] },
+    async queryInsideMailChannel() { return undefined },
     async getBusinessTemplate(id, channel) { calls.push(['getBusinessTemplate', id, channel]); return records.get(`${id}/${channel}`) },
     async saveBusinessTemplate(id, channel, value) {
       calls.push(['saveBusinessTemplate', id, channel, clone(value)])
@@ -81,11 +85,15 @@ function mockApi(initialConfigs = [config()]) {
       calls.push(['saveBusinessTemplates', provider, clone(value)])
       const saved = clone(value)
       saved.provider.id = 'generated-topic-id'
-      saved.channels[0].channel.id = 'generated-channel-id'
-      saved.channels[0].channel.providerId = saved.provider.id
-      saved.channels[0].template.id = 'generated-template-id'
-      saved.channels[0].channel.channelConfiguration.templateId = saved.channels[0].template.id
-      records.set(`${saved.provider.id}/${saved.channels[0].channel.channelProvider}`, saved.channels[0])
+      for (const { channel, template } of saved.channels) {
+        channel.id = template ? 'generated-channel-id' : 'generated-inside-mail-id'
+        channel.providerId = saved.provider.id
+        if (template) {
+          template.id = 'generated-template-id'
+          channel.channelConfiguration.templateId = template.id
+        }
+      }
+      for (const item of saved.channels) records.set(`${saved.provider.id}/${item.channel.channelProvider}`, item)
       return saved
     },
     async queryTemplates() { calls.push(['queryTemplates']); return { data: [] } },
@@ -95,6 +103,181 @@ function mockApi(initialConfigs = [config()]) {
   }
   return { api, calls, records }
 }
+
+function wechatTemplateFixture(directory) {
+  const saved = {
+    ...config('wechat-config', 'weixin', 'corpMessage'),
+    configuration: {
+      corpId: 'fixture-corp', corpSecret: 'fixture-secret',
+      alarmTemplateDefaults: { agentId: '8000001' },
+    },
+  }
+  const channel = notificationChannels.find(value => value.id === 'weixin:corpMessage')
+  const { api, calls, records } = mockApi([saved])
+  api.getConfig = async () => clone(saved)
+  api.queryTemplateDirectory = async () => { calls.push(['queryTemplateDirectory']); return clone(directory) }
+  return { api, calls, records, saved, fill: (active = () => true) => fillMessageTemplates(api, saved, channel, active, key => key) }
+}
+
+test('WeCom fills every missing business template from the current directory using the saved AgentId', async () => {
+  const device = business('device-topic')
+  const occupied = business('security-topic', 'aiSecurityAlarm')
+  occupied.channels.push({ id: 'legacy-channel', channelProvider: 'notifier-weixin', channelConfiguration: { notifierId: 'different-config' } })
+  const io = wechatTemplateFixture([
+    device, business(null, 'alarm-device-relieve'), occupied, business('scene-topic', 'scene'),
+    business('bulletin-topic', 'SystemBulletin'), { ...business('extension-topic', 'extension-business'), name: '扩展业务' },
+  ])
+  const insideMail = { channelProvider: 'inside-mail', name: '站内信', state: 'enabled' }
+  io.api.queryInsideMailChannel = async () => insideMail
+  assert.deepEqual(await io.fill(), { created: 5, skipped: 1, failed: [], unknown: false })
+  assert.deepEqual(io.calls.filter(([name]) => name === 'getBusinessTemplate').map(([, id]) => id), [
+    'device-topic', 'scene-topic', 'bulletin-topic', 'extension-topic',
+  ])
+  const [, code, aggregate] = io.calls.find(([name]) => name === 'saveBusinessTemplates')
+  assert.equal(code, 'alarm-device-relieve')
+  assert.equal(aggregate.provider.state, 'enabled')
+  assert.equal(aggregate.provider.defaultSubscribed, false)
+  assert.deepEqual(aggregate.channels[1], { channel: insideMail })
+  assert.equal(io.records.get('generated-topic-id/inside-mail').channel.state, 'enabled')
+  const generated = [...io.records.values()].filter(item => item.template)
+  assert.equal(generated.length, 5)
+  for (const item of generated) {
+    assert.equal(item.channel.state, 'enabled')
+    assert.equal(item.channel.channelConfiguration.variables.toUser.relation.objectSource.upperKey, 'subscriber')
+    assert.equal(item.template.configId, io.saved.id)
+    assert.deepEqual(Object.keys(item.template.template).sort(), ['agentId', 'message'])
+    assert.equal(item.template.template.agentId, '8000001')
+  }
+  assert.match(io.records.get('device-topic/notifier-weixin').template.template.message, /detail\.alarmConfigName/)
+  assert.match(io.records.get('scene-topic/notifier-weixin').template.template.message, /detail\.sceneName/)
+  assert.match(io.records.get('bulletin-topic/notifier-weixin').template.template.message, /detail\.title/)
+  const fallback = io.records.get('extension-topic/notifier-weixin').template
+  assert.match(fallback.name, /^扩展业务/)
+  assert.equal(fallback.template.message, '${message}')
+  assert.deepEqual(fallback.variableDefinitions.map(value => value.id), ['message'])
+  assert.doesNotMatch(JSON.stringify(io.calls), /fixture-secret/)
+
+  const workspace = useTemplateWorkspace(permissions(), io.api)
+  await workspace.loadBusiness(device, 'weixin:corpMessage')
+  assert.equal(workspace.entry.value.channel.state, 'enabled')
+  assert.equal(workspace.business.value.state, 'disabled')
+})
+
+test('WeCom stops provisioning when a saved channel still reports a disabled state', async () => {
+  const io = wechatTemplateFixture([business(), business('relieve-topic', 'alarm-device-relieve')])
+  const persist = io.api.saveBusinessTemplate
+  io.api.saveBusinessTemplate = async (...args) => {
+    const stored = await persist(...args)
+    stored.channel.state = { value: 'disabled' }
+    return stored
+  }
+  assert.deepEqual(await io.fill(), { created: 0, skipped: 0, failed: ['设备告警'], unknown: true })
+  assert.equal(io.calls.filter(([name]) => name === 'saveBusinessTemplate').length, 1)
+})
+
+test('an ambiguous WeCom save stops the batch and a manual retry rechecks the committed binding', async () => {
+  const directory = [business(null), business('relieve-topic', 'alarm-device-relieve')]
+  const io = wechatTemplateFixture(directory)
+  const persist = io.api.saveBusinessTemplates
+  io.api.saveBusinessTemplates = async (...args) => {
+    const saved = await persist(...args)
+    directory[0] = { ...saved.provider, channels: saved.channels.map(item => item.channel) }
+    throw new NotificationRequestError('error', { status: 504 })
+  }
+  const partial = await io.fill()
+  assert.equal(partial.unknown, true)
+  assert.deepEqual(partial.failed, ['设备告警'])
+  assert.equal(io.calls.some(([name]) => name === 'saveBusinessTemplate'), false)
+  assert.deepEqual(await io.fill(), { created: 1, skipped: 1, failed: [], unknown: false })
+  assert.equal(io.calls.filter(([name]) => name === 'saveBusinessTemplates').length, 1)
+})
+
+test('WeCom provisioning never treats unreadable bindings or unpersisted defaults as empty slots', async () => {
+  const io = wechatTemplateFixture([business()])
+  io.api.getBusinessTemplate = async () => { throw { status: 403 } }
+  assert.deepEqual(await io.fill(), { created: 0, skipped: 0, failed: ['设备告警'], unknown: false })
+  io.api.getConfig = async () => ({ ...io.saved, configuration: { corpId: 'fixture-corp' } })
+  assert.equal((await io.fill()).loadFailure, 'error')
+  assert.deepEqual(io.calls.map(([name]) => name), ['queryTemplateDirectory'])
+})
+
+test('new external channels fill four message types with their saved config ID, default content and enabled bindings', async () => {
+  const cases = [
+    { id: 'email:embedded', configuration: { messageTemplateDefaults: { subject: '历史邮件主题', message: '历史邮件正文' } },
+      verify: (item, provider) => {
+        const { subject, text } = item.template.template
+        if (provider === 'extension-business') {
+          assert.equal(subject, '${topic}')
+          assert.equal(text, '${message}')
+          assert.deepEqual(item.template.variableDefinitions.map(({ id }) => id), ['topic', 'message'])
+        } else {
+          assert.match(subject, /\$\{detail\./)
+          assert.match(text, /\$\{detail\./)
+        }
+        assert.equal(item.channel.channelConfiguration.variables.sendTo.relation.objectSource.upperKey, 'subscriber')
+      } },
+    { id: 'dingTalk:dingTalkMessage', configuration: { agentId: '1024', messageTemplateDefaults: { message: '历史钉钉正文' } },
+      verify: (item, provider) => {
+        const { agentId, message } = item.template.template
+        assert.equal(agentId, '1024')
+        if (provider === 'extension-business') assert.equal(message, '${message}')
+        else assert.match(message, /\$\{detail\./)
+        assert.equal(item.channel.channelConfiguration.variables.userIdList.relation.objectSource.upperKey, 'subscriber')
+      } },
+    { id: 'dingTalk:dingTalkRobotWebHook', configuration: { messageTemplateDefaults: { messageType: 'link', title: '${topic}', message: '${message}', messageUrl: 'https://fixture.example.test/details' } },
+      verify: item => {
+        assert.deepEqual(item.template.template, { messageType: 'link', link: { title: '${topic}', text: '${message}', messageUrl: 'https://fixture.example.test/details' } })
+        assert.deepEqual(item.channel.channelConfiguration.variables, {})
+      } },
+    { id: 'webhook:http', configuration: { url: 'https://fixture.example.test/webhook' },
+      verify: (item, provider) => {
+        assert.equal(item.template.template.contextAsBody, false)
+        assert.equal(Object.hasOwn(item.template.template, 'url'), false)
+        const body = JSON.parse(item.template.template.body)
+        if (provider === 'extension-business') assert.deepEqual(body, { message: '${message}' })
+        else assert.match(item.template.template.body, /\$\{detail\./)
+      } },
+  ]
+  for (const { id, configuration, verify } of cases) {
+    const channel = notificationChannels.find(value => value.id === id)
+    const saved = { ...config('current-config', channel.type, channel.provider), configuration }
+    const io = mockApi([saved])
+    io.api.getConfig = async () => clone(saved)
+    const directory = [business(), business('relieve', 'alarm-device-relieve'), business(null, 'scene'), business('extension', 'extension-business')]
+    io.api.queryTemplateDirectory = async () => clone(directory)
+    const persist = io.api.saveBusinessTemplates
+    io.api.saveBusinessTemplates = async (code, payload) => {
+      const stored = await persist(code, payload)
+      Object.assign(directory.find(item => item.provider === code), stored.provider, { channels: stored.channels.map(item => item.channel) })
+      return stored
+    }
+    io.api.queryInsideMailChannel = async () => ({ name: '站内信', state: 'enabled', channelProvider: 'inside-mail' })
+    const fill = () => fillMessageTemplates(io.api, saved, channel, () => true, key => key)
+    assert.deepEqual(await fill(), { created: 4, skipped: 0, failed: [], unknown: false }, id)
+    assert.deepEqual(await fill(), { created: 0, skipped: 4, failed: [], unknown: false }, id)
+    const records = [...io.records.values()].filter(item => item.template)
+    assert.equal(records.length, 4)
+    for (const item of records) {
+      assert.equal(item.template.configId, saved.id)
+      assert.equal(item.template.provider, channel.provider)
+      assert.equal(item.channel.state, 'enabled')
+      verify(item, directory.find(business => business.id === item.channel.providerId)?.provider)
+    }
+    const [, , request] = io.calls.find(([method]) => method === 'saveBusinessTemplates')
+    assert.equal(request.provider.defaultSubscribed, false)
+    assert.deepEqual(request.channels[1], { channel: { name: '站内信', state: 'enabled', channelProvider: 'inside-mail' } })
+  }
+})
+
+test('template setup requires DingTalk AgentId and mode-specific robot fields without validating stored message content', () => {
+  const issues = (id, configuration) => templateSetupIssues(id, readTemplateSetup(id, configuration))
+  assert.deepEqual(issues('email:embedded', { messageTemplateDefaults: { subject: '', message: '<p><br></p>' } }), {})
+  assert.deepEqual(Object.keys(issues('dingTalk:dingTalkMessage', { messageTemplateDefaults: { message: '   ' } })), ['agentId'])
+  assert.deepEqual(issues('dingTalk:dingTalkMessage', { agentId: 1024, messageTemplateDefaults: { message: '   ' } }), {})
+  assert.deepEqual(Object.keys(issues('dingTalk:dingTalkRobotWebHook', { messageTemplateDefaults: { messageType: 'link', title: '', messageUrl: 'invalid' } })), ['title', 'messageUrl'])
+  assert.deepEqual(issues('dingTalk:dingTalkRobotWebHook', { messageTemplateDefaults: { messageType: 'text', title: '', messageUrl: '' } }), {})
+  assert.deepEqual(issues('webhook:http', {}), {})
+})
 
 test('business drafts use the backend directory and reuse one exact-provider config snapshot', async () => {
   const io = mockApi([config(), config('other', 'email', 'otherVendor')])
@@ -182,7 +365,7 @@ test('a real business template wins over prototypes and single-channel saving pr
   assert.equal(workspace.dirty.value, false)
 })
 
-test('first save sends only this channel with an enabled topic and writes back the returned actual ID', async () => {
+test('first save sends only the edited channel when inbox is unsupported and adopts the returned ID', async () => {
   const io = mockApi([config(), config('http', 'webhook', 'http')])
   const workspace = useTemplateWorkspace(permissions(), io.api)
   const selected = business(null)
@@ -207,6 +390,26 @@ test('first save sends only this channel with an enabled topic and writes back t
   assert.equal(await workspace.saveTemplate(), true)
   assert.equal(io.calls.filter(([name]) => name === 'saveBusinessTemplates').length, 1)
   assert.equal(io.calls.find(([name]) => name === 'saveBusinessTemplate')[1], 'generated-topic-id')
+})
+
+test('first template save creates the supported inbox and retains a retryable draft on discovery failure', async () => {
+  const io = mockApi()
+  const selected = { ...business(null), defaultSubscribed: false }
+  const workspace = useTemplateWorkspace(permissions(), io.api)
+  const insideMail = { channelProvider: 'inside-mail', name: '站内信', state: 'enabled' }
+  await workspace.loadBusiness(selected, 'email:embedded')
+  workspace.draft.value.subject = '保存后可订阅站内信'
+  io.api.queryInsideMailChannel = async () => { throw new Error('Channel discovery unavailable') }
+  assert.equal(await workspace.saveTemplate(), false)
+  assert.equal(workspace.saveOutcomeUnknown.value, false)
+  assert.equal(io.calls.some(([name]) => name === 'saveBusinessTemplates'), false)
+  assert.equal(workspace.draft.value.subject, '保存后可订阅站内信')
+  io.api.queryInsideMailChannel = async () => insideMail
+  assert.equal(await workspace.saveTemplate(), true)
+  const [, , request] = io.calls.find(([name]) => name === 'saveBusinessTemplates')
+  assert.deepEqual(request.channels[1], { channel: insideMail })
+  assert.equal(request.provider.defaultSubscribed, false)
+  assert.deepEqual(workspace.business.value.channels[1], { ...insideMail, providerId: 'generated-topic-id', id: 'generated-inside-mail-id' })
 })
 
 test('unconfigured and ambiguous configs still allow drafts but cannot save until an exact config is selected', async () => {
@@ -563,6 +766,7 @@ test('a completed save updates its original business without replacing a later s
   const workspace = useTemplateWorkspace(permissions(), io.api)
   await workspace.loadBusiness(business(null), 'email:embedded')
   const pending = workspace.saveTemplate()
+  await Promise.resolve()
   await workspace.loadBusiness(business(null, 'scene'), 'email:embedded')
   finish()
   assert.equal(await pending, true)

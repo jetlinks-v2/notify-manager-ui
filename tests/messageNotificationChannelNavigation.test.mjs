@@ -19,7 +19,7 @@ const channel = (type, provider, name = provider) => ({ id: `${type}:${provider}
 const fixture = [
   channel('email', 'embedded'),
   channel('dingTalk', 'dingTalkRobotWebHook'), channel('dingTalk', 'customDing'), channel('dingTalk', 'dingTalkMessage'),
-  channel('weixin', 'officialMessage'), channel('weixin', 'corpMessage'),
+  channel('weixin', 'corpMessage'),
   channel('customType', 'primary'), channel('customType', 'secondary'), channel('sms', 'aliyunSms'),
 ]
 function setup(channels = fixture, value = 'email:embedded', configurationStates = {}) {
@@ -29,7 +29,7 @@ function setup(channels = fixture, value = 'email:embedded', configurationStates
   return { props, events, result }
 }
 
-test('grouping retains every backend provider exactly once, including extension providers and types', () => {
+test('grouping retains every available provider exactly once, including extension providers and types', () => {
   const { result } = setup()
   assert.deepEqual(result.groups.value.flatMap(group => group.channels.map(item => item.id)).sort(), fixture.map(item => item.id).sort())
   assert.deepEqual(result.groups.value.map(group => group.key), ['email:embedded', 'dingTalk', 'weixin', 'customType:primary', 'customType:secondary', 'sms:aliyunSms'])
@@ -45,6 +45,7 @@ test('primary family selection emits its real work provider ID rather than a vis
   result.selectGroup('weixin')
   assert.equal(props.value, 'weixin:corpMessage')
   assert.deepEqual(events.at(-1), ['change', 'weixin:corpMessage'])
+  assert.deepEqual(result.subChannels.value, [])
 })
 
 test('subtabs keep exact provider identities and repeated current-family clicks retain the selected subtype', () => {
@@ -63,14 +64,14 @@ test('subtabs keep exact provider identities and repeated current-family clicks 
 })
 
 test('a family without a built-in work provider falls back only to its first actual backend entry', () => {
-  const entries = [channel('dingTalk', 'vendorA'), channel('dingTalk', 'vendorB'), channel('weixin', 'officialMessage')]
+  const entries = [channel('dingTalk', 'vendorA'), channel('dingTalk', 'vendorB'), channel('customType', 'primary')]
   const { result, props, events } = setup(entries, '')
   result.selectGroup('dingTalk')
   assert.equal(props.value, 'dingTalk:vendorA')
-  result.selectGroup('weixin')
-  assert.equal(props.value, 'weixin:officialMessage')
+  result.selectGroup('customType:primary')
+  assert.equal(props.value, 'customType:primary')
   assert.deepEqual(result.subChannels.value, [])
-  assert.deepEqual(events, [['change', 'dingTalk:vendorA'], ['change', 'weixin:officialMessage']])
+  assert.deepEqual(events, [['change', 'dingTalk:vendorA'], ['change', 'customType:primary']])
 })
 
 test('catalog refresh recomputes families and subtabs while preserving a surviving selected provider', () => {
@@ -97,7 +98,7 @@ test('a configured robot marks its family configured independently of the select
   const { result, props, events } = setup(fixture, 'dingTalk:dingTalkMessage', {
     'email:embedded': 'ready',
     'dingTalk:dingTalkRobotWebHook': 'ready', 'dingTalk:customDing': 'empty', 'dingTalk:dingTalkMessage': 'empty',
-    'weixin:officialMessage': 'empty', 'weixin:corpMessage': 'empty',
+    'weixin:corpMessage': 'empty',
     'customType:primary': 'empty', 'customType:secondary': 'ready', 'sms:aliyunSms': 'empty',
   })
   const states = () => Object.fromEntries(result.groups.value.map(group => [group.key, group.configurationState]))

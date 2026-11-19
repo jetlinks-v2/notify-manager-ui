@@ -73,6 +73,7 @@ function mockApi() {
     getBusinessTemplate: async (owner, type) => type === 'notifier-email' ? { channel: { id: 'binding', providerId: owner, channelProvider: type, state: 'enabled', channelConfiguration: { templateId: 'second', notifierId: 'smtp-one' } }, template: record('second', { type: 'email' }) } : undefined,
     saveBusinessTemplate: async (owner, type, payload) => { calls.push(['saveBusinessTemplate', owner, type, structuredClone(payload)]); return { channel: { ...payload.channel, id: 'binding', providerId: owner, channelConfiguration: { ...payload.channel.channelConfiguration, templateId: 'stpl_binding' } }, template: { ...payload.template, id: 'stpl_binding' } } },
     setBusinessEnabled: async (...args) => { calls.push(['setBusinessEnabled', ...args]) },
+    queryInsideMailChannel: async () => undefined,
     queryTypes: async () => channelTypes,
     queryProviders: async type => channelProviders[type] || [],
     getTemplateMetadata: async () => ({ properties: [] }),
@@ -1064,10 +1065,13 @@ test('business directory retains only business groups and actual bindings withou
   assert.equal(alarm.templateId, 'template-alarm')
   assert.equal(alarm.business, businesses[1])
   assert.equal(alarm.key, templateBusinessKey(businesses[1]))
-  assert.equal(alarm.children[0].title, '告警解除')
-  assert.equal(alarm.children[0].templateId, 'template-relieve')
-  assert.equal(alarm.children[0].key, templateBusinessKey(businesses[2]))
-  assert.equal(tree[0].children[1].business.provider, 'scene')
+  assert.equal(alarm.hasTemplate, true)
+  const relieve = tree[0].children[1]
+  assert.equal(relieve.title, '告警解除')
+  assert.equal(relieve.templateId, 'template-relieve')
+  assert.equal(relieve.key, templateBusinessKey(businesses[2]))
+  assert.equal(tree[0].children[2].business.provider, 'scene')
+  assert.ok(tree.every(group => group.children.every(node => !node.children?.length)))
   assert.deepEqual(tree[1].children.map(node => node.business.provider), ['aiComplianceAlarm', 'aiSecurityAlarm'])
   assert.equal(tree[2].children[0].business.provider, 'SystemBulletin')
   assert.equal(tree[3].children[0].templateId, 'template-maintenance')
@@ -1077,7 +1081,7 @@ test('business directory retains only business groups and actual bindings withou
   const filtered = filterTemplateDirectory(tree, 'TEMPLATE-RELIEVE')
   assert.equal(filtered.length, 1)
   assert.equal(filtered[0].title, '物联告警')
-  assert.equal(filtered[0].children[0].children[0].templateId, 'template-relieve')
+  assert.equal(filtered[0].children[0].templateId, 'template-relieve')
   assert.deepEqual(filterTemplateDirectory(tree, 'missing-value'), [])
   assert.equal(filterTemplateDirectory(tree, '视联告警')[0].children.length, 2)
   assert.equal(filterTemplateDirectory(tree, '系统公告')[0].children[0].business.provider, 'SystemBulletin')
@@ -1091,7 +1095,7 @@ test('business directory retains only business groups and actual bindings withou
   assert.equal(english[0].children[0].selectable, true)
 })
 
-test('directory selects the child actual ID, preserves group and business collapse on search and reveals deep-linked children', async () => {
+test('directory keeps alarm businesses at the same level and reveals the selected group after search or a deep link', async () => {
   const { useTemplateDirectory } = load(resolve(templatesRoot, 'hooks/useTemplateDirectory.ts'))
   const props = vue.reactive({ templates: [record('template-alarm'), ...directoryFixture.templates], businessTypes: directoryFixture.businessTypes,
     selectedId: 'template-alarm', state: 'ready', directoryState: 'ready', disabled: false })
@@ -1099,34 +1103,80 @@ test('directory selects the child actual ID, preserves group and business collap
   const scope = vue.effectScope()
   const directory = scope.run(() => useTemplateDirectory(props, (...args) => events.push(args)))
   const group = directory.visibleTemplates.value[0]
-  const parent = group.children[0]
-  const child = parent.children[0]
-  assert.ok(directory.expandedKeys.value.includes(parent.key))
-  directory.expand([group.key])
-  assert.ok(!directory.expandedKeys.value.includes(parent.key))
+  const alarm = group.children[0]
+  const relieve = group.children[1]
+  assert.equal(alarm.business.provider, 'alarm-device')
+  assert.equal(relieve.business.provider, 'alarm-device-relieve')
+  assert.equal(directory.expandedKeys.value.includes(alarm.key), false)
+  assert.equal(directory.expandedKeys.value.includes(relieve.key), false)
   directory.expand([])
   assert.ok(!directory.expandedKeys.value.includes(group.key))
   directory.search.value = '解除'
   assert.ok(directory.expandedKeys.value.includes(group.key))
-  assert.ok(directory.expandedKeys.value.includes(parent.key))
   directory.expand([])
   assert.ok(directory.expandedKeys.value.includes(group.key))
   directory.search.value = ''
   assert.ok(!directory.expandedKeys.value.includes(group.key))
-  assert.ok(!directory.expandedKeys.value.includes(parent.key))
-  directory.select([child.key])
-  assert.deepEqual(events, [['select', child.key]])
+  directory.select([relieve.key])
+  assert.deepEqual(events, [['select', relieve.key]])
   directory.select([])
   directory.select([group.key])
   props.disabled = true
-  directory.select([parent.key])
+  directory.select([alarm.key])
   assert.equal(events.length, 1)
   props.selectedId = 'template-relieve'
   await vue.nextTick()
-  assert.deepEqual(directory.selectedKeys.value, [child.key])
+  assert.deepEqual(directory.selectedKeys.value, [relieve.key])
   assert.ok(directory.expandedKeys.value.includes(group.key))
-  assert.ok(directory.expandedKeys.value.includes(parent.key))
   scope.stop()
+})
+
+test('multiple bound templates remain selectable at level two with stable keys and business context', async () => {
+  const { buildTemplateDirectory, filterTemplateDirectory, templateBusinessKey } = load(resolve(templatesRoot, 'templateDirectoryModel.ts'))
+  const { useTemplateDirectory } = load(resolve(templatesRoot, 'hooks/useTemplateDirectory.ts'))
+  const business = structuredClone(directoryFixture.businessTypes[0])
+  business.channels.push(
+    { channelConfiguration: { templateId: 'template-backup' } },
+    { channelConfiguration: { templateId: 'template-alarm' } },
+    { channelConfiguration: { templateId: 'missing-template' } },
+  )
+  const templates = [record('template-alarm', { name: '主邮件' }), record('template-backup', { name: '备用邮件' }), record('unbound')]
+  const before = JSON.stringify({ business, templates })
+  const props = vue.reactive({ templates, businessTypes: [business], selectedId: 'template-backup',
+    state: 'ready', directoryState: 'ready', disabled: false })
+  const events = []
+  const scope = vue.effectScope()
+  const directory = scope.run(() => useTemplateDirectory(props, (...args) => events.push(args)))
+  try {
+    const group = directory.visibleTemplates.value[0]
+    const [owner, primary, backup] = group.children
+    assert.equal(group.children.length, 3)
+    assert.ok(group.children.every(node => !node.children?.length))
+    assert.equal(owner.key, templateBusinessKey(business))
+    assert.equal(owner.hasTemplate, true)
+    assert.equal(owner.templateId, undefined)
+    assert.equal(primary.title, '设备告警 · 主邮件')
+    assert.equal(backup.title, '设备告警 · 备用邮件')
+    assert.equal(backup.key, JSON.stringify([owner.key, 'template-backup']))
+    assert.equal(backup.templateId, 'template-backup')
+    assert.deepEqual(directory.selectedKeys.value, [backup.key])
+    directory.select([backup.key])
+    directory.select([owner.key])
+    assert.deepEqual(events, [['select', 'template-backup'], ['select', owner.key]])
+    directory.expand([])
+    directory.search.value = '备用邮件'
+    assert.ok(directory.expandedKeys.value.includes(group.key))
+    assert.deepEqual(directory.visibleTemplates.value[0].children.map(node => node.key), [owner.key, backup.key])
+    directory.search.value = ''
+    assert.equal(directory.expandedKeys.value.includes(group.key), false)
+    props.selectedId = 'template-alarm'
+    await vue.nextTick()
+    assert.deepEqual(directory.selectedKeys.value, [primary.key])
+    assert.ok(directory.expandedKeys.value.includes(group.key))
+    assert.equal(JSON.stringify({ business, templates }), before)
+    const tree = buildTemplateDirectory(templates, [business], { other: '其他' }, key => key)
+    assert.equal(filterTemplateDirectory(tree, 'unbound').length, 0)
+  } finally { scope.stop() }
 })
 
 test('business directory ignores late responses after refresh, permission loss and unmount', async () => {
@@ -1178,14 +1228,13 @@ test('explicit activation keeps the prototype draft and adopts the real business
     assert.equal((current.page.business.value?.id || current.page.business.value?.provider || ''), 'actual-scope-id')
     assert.equal(current.page.draft.value.type, 'email')
     assert.equal(current.page.draft.value.subject, 'Unsaved before activation')
-    assert.equal(current.page.channelEnabled.value, true)
     assert.equal(current.page.businessEnabled.value, true)
     assert.equal(current.page.businessActionState.value, 'ready')
     assert.deepEqual(current.messages, [['messageNotification.templates.enableBusinessSucceeded', 'success']])
   } finally { current.close() }
 })
 
-test('menu disable turns off an enabled business without confirmation and reports failures without a success hint', async () => {
+test('explicit disable turns off an enabled business without confirmation and reports failures without a success hint', async () => {
   let directory = [{ id: 'actual-scope-id', provider: 'scene', name: 'Scene', state: 'enabled', channels: [] }]
   let fail = false
   const writes = []
@@ -1231,6 +1280,62 @@ test('read-only template users query independent templates without requesting al
   } finally { current.close() }
 })
 
+test('补齐站内信只保存当前类型的缺失渠道，写入失败可重试并保留模板草稿', async () => {
+  const definition = { channelProvider: 'inside-mail', name: '站内信', state: 'enabled' }
+  const email = { id: 'mail', channelProvider: 'notifier-email', state: 'disabled' }
+  const target = { id: 'scene-scope', provider: 'scene', name: '场景联动', state: 'enabled',
+    channels: [email], defaultSubscribed: false, defaultNotifyChannels: ['mail'] }
+  const writes = []
+  const current = await mountTemplatePage({ business: target.id }, () => true, {
+    queryInsideMailChannel: async () => definition,
+    queryTemplateDirectory: async () => structuredClone([target]),
+    getBusinessTemplate: async () => undefined,
+    saveBusinessChannel: async (id, value) => {
+      writes.push([id, structuredClone(value)])
+      if (writes.length === 1) throw { status: 403 }
+      target.channels.push({ ...value, providerId: id, id: 'inbox-id' })
+    },
+  })
+  try {
+    const { page } = current
+    assert.equal(page.canFillInsideMail.value, true)
+    page.startEditing()
+    page.draft.value.subject = '保留的主题草稿'
+    await page.fillInsideMail()
+    assert.equal(page.businessActionState.value, 'forbidden')
+    assert.equal(page.canFillInsideMail.value, true)
+    assert.deepEqual(current.messages, [])
+    await page.fillInsideMail()
+    assert.equal(page.businessActionState.value, 'ready')
+    assert.deepEqual(writes, [[target.id, definition], [target.id, definition]])
+    assert.deepEqual(page.business.value, target)
+    assert.equal(page.canFillInsideMail.value, false)
+    assert.equal(page.draft.value.subject, '保留的主题草稿')
+    assert.deepEqual(current.messages, [['messageNotification.templates.fillInsideMailSucceeded', 'success']])
+  } finally { current.close() }
+})
+
+test('补齐站内信重读后保留已有禁用渠道和默认站内信，编辑权限缺失时禁止写入', async () => {
+  const definition = { channelProvider: 'inside-mail', name: '站内信', state: 'enabled' }
+  for (const mode of ['disabled', 'default', 'add-only']) {
+    const target = { id: 'scene-scope', provider: 'scene', name: '场景联动', state: 'enabled', channels: [] }
+    const current = await mountTemplatePage({ business: target.id }, code => mode !== 'add-only' || !code.endsWith(':update'), {
+      queryInsideMailChannel: async () => definition,
+      queryTemplateDirectory: async () => structuredClone([target]),
+      getBusinessTemplate: async () => undefined,
+      saveBusinessChannel: async () => assert.fail('已有设置或无编辑权限时不得写入'),
+    })
+    try {
+      assert.equal(current.page.canFillInsideMail.value, mode !== 'add-only')
+      if (mode === 'disabled') target.channels.push({ ...definition, id: 'old-inbox', providerId: target.id, state: 'disabled' })
+      if (mode === 'default') target.defaultNotifyChannels = ['inside-mail']
+      await current.page.fillInsideMail()
+      assert.equal(current.page.canFillInsideMail.value, false)
+      assert.deepEqual(current.messages, [])
+    } finally { current.close() }
+  }
+})
+
 test('five business channels save single bindings, preserve states and receiver mapping, and use server IDs on repeat saves', async () => {
   const samples = [
     ['email:embedded', 'sendTo', {}],
@@ -1255,10 +1360,10 @@ test('five business channels save single bindings, preserve states and receiver 
       workspace.draft.value.subject = 'Subject'
       workspace.draft.value.text = 'Body'
       workspace.draft.value.templateJson = JSON.stringify(content)
-      assert.equal(workspace.channelEnabled.value, true)
       assert.equal(await workspace.saveTemplate(), true)
       const first = api.calls.find(call => call[0] === 'saveBusinessTemplate')
       assert.equal(first[1], 'scope-a')
+      assert.equal(first[3].channel.state, 'enabled')
       assert.equal(first[3].channel.channelConfiguration.notifierId, 'exact-config')
       assert.equal(first[3].template.configId, 'exact-config')
       assert.equal(first[3].template.id, undefined)
@@ -1267,17 +1372,17 @@ test('five business channels save single bindings, preserve states and receiver 
       assert.equal(first[3].channel.channels, undefined)
       assert.deepEqual(owner, before)
       assert.equal(workspace.draft.value.id, 'stpl_binding')
-      workspace.channelEnabled.value = false
+      workspace.draft.value.name = 'Discarded template name'
       assert.equal(workspace.dirty.value, true)
       await workspace.discardDraft()
-      assert.equal(workspace.channelEnabled.value, true)
+      assert.equal(workspace.draft.value.name, 'Business template')
       assert.equal(workspace.dirty.value, false)
-      workspace.channelEnabled.value = false
+      workspace.draft.value.name = 'Updated template name'
       assert.equal(await workspace.saveTemplate(), true)
       const second = api.calls.filter(call => call[0] === 'saveBusinessTemplate')[1][3]
       assert.equal(second.template.id, 'stpl_binding')
-      assert.equal(second.channel.state, 'disabled')
-      assert.equal(workspace.channelEnabled.value, false)
+      assert.equal(second.template.name, 'Updated template name')
+      assert.equal(second.channel.state, 'enabled')
       assert.equal(workspace.dirty.value, false)
       assert.equal(api.calls.some(call => ['createTemplate', 'updateTemplate', 'setBusinessEnabled'].includes(call[0])), false)
     } finally { scope.stop() }
@@ -1293,7 +1398,6 @@ test('business drafts survive channel, vendor and asset-scope switches, failed s
   try {
     const owner = { ...business(), id: 'scope-a', channels: [] }
     await workspace.loadBusiness(owner, 'email:embedded')
-    assert.equal(workspace.channelEnabled.value, false)
     workspace.draft.value.subject = 'Unsaved A'
     await workspace.loadBusiness({ ...owner, id: 'scope-b' }, 'email:embedded')
     assert.notEqual(workspace.draft.value.subject, 'Unsaved A')
@@ -1315,6 +1419,7 @@ test('business drafts survive channel, vendor and asset-scope switches, failed s
     assert.equal(await workspace.saveTemplate(), true)
     const payload = api.calls.find(call => call[0] === 'saveBusinessTemplate')[3]
     assert.equal(payload.template.id, 'old-independent')
+    assert.equal(payload.channel.state, 'disabled')
     assert.deepEqual(payload.channel.grant, original.grant)
     assert.equal(payload.channel.channelConfiguration.variables.custom, 'keep')
     assert.equal(original.channelConfiguration.templateId, 'old-independent')

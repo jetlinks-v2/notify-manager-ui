@@ -31,7 +31,7 @@ export function useTemplateDirectory(props: DirectoryProps, emit: DirectoryEvent
     const node = matches.find(item => item.key === currentNodeKey.value) || matches[0]
     return node ? [node.key] : []
   })
-  // 深链或渠道切换定位子模板时展开其祖先；普通展开操作不改变当前编辑对象。
+  // 深链或渠道切换定位业务 / 模板时展开所属分类；普通展开操作不改变当前编辑对象。
   watch([() => props.selectedId, tree], () => {
     const selected = selectedKeys.value[0]
     collapsedKeys.value = collapsedKeys.value.filter(key => {

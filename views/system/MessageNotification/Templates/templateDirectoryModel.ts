@@ -7,6 +7,7 @@ export interface TemplateDirectoryNode {
   kind: 'group' | 'business' | 'template'
   class?: string
   templateId?: string
+  hasTemplate?: boolean
   business?: NoticeChannelConfig
   searchText: string
   selectable: boolean
@@ -24,7 +25,7 @@ export function templateBusinessKey(item: NoticeChannelConfig, index = 0): strin
   return JSON.stringify(['business', item.type?.id || 'other', item.id || item.provider || item.providerId || index])
 }
 
-/** Bind only IDs returned by the business directory and visible in the current channel. */
+/** 目录仅保留分类和可选叶节点两级，模板绑定仍只采用当前渠道内的真实 ID。 */
 export function buildTemplateDirectory(
   templates: NotificationTemplate[], businessTypes: NoticeChannelConfig[],
   labels: { other: string }, translate: (key: string) => string,
@@ -39,11 +40,6 @@ export function buildTemplateDirectory(
       kind: 'group', class: 'template-directory__group', selectable: false, children: [],
     }]
   }))
-  const businesses = new Map<string, { node: TemplateDirectoryNode; provider: string }[]>()
-  const templateNode = (item: NotificationTemplate, key = item.id): TemplateDirectoryNode => ({
-    key, title: item.name, kind: 'template', templateId: item.id,
-    searchText: `${item.name} ${item.id}`, selectable: true,
-  })
   businessTypes.forEach((item, index) => {
     const provider = item.provider || item.providerId || item.id || ''
     const groupId = businessDisplayGroups.get(provider) || item.type?.id || 'other'
@@ -53,10 +49,9 @@ export function buildTemplateDirectory(
     const ids = [...new Set((item.channels || []).map(channel => channel.channelConfiguration?.templateId)
       .filter((id): id is string => Boolean(id && templateMap.has(id))))]
     const node: TemplateDirectoryNode = {
-      key, title, kind: 'business', business: item, templateId: ids.length === 1 ? ids[0] : undefined,
+      key, title, kind: 'business', business: item, templateId: ids.length === 1 ? ids[0] : undefined, hasTemplate: ids.length > 0,
       searchText: [title, provider, ...ids.map(id => `${templateMap.get(id)!.name} ${id}`)].join(' '),
       selectable: true,
-      children: ids.length > 1 ? ids.map(id => templateNode(templateMap.get(id)!, JSON.stringify([key, id]))) : undefined,
     }
     const group = groups.get(groupId) || {
       key: JSON.stringify(['group', groupId]), title: item.type?.name || labels.other,
@@ -64,19 +59,15 @@ export function buildTemplateDirectory(
       searchText: item.type?.name || labels.other, selectable: false, children: [],
     }
     group.children!.push(node)
+    // 多绑定模板与业务并列，保留旧节点 key 和选择入口；标题补上业务上下文以区分同名模板。
+    if (ids.length > 1) group.children!.push(...ids.map((id): TemplateDirectoryNode => {
+      const template = templateMap.get(id)!
+      return {
+        key: JSON.stringify([key, id]), title: `${title} · ${template.name}`, kind: 'template', templateId: id,
+        searchText: `${title} ${provider} ${template.name} ${id}`, selectable: true,
+      }
+    }))
     groups.set(groupId, group)
-    const siblings = businesses.get(groupId) || []
-    siblings.push({ node, provider })
-    businesses.set(groupId, siblings)
-  })
-  // 原型把告警解除缩进到设备告警下；这只是已知业务的展示关系，不合并 ID、草稿或保存。
-  businesses.forEach((siblings, groupId) => {
-    const parent = siblings.find(item => item.provider === 'alarm-device')?.node
-    const children = siblings.filter(item => item.provider === 'alarm-device-relieve').map(item => item.node)
-    if (parent && children.length) {
-      parent.children = [...(parent.children || []), ...children]
-      groups.get(groupId)!.children = groups.get(groupId)!.children!.filter(node => !children.includes(node))
-    }
   })
   return [...groups.values()].filter(group => group.children?.length)
 }

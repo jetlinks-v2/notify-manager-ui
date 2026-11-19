@@ -48,7 +48,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
       ? candidate : undefined
   })
   const draft = computed(() => entry.value?.draft)
-  const entryDirty = (item: TemplateDraftEntry) => item.baseline !== templateDraftFingerprint(item.draft) || item.enabled !== item.baselineEnabled
+  const entryDirty = (item: TemplateDraftEntry) => item.baseline !== templateDraftFingerprint(item.draft)
   const dirty = computed(() => Boolean(entry.value && entryDirty(entry.value)))
   const hasDirtyDrafts = computed(() => [...drafts.values()].some(entryDirty))
   const saveOutcomeUnknown = computed(() => Boolean(business.value && uncertainBusinesses.has(businessIdentity(business.value))))
@@ -70,10 +70,6 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
   const canSave = computed(() => Boolean(access.query.value && detailState.value === 'ready' && entry.value && !saveOutcomeUnknown.value
     && (entry.value.existing ? access.update.value : access.add.value)
     && configState.value === 'ready' && configs.value.some(config => config.id === draft.value?.configId)))
-  const channelEnabled = computed({ get: () => entry.value?.enabled ?? true, set: value => {
-    if (business.value && entry.value && canSave.value && !saving.value) entry.value.enabled = value
-  } })
-
   /** Build the dynamic directory and shared config snapshot without touching in-memory drafts. */
   async function loadCatalog() {
     await Promise.all([catalog.loadCatalog(), catalog.loadConfigs()])
@@ -106,13 +102,13 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     if (channelId.value === id) { templates.value = templateLists.get(id) || []; listState.value = 'loading' }
     templateListStates.set(id, 'loading')
     const request = api.queryTemplates(withNotificationChannel({ paging: false }, channel)).then(result => {
-      if (epoch !== listEpoch || !access.query.value) return
+      if (epoch !== listEpoch || templateListRequests.get(id) !== request || !access.query.value) return
       const records = result.data.filter(value => notificationEnumValue(value.type) === channel.type && notificationEnumValue(value.provider) === channel.provider)
       const state = records.length ? 'ready' : 'empty'
       templateLists.set(id, records); templateListStates.set(id, state)
       if (channelId.value === id) { templates.value = records; listState.value = state }
     }).catch(error => {
-      if (epoch !== listEpoch) return
+      if (epoch !== listEpoch || templateListRequests.get(id) !== request) return
       const state = classifyNotificationFailure(error)
       templateListStates.set(id, state)
       if (channelId.value === id) listState.value = state
@@ -137,6 +133,17 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     selectDraftConfig(entry.value)
   }
 
+  /** A new binding invalidates only previously unbound, untouched drafts for its channel. */
+  function refreshUnboundTemplates(id: string) {
+    if (channelId.value === id) ++detailRevision
+    for (const [key, item] of drafts) {
+      if (item.businessIdentity && !item.existing && !entryDirty(item)
+        && `${item.draft.type}:${item.draft.provider}` === id) drafts.delete(key)
+    }
+    templateListStates.delete(id)
+    templateListRequests.delete(id)
+  }
+
   /** Cache variables by actual topic identity; a rejected request is never an empty successful schema. */
   function loadBusinessVariables(selected: NoticeChannelConfig): Promise<NotificationVariable[]> {
     if (!selected.id) return Promise.resolve([])
@@ -156,8 +163,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
 
   /** A baseline is a value snapshot, so cancelling preserves a real template or its unsaved prototype. */
   function draftEntry(value: TemplateDraft, existing: boolean, rest: Partial<TemplateDraftEntry> = {}): TemplateDraftEntry {
-    const enabled = rest.businessIdentity ? (typeof rest.channel?.state === 'string' ? rest.channel.state : rest.channel?.state?.value) !== 'disabled' : undefined
-    return { draft: value, baseline: templateDraftFingerprint(value), baselineDraft: cloneNotificationValue(value), existing, enabled, baselineEnabled: enabled, ...rest }
+    return { draft: value, baseline: templateDraftFingerprint(value), baselineDraft: cloneNotificationValue(value), existing, ...rest }
   }
 
   /** Query the one backend channel before applying a prototype for a verified absence of stored content. */
@@ -297,7 +303,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
 
   /** Apply only a verified successful response; preserve text entered while the request was pending. */
   function applySavedBusiness(current: TemplateDraftEntry, item: NoticeChannelTemplateItem, submitted: string,
-    selected = business.value, channel = currentChannel.value, submittedEnabled = current.enabled) {
+    selected = business.value, channel = currentChannel.value) {
     if (!selected || !channel) throw new NotificationRequestError('error', item)
     const stored = readBusinessTemplate(selected, channel, item)
     if (!stored.template) throw new NotificationRequestError('error', item)
@@ -307,8 +313,6 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     current.baselineDraft = cloneNotificationValue(savedDraft)
     current.baseline = templateDraftFingerprint(savedDraft)
     current.existing = true
-    current.baselineEnabled = (typeof item.channel.state === 'string' ? item.channel.state : item.channel.state?.value) !== 'disabled'
-    if (current.enabled === submittedEnabled) current.enabled = current.baselineEnabled
     current.channel = cloneNotificationValue(item.channel)
     ++listEpoch
     templateListRequests.clear()
@@ -329,37 +333,39 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     for (const other of drafts.values()) {
       if (other === current || other.businessIdentity !== current.businessIdentity || other.draft.type !== channel.type) continue
       other.channel = cloneNotificationValue(item.channel)
-      if (other.enabled === other.baselineEnabled) other.enabled = current.baselineEnabled
-      other.baselineEnabled = current.baselineEnabled
       other.existing = false
       other.draft.id = ''; other.baselineDraft.id = ''
       other.baseline = templateDraftFingerprint(other.baselineDraft)
     }
   }
 
-  /** Existing topics use the single-channel transaction; first save creates one enabled topic so personal subscriptions become available immediately. */
-  async function saveBusiness(current: TemplateDraftEntry, payload: ReturnType<typeof buildTemplatePayload>, fingerprint: string) {
+  /** First save includes the supported built-in channel alongside the edited template. */
+  async function saveBusiness(current: TemplateDraftEntry, payload: ReturnType<typeof buildTemplatePayload>, fingerprint: string,
+    insideMail?: NoticeChannelConfig) {
     const selected = business.value
     const channel = currentChannel.value
     if (!selected?.provider || !channel) throw new NotificationRequestError('error')
     const item = buildBusinessTemplateItem(selected, channel, current, payload)
-    const submittedEnabled = current.enabled
     if (selected.id) {
       const saved = await api.saveBusinessTemplate(selected.id, channelProviderFor(channel), item)
       if (!readBusinessTemplate(selected, channel, saved).template) throw new NotificationRequestError('error', saved)
       const updated = mergeSavedBusiness(selected, saved.channel)
       resetBusinessIdentity(updated, selected)
-      applySavedBusiness(current, saved, fingerprint, updated, channel, submittedEnabled)
+      applySavedBusiness(current, saved, fingerprint, updated, channel)
     } else {
       const response = await api.saveBusinessTemplates(selected.provider, {
-        provider: { ...cloneNotificationValue(selected), id: undefined, channels: undefined, state: 'enabled' }, channels: [item],
+        provider: { ...cloneNotificationValue(selected), id: undefined, channels: undefined, state: 'enabled' },
+        channels: insideMail ? [item, { channel: insideMail }] : [item],
       })
       const saved = response.channels.find(value => value.channel.channelProvider === channelProviderFor(channel))
       if (!response.provider?.id || !saved?.template) throw new NotificationRequestError('error', response)
-      const updated = mergeSavedBusiness(selected, saved.channel, response.provider)
+      const updated = response.channels.reduce<NoticeChannelConfig>(
+        (business, { channel }) => mergeSavedBusiness(business, channel),
+        { ...cloneNotificationValue(selected), ...response.provider, channels: selected.channels },
+      )
       if (!readBusinessTemplate(updated, channel, saved).template) throw new NotificationRequestError('error', response)
       resetBusinessIdentity(updated, selected)
-      applySavedBusiness(current, saved, fingerprint, updated, channel, submittedEnabled)
+      applySavedBusiness(current, saved, fingerprint, updated, channel)
     }
   }
 
@@ -374,8 +380,15 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     const revision = detailRevision
     saving.value = true
     saveState.value = 'loading'
+    let writing = false
     try {
-      if (business.value) await saveBusiness(current, payload, fingerprint)
+      const insideMail = firstBusiness ? await api.queryInsideMailChannel() : undefined
+      if (firstBusiness && (revision !== detailRevision || !canSave.value)) {
+        if (revision === detailRevision) saveState.value = 'idle'
+        return false
+      }
+      writing = true
+      if (business.value) await saveBusiness(current, payload, fingerprint, insideMail)
       else {
         if (current.existing && payload.id) await api.updateTemplate({ ...payload, id: payload.id })
         else await api.createTemplate(payload)
@@ -388,7 +401,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
       if (revision === detailRevision) saveState.value = 'ready'
       return true
     } catch (error) {
-      if (firstBusiness && !hasDefiniteSaveRejection(error)) uncertainBusinesses.add(firstBusiness)
+      if (firstBusiness && writing && !hasDefiniteSaveRejection(error)) uncertainBusinesses.add(firstBusiness)
       if (revision === detailRevision) saveState.value = classifyNotificationFailure(error)
       return false
     }
@@ -428,10 +441,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
   async function discardDraft() {
     const current = entry.value
     if (!current) return
-    if (business.value || current.existing) {
-      current.draft = cloneNotificationValue(current.baselineDraft)
-      current.enabled = current.baselineEnabled
-    }
+    if (business.value || current.existing) current.draft = cloneNotificationValue(current.baselineDraft)
     else { drafts.delete(activeKey.value); activeKey.value = ''; detailState.value = 'idle' }
   }
 
@@ -453,6 +463,6 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
   return { channelId, currentChannel, channels, catalogState, metadata, metadataState, business, templates,
     configs, listState, configState, channelConfigurationStates, detailState, saveState, activeKey, draft, dirty, hasDirtyDrafts, saving,
     canSave, entry, isDefault, hasContent, availableVariables, canRestoreDefault, saveOutcomeUnknown, loadCatalog, reloadCatalog, loadBusiness, loadChannel,
-    selectTemplate, refreshConfigs, createTemplate, saveTemplate, discardDraft, discardBusinessDrafts,
-    restoreDefault, resetBusinessIdentity, channelEnabled, importTemplate }
+    selectTemplate, refreshConfigs, refreshUnboundTemplates, createTemplate, saveTemplate, discardDraft, discardBusinessDrafts,
+    restoreDefault, resetBusinessIdentity, importTemplate }
 }

@@ -393,6 +393,33 @@ test('business template endpoints encode opaque record IDs and save only the sel
   await assert.rejects(api.saveBusinessTemplate('scope/id', 'notifier-email', payload))
 })
 
+test('built-in inbox discovery and repair use channel APIs without a template payload', async () => {
+  response.result = [{ id: 'notifier-email', name: '邮件' }]
+  assert.equal(await api.queryInsideMailChannel(), undefined)
+  response.result.push({ id: 'inside-mail', name: '站内信' })
+  const channel = await api.queryInsideMailChannel()
+  assert.deepEqual(channel, { channelProvider: 'inside-mail', name: '站内信', state: 'enabled' })
+  await api.saveBusinessChannel('scope/id', channel)
+  assert.deepEqual(calls.map(({ method, url }) => [method, url]), [
+    ['get', '/notify/channel/providers'], ['get', '/notify/channel/providers'], ['patch', '/notify/channel/scope%2Fid'],
+  ])
+  assert.deepEqual(calls.at(-1).data, [channel])
+})
+
+test('first-save response requires the enabled inbox binding and preserves external template validation', async () => {
+  const inbox = { channel: { channelProvider: 'inside-mail', state: 'enabled' } }
+  const request = { provider: { provider: 'scene', state: 'enabled' }, channels: [inbox] }
+  const saved = { channel: { ...inbox.channel, providerId: 'scope-id', id: 'inbox-id', state: { value: 'enabled' } }, template: null }
+  response.result = { provider: { id: 'scope-id' }, channels: [saved] }
+  assert.deepEqual(await api.saveBusinessTemplates('scene', request), response.result)
+  for (const channels of [[], [{ ...saved, channel: { ...saved.channel, state: 'disabled' } }],
+    [{ ...saved, channel: { ...saved.channel, providerId: 'another-scope' } }],
+    [saved, { channel: { channelProvider: 'notifier-email' }, template: null }]]) {
+    response.result = { provider: { id: 'scope-id' }, channels }
+    await assert.rejects(api.saveBusinessTemplates('scene', request), { kind: 'error' })
+  }
+})
+
 test('optional credential policy supports absent legacy values, replacement, retention and explicit clearing', () => {
   const baseline = { id: 'custom-one', name: 'Custom', type: 'extension', provider: 'custom', configuration: { token: 'saved-token', extra: 1 } }
   const fields = ['token']
