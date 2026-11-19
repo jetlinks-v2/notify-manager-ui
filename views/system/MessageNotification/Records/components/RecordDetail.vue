@@ -5,7 +5,10 @@
     @update:open="emit('update:open', $event)" @after-open-change="afterOpenChange"
   >
     <template #head><b class="record-detail__title" :title="record?.notifyMessage">{{ record?.notifyMessage || t('messageNotification.records.detail.title') }}</b></template>
-    <template #head-extra><a-tag v-if="record?.state" :color="notificationEnumValue(record.state) === 'error' ? 'error' : notificationEnumValue(record.state) === 'success' ? 'success' : 'default'">{{ historyStateLabel(record.state, t) }}</a-tag></template>
+    <template #head-extra>
+      <a-tag v-if="record?.state" :color="notificationEnumValue(record.state) === 'error' ? 'error' : notificationEnumValue(record.state) === 'success' ? 'success' : 'default'">{{ historyStateLabel(record.state, t) }}</a-tag>
+      <DocumentHelp v-if="record" code="system/MessageNotification/Records" help-key="record.state" />
+    </template>
     <template v-if="record">
       <KvGrid class="record-detail__summary" :cols="2" :gap="16">
         <div v-for="item in summary" :key="item.key" class="kv-cell">
@@ -33,6 +36,7 @@
 </template>
 
 <script setup lang="ts">
+import DocumentHelp from '@jetlinks-web-core/components/DocumentHelp'
 import { toRef, type PropType } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { notificationEnumValue, type NotificationHistory } from '../../shared'

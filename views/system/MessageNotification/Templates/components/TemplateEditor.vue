@@ -13,7 +13,8 @@
       <a-textarea v-model:value="draft.description" :rows="2" />
     </a-form-item>
     <p class="template-editor__intro">{{ t('messageNotification.templates.visual.contentOnlyHint') }}</p>
-    <a-form-item v-if="needsConfiguration" :label="t('messageNotification.templates.configuration')" required>
+    <a-form-item v-if="needsConfiguration" required>
+      <template #label>{{ t('messageNotification.templates.configuration') }} <DocumentHelp code="system/MessageNotification/Templates" help-key="template.configuration" /></template>
       <a-select v-model:value="draft.configId" :options="configOptions" :placeholder="t('messageNotification.templates.configPlaceholder')" />
       <a-alert v-if="configFailure" type="warning" show-icon :message="t(`messageNotification.templates.${configState}`)" />
       <div v-else-if="configState === 'empty'" class="template-editor__hint">{{ t('messageNotification.templates.noConfig') }}</div>
@@ -50,6 +51,7 @@
 </template>
 
 <script setup lang="ts">
+import DocumentHelp from '@jetlinks-web-core/components/DocumentHelp'
 import { computed, type Component, type PropType } from 'vue'
 import type { NotificationConfigMetadata, NotificationLoadState, NotificationVariable, NotifierConfig } from '../../shared'
 import type { TemplateDraft } from '../model'

@@ -2,6 +2,7 @@ import { getModuleRoutesMap } from '@jetlinks-web/utils'
 import { moduleRegistry } from '@jetlinks-web-core/utils/module-registry'
 import registerSetting from './register'
 import { name } from './package.json'
+import { registerNotificationHelpPoints } from './documentHelpPoints'
 
 const routerModules = import.meta.glob('./views/**/index.vue')
 
@@ -18,6 +19,7 @@ const getContentPanelOverrides = () => ({})
 
 const register = () => {
   moduleRegistry.register(name, registerSetting)
+  registerNotificationHelpPoints()
 }
 
 export default {

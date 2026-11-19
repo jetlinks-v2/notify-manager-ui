@@ -5,7 +5,7 @@
       <a-input :value="settings[field.key]" :disabled="disabled" :aria-label="t(`messageNotification.channelTest.fields.${field.key}`)" @update:value="update(field.key, $event)" />
     </div>
     <div class="channel-test-settings__field">
-      <label>{{ t('messageNotification.channelTest.fields.parameters') }}</label>
+      <label>{{ t('messageNotification.channelTest.fields.parameters') }} <DocumentHelp code="system/MessageNotification/Channels" help-key="channel.testParameters" /></label>
       <span class="channel-test-settings__hint">{{ t('messageNotification.channelTest.settings.parametersHint') }}</span>
       <div v-for="(row, index) in rows" :key="index" class="channel-test-settings__parameter">
         <a-input :value="row.name" :disabled="disabled" :aria-label="t('messageNotification.channelTest.settings.parameterName')" :placeholder="t('messageNotification.channelTest.settings.parameterName')" @update:value="updateParameter(index, 'name', $event)" />
@@ -18,6 +18,7 @@
 </template>
 
 <script setup lang="ts">
+import DocumentHelp from '@jetlinks-web-core/components/DocumentHelp'
 import { useChannelTestSettings } from './useChannelTestSettings'
 import type { ChannelTestSettings } from './channelTestConfig'
 const props = defineProps<{ channelId: string; value?: unknown; disabled?: boolean }>()

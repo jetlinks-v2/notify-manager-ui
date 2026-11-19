@@ -17,6 +17,9 @@ const cache = new Map()
 const locale = { useI18n: () => ({ t: (key, args) => args?.name ? `Example ${args.name}` : key }) }
 const dependencies = {
   vue, 'vue-i18n': locale,
+  '@jetlinks-web-core/components/DocumentHelp': { __esModule: true, default: vue.defineComponent({
+    props: ['code', 'helpKey'], setup: props => () => vue.h('span', { 'data-help-code': props.code, 'data-help-key': props.helpKey }),
+  }) },
   '@jetlinks-web/core': { request: {} },
   '@jetlinks-web-core/hooks/useNotificationConfigNavigation': { useNotificationConfigNavigation: () => ({ available: vue.ref(true), open() {} }) },
   '@jetlinks-web-core/components/Upload/utils': { getFileName: file => file.name },

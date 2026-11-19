@@ -33,6 +33,9 @@ function load(filename) {
   const module = { exports: {} }
   const imports = name => {
     if (name === 'vue') return vue
+    if (name === '@jetlinks-web-core/components/DocumentHelp') return { __esModule: true, default: vue.defineComponent({
+      props: ['code', 'helpKey'], setup: props => () => vue.h('span', { 'data-help-code': props.code, 'data-help-key': props.helpKey }),
+    }) }
     if (name === 'vue-i18n') return { useI18n: () => ({ t }) }
     if (name === 'vue-router') return {
       useRoute: () => io.route,
