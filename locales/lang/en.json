@@ -624,6 +624,7 @@
   "messageNotification.records.field.creatorId": "Creator ID",
   "messageNotification.records.field.description": "Description",
   "messageNotification.records.detail.title": "Details",
+  "messageNotification.records.emailTemplateFieldsRequired": "Incomplete email template: the recipient, message body, and subject are all required.",
   "messageNotification.records.detail.failureReason": "Failure reason",
   "messageNotification.records.detail.messageTemplate": "Message template",
   "messageNotification.records.detail.unreported": "Not reported",

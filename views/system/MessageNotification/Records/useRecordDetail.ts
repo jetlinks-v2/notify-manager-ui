@@ -5,7 +5,7 @@ import { useMenuStore } from '@jetlinks-web-core/store/menu'
 import { messageNotificationApi } from '../../../../api/notice/messageNotification'
 import { notificationEnumValue, notificationNavigationTarget, notificationPermissions, resolveNotificationChannel, type NotificationHistory } from '../shared'
 import { sanitizeEmailPreview } from '../Templates/definition/emailTemplateContent'
-import { historyChannelIcon, historyChannelLabel, historyTime } from './presentation'
+import { historyChannelIcon, historyChannelLabel, historyErrorMessage, historyTime } from './presentation'
 
 /** Own the saved-detail presentation and transition focus, leaving the component to render and delegate. */
 export function useRecordDetail(record: Ref<NotificationHistory | undefined>, open: Ref<boolean>, closed: () => void) {
@@ -51,7 +51,7 @@ export function useRecordDetail(record: Ref<NotificationHistory | undefined>, op
     if (notificationEnumValue(record.value?.state) === 'error') {
       sections.push({
         key: 'errorMessage', label: t('messageNotification.records.detail.failureReason'),
-        content: record.value?.errorMessage || record.value?.errorType || t('messageNotification.records.detail.unreported'),
+        content: historyErrorMessage(record.value, t) || record.value?.errorType || t('messageNotification.records.detail.unreported'),
       })
     }
     return sections

@@ -93,6 +93,7 @@ const { createNotificationRecordsController, useNotificationRecords } = load(res
 const shared = load(resolve(root, 'views/system/MessageNotification/shared/index.ts'))
 const codec = load(resolve(coreRoot, 'components/ConditionFilter/utils.ts'))
 const fields = presentation.historyFilterFields(t)
+const emailTemplateError = '模板内容错误，sendTo, text 或者 subject 不能为空.'
 const fixture = (id, state = 'success') => ({
   id, notifierId: 'smtp-one', templateId: 'template-old', notifyType: 'email', provider: 'embedded', state,
   notifyTime: 1730000000000, receiver: ['user@example.org'], notifyMessage: `Saved ${id}`,
@@ -241,6 +242,18 @@ test('record table replaces blank and standalone dash values with contextual lab
     stateLabel: 'messageNotification.records.state.error', message: { text: 'Reading -2' },
   })
   assert.equal(historyTableCells({ ...reported, errorMessage: 'SMTP-TIMEOUT - relay' }, t).reason, 'SMTP-TIMEOUT - relay')
+})
+
+test('only the known email template failure is displayed with localized field names', () => {
+  const zh = JSON.parse(readFileSync(resolve(root, 'locales/lang/zh.json'), 'utf8'))
+  const translate = key => zh[key] ?? key
+  const row = { ...fixture('mail', 'error'), errorMessage: emailTemplateError }
+  const reason = record => presentation.historyTableCells(record, translate).reason
+  assert.equal(reason(row), '邮件模板不完整：收件人、邮件正文和邮件标题均不能为空。')
+  assert.equal(row.errorMessage, emailTemplateError)
+  assert.equal(reason({ ...row, notifyType: 'webhook' }), emailTemplateError)
+  const diagnostic = 'SMTP rejected subject or text for sendTo@example.org'
+  assert.equal(reason({ ...row, errorMessage: diagnostic }), diagnostic)
 })
 
 test('the selected detail is an isolated snapshot and permission revocation closes it', async () => {
@@ -405,6 +418,7 @@ test('real detail renders requested fields and failure reasons only for failed r
   ])
   assert.deepEqual(walk(mounted.rootNode, node => node.type === 'h3').map(node => node.text), ['messageNotification.records.field.notifyMessage'])
   for (const [record, reason] of [
+    [{ state: 'error', notifyType: { value: 'email', text: '邮件' }, errorMessage: emailTemplateError }, 'messageNotification.records.emailTemplateFieldsRequired'],
     [{ state: 'error', errorMessage: 'Provider rejected\nCheck recipient', errorType: 'providerError' }, 'Provider rejected\nCheck recipient'],
     [{ state: { value: 'error', text: '发送失败' }, errorType: 'timeout' }, 'timeout'],
     [{ state: 'error' }, 'messageNotification.records.detail.unreported'],

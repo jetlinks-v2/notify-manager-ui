@@ -624,6 +624,7 @@
   "messageNotification.records.field.creatorId": "作成者 ID",
   "messageNotification.records.field.description": "説明",
   "messageNotification.records.detail.title": "詳細",
+  "messageNotification.records.emailTemplateFieldsRequired": "メールテンプレートの宛先、本文、件名はすべて必須です。",
   "messageNotification.records.detail.failureReason": "失敗理由",
   "messageNotification.records.detail.messageTemplate": "メッセージテンプレート",
   "messageNotification.records.detail.unreported": "未報告",

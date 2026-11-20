@@ -624,6 +624,7 @@
   "messageNotification.records.field.creatorId": "创建者 ID",
   "messageNotification.records.field.description": "说明",
   "messageNotification.records.detail.title": "详情",
+  "messageNotification.records.emailTemplateFieldsRequired": "邮件模板不完整：收件人、邮件正文和邮件标题均不能为空。",
   "messageNotification.records.detail.failureReason": "失败原因",
   "messageNotification.records.detail.messageTemplate": "消息模板",
   "messageNotification.records.detail.unreported": "未上报",

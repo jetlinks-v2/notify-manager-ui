@@ -47,6 +47,15 @@ function reportedEnum(value?: NotificationEnum): NotificationEnum | undefined {
   return reportedText(value)
 }
 
+/** 邮件通知器对这项校验只返回固定消息，没有单独的错误码。 */
+export function historyErrorMessage(row: NotificationHistory | undefined, t: Translate): string | undefined {
+  const message = row?.errorMessage
+  if (notificationEnumValue(row?.notifyType) === 'email' && message?.trim() === '模板内容错误，sendTo, text 或者 subject 不能为空.') {
+    return t('messageNotification.records.emailTemplateFieldsRequired')
+  }
+  return message
+}
+
 function historyTableMessage(
   value: string | undefined,
   type: NotificationEnum | undefined,
@@ -70,7 +79,7 @@ export function historyTableCells(row: NotificationHistory, t: Translate) {
     channel: reportedText(historyChannelLabel(type, provider, t)) ?? t('comm.table.empty'),
     channelIcon: historyChannelIcon(type),
     receiver: row.receiver?.map(reportedText).filter(Boolean).join(', ') || t('messageNotification.records.receiverUnspecified'),
-    reason: reportedText(row.errorMessage) ?? reportedText(row.errorType) ?? t('messageNotification.records.noException'),
+    reason: reportedText(historyErrorMessage(row, t)) ?? reportedText(row.errorType) ?? t('messageNotification.records.noException'),
     state: notificationEnumValue(state),
     stateLabel: reportedText(historyStateLabel(state, t)) ?? t('comm.table.empty-2'),
     message: historyTableMessage(row.notifyMessage, type, t),
