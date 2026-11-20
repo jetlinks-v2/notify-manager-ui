@@ -19,29 +19,25 @@ const initialValues = {
   agentId: '', message: '${message}', messageType: 'markdown', title: '${topic}', messageUrl: '',
 }
 export type TemplateSetupValues = typeof initialValues
-export type TemplateSetupKey = keyof TemplateSetupValues
+export type TemplateSetupKey = 'agentId' | 'messageType' | 'messageUrl'
 
 export interface TemplateSetupField {
   key: TemplateSetupKey
   labelKey: string
-  editor?: 'textarea' | 'select' | 'custom'
+  editor?: 'select' | 'custom'
   maxLength?: number
 }
 
-const messageField: TemplateSetupField = { key: 'message', labelKey: 'messageNotification.templates.visual.body', editor: 'textarea' }
 export const templateSetupMessageTypes = robotMessageTypeOptions.map(option => ({ value: String(option.value), label: option.label || String(option.value) }))
 
+/** 返回渠道表单需要用户填写的模板参数。 */
 export function templateSetupFields(channel: string, values: TemplateSetupValues): TemplateSetupField[] {
   switch (channel) {
     case wechatCorpChannel:
       return [{ key: 'agentId', labelKey: 'NoticeCenter.template.field.agentId', editor: 'custom', maxLength: 19 }]
     case dingTalkRobotChannel: {
       const fields: TemplateSetupField[] = [{ key: 'messageType', labelKey: 'NoticeCenter.template.field.messageType', editor: 'select' }]
-      if (values.messageType === 'markdown' || values.messageType === 'link') {
-        fields.push({ key: 'title', labelKey: 'NoticeCenter.template.field.title' })
-      }
       if (values.messageType === 'link') fields.push({ key: 'messageUrl', labelKey: 'NoticeCenter.template.field.messageUrl' })
-      fields.push(messageField)
       return fields
     }
     default:
@@ -53,7 +49,7 @@ export function savedTemplateDefaults(value: unknown): NotificationObject {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as NotificationObject : {}
 }
 
-/** Only declared template fields participate in the save and read-back comparison. */
+/** 读取可编辑的模板参数，群机器人标题和正文始终使用通用通知变量。 */
 export function readTemplateSetup(channel: string, configuration?: NotificationObject): TemplateSetupValues {
   const stored = savedTemplateDefaults(configuration?.[channelTemplateDefaultsKey])
   const values = { ...initialValues }

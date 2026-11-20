@@ -60,9 +60,9 @@ export function hasEmailBodyContent(value: string): boolean {
   })
 }
 
-/** 预览只在变量替换后净化；未解析的图片变量不产生请求，也不改动保存的模板。 */
-export function sanitizeEmailPreview(value: string): string {
-  if (!DOMPurify.isSupported) return escapeEmailText(value)
+/** 净化已解析的邮件正文和图片地址，供模板与历史记录预览使用。 */
+function sanitizeEmailBody(value: string): HTMLDivElement | undefined {
+  if (!DOMPurify.isSupported) return undefined
   const fragment = DOMPurify.sanitize(toEmailBodyHtml(value), {
     ALLOWED_TAGS: ['a', 'b', 'blockquote', 'br', 'code', 'del', 'div', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'i',
       'img', 'li', 'ol', 'p', 'pre', 's', 'span', 'strike', 'strong', 'sub', 'sup', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'u', 'ul'],
@@ -82,5 +82,29 @@ export function sanitizeEmailPreview(value: string): string {
   }
   const container = fragment.ownerDocument.createElement('div')
   container.append(fragment)
-  return container.innerHTML
+  return container
+}
+
+/** 完整预览保留段落与通过净化的链接和图片。 */
+export function sanitizeEmailPreview(value: string): string {
+  return sanitizeEmailBody(value)?.innerHTML ?? escapeEmailText(value)
+}
+
+/** 将邮件正文转为表格按钮可承载的行内 HTML 和悬浮文本。 */
+export function formatEmailListPreview(value: string) {
+  const toSingleLine = (text: string) => text.replace(/\s+/g, ' ').trim()
+  const body = sanitizeEmailBody(value)
+  if (!body) {
+    const text = toSingleLine(value)
+    return { html: escapeEmailText(text), text }
+  }
+
+  // 表格按钮以链接文字和图片替代文本预览，避免嵌套交互或批量加载邮件图片。
+  for (const image of Array.from(body.querySelectorAll('img'))) image.replaceWith(' ', image.getAttribute('alt') ?? '', ' ')
+  for (const link of Array.from(body.querySelectorAll('a'))) link.replaceWith(...Array.from(link.childNodes))
+  const blocks = body.querySelectorAll('blockquote, br, div, h1, h2, h3, h4, h5, h6, hr, li, ol, p, pre, table, tbody, td, th, thead, tr, ul')
+  for (const block of Array.from(blocks)) block.replaceWith(' ', ...Array.from(block.childNodes), ' ')
+
+  const text = toSingleLine(body.textContent ?? '')
+  return { html: text ? body.innerHTML.trim() : '', text }
 }

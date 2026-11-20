@@ -23,7 +23,7 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
   const bindings = shallowRef<WechatMemberBinding[]>([])
   const assignments = reactive(new Map<string, string>())
   const manual = reactive(new Set<string>())
-  const filterTerms = ref<MemberFilterTerm[]>(withMemberStatus([], 'unbound'))
+  const filterTerms = ref<MemberFilterTerm[]>([])
   const statusFilter = computed({ get: () => memberStatusFilter(filterTerms.value), set: (value: MemberStatusFilter) => { filterTerms.value = withMemberStatus(filterTerms.value, value) } })
   const matchCount = ref<number | undefined>()
   let context: MemberContext | undefined
@@ -141,8 +141,8 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
     if (!reuse) close(true)
     context = next
     configId.value = next.configId
+    filterTerms.value = []
     open.value = true
-    filterTerms.value = withMemberStatus([], 'unbound')
     if (!allowed()) { state.value = 'forbidden'; return }
     if (!reuse) await reload()
   }

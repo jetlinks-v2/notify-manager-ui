@@ -1,16 +1,25 @@
 import { computed, ref, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { messageNotificationApi, type MessageNotificationApi } from '../../../../../api/notice/messageNotification'
-import { classifyNotificationFailure, notificationFailureMessage } from '../../../../../api/notice/messageNotificationState'
+import { queryDingTalkCorpUsers_api, type NoticeCorpUser } from '../../../../../api/notice-center'
+import { checked, messageNotificationApi, type MessageNotificationApi } from '../../../../../api/notice/messageNotification'
+import { classifyNotificationFailure, notificationFailureMessage, NotificationRequestError } from '../../../../../api/notice/messageNotificationState'
+import { wechatMemberApi } from '../../../../../api/notice/wechatMembers'
 import { cloneNotificationValue, notificationEnumValue, type NotificationLoadState, type NotifierConfig } from '../../shared'
+import { wechatCorpChannel } from '../wechat/templateDefaults'
 import { buildChannelTest, channelTestAdapters, configChannelId, fixedTestTarget, testRecipientIssue } from './channelTestAdapter'
 import { readTestSettings, testText } from './channelTestConfig'
 
 interface ChannelTestContext { config: NotifierConfig; channelName: string; systemName: string; permitted: () => boolean; clean: () => boolean }
 type ChannelTestApi = Pick<MessageNotificationApi, 'sendInline' | 'getCurrentEmail' | 'getCurrentPhone' | 'getCurrentBindings'>
+type MemberOption = { label: string; value: string }
+type MemberQueries = Partial<Record<string, (configId: string) => Promise<Pick<NoticeCorpUser, 'id' | 'name'>[]>>>
+const channelMemberQueries: MemberQueries = {
+  'dingTalk:dingTalkMessage': configId => checked(queryDingTalkCorpUsers_api(configId)),
+  [wechatCorpChannel]: configId => wechatMemberApi.members(configId, { hiddenError: true }),
+}
 
-/** One modal lifecycle owns all trials; closing invalidates identity reads and send completions. */
-export function useChannelTest(api: ChannelTestApi = messageNotificationApi) {
+/** Closing the test invalidates its recipient queries and pending send completion. */
+export function useChannelTest(api: ChannelTestApi = messageNotificationApi, memberQueries = channelMemberQueries) {
   const { t } = useI18n()
   const open = ref(false)
   const context = shallowRef<ChannelTestContext>()
@@ -20,6 +29,8 @@ export function useChannelTest(api: ChannelTestApi = messageNotificationApi) {
   const ownRecipient = ref('')
   const ownLabel = ref('')
   const identityState = ref<NotificationLoadState>('idle')
+  const memberState = ref<NotificationLoadState>('idle')
+  const memberOptions = shallowRef<MemberOption[]>([])
   const touched = ref(false)
   const error = ref('')
   const sentTo = ref('')
@@ -31,6 +42,7 @@ export function useChannelTest(api: ChannelTestApi = messageNotificationApi) {
   const adapter = computed(() => channelTestAdapters[channelId.value])
   const fixedTarget = computed(() => fixedTestTarget(adapter.value?.recipient))
   const sending = computed(() => stage.value === 'sending')
+  const choosingMember = computed(() => adapter.value?.recipient === 'member' && recipientMode.value === 'other')
   const recipient = computed(() => (recipientMode.value === 'self' ? ownRecipient.value : address.value).trim())
   const recipientIssue = computed(() => testRecipientIssue(adapter.value?.recipient, recipient.value))
   const missing = computed(() => context.value && adapter.value ? adapter.value.missing(context.value.config.configuration) : [])
@@ -63,11 +75,38 @@ export function useChannelTest(api: ChannelTestApi = messageNotificationApi) {
       if (ticket !== identityVersion || context.value !== active || !open.value || !active.permitted()) return
       ownRecipient.value = value.trim(); ownLabel.value = label
       identityState.value = value.trim() ? 'ready' : 'empty'
-      if (!value.trim() && recipientMode.value === 'self') recipientMode.value = 'other'
+      if (!value.trim() && recipientMode.value === 'self') selectRecipient('other')
     } catch (failure) {
       if (ticket !== identityVersion || context.value !== active || !open.value || !active.permitted()) return
       identityState.value = classifyNotificationFailure(failure)
-      if (recipientMode.value === 'self') recipientMode.value = 'other'
+      if (recipientMode.value === 'self') selectRecipient('other')
+    }
+  }
+
+  /** Query the saved application's directory on demand and discard results after switching or closing. */
+  async function loadMembers() {
+    const active = context.value
+    const query = memberQueries[channelId.value]
+    if (!active || !query || !open.value || !choosingMember.value || stage.value !== 'form' || !active.permitted()
+      || ['loading', 'ready', 'empty'].includes(memberState.value)) return
+    const ticket = version
+    const isCurrent = () => ticket === version && context.value === active && open.value && active.permitted()
+    memberState.value = 'loading'
+    try {
+      const members = await query(active.config.id)
+      if (!isCurrent()) return
+      if (!Array.isArray(members)) throw new NotificationRequestError('error')
+      const options = new Map<string, MemberOption>()
+      for (const member of members) {
+        const value = testText(member?.id)
+        if (testRecipientIssue('member', value)) continue
+        const name = testText(member.name)
+        options.set(value, { value, label: name ? `${name} (${value})` : value })
+      }
+      memberOptions.value = [...options.values()]
+      memberState.value = memberOptions.value.length ? 'ready' : 'empty'
+    } catch (failure) {
+      if (isCurrent()) memberState.value = classifyNotificationFailure(failure)
     }
   }
   function show(next: ChannelTestContext) {
@@ -78,8 +117,16 @@ export function useChannelTest(api: ChannelTestApi = messageNotificationApi) {
     if (fixedTarget.value) identityState.value = 'ready'
     else void loadIdentity()
   }
-  function selectRecipient(mode: 'self' | 'other') { if (stage.value === 'form') { recipientMode.value = mode; touched.value = false } }
-  function setAddress(value: string) { if (stage.value === 'form') address.value = value }
+  function selectRecipient(mode: 'self' | 'other') {
+    if (stage.value !== 'form') return
+    recipientMode.value = mode; touched.value = false
+    if (choosingMember.value && memberState.value === 'idle') void loadMembers()
+  }
+  function setAddress(value?: string) {
+    if (stage.value !== 'form') return
+    const selected = adapter.value?.recipient === 'member' ? memberOptions.value.find(option => option.value === value)?.value : value
+    address.value = selected ?? ''
+  }
   function validateRecipient() { touched.value = true }
 
   /** Only an explicit submit sends. Success means accepted, not confirmed delivery by the recipient. */
@@ -113,6 +160,7 @@ export function useChannelTest(api: ChannelTestApi = messageNotificationApi) {
     ++version; ++identityVersion
     open.value = false; context.value = undefined; stage.value = 'form'; recipientMode.value = 'self'
     address.value = ''; ownRecipient.value = ''; ownLabel.value = ''; identityState.value = 'idle'
+    memberOptions.value = []; memberState.value = 'idle'
     touched.value = false; error.value = ''; sentTo.value = ''; sentAt.value = ''
   }
   const model = computed(() => ({
@@ -122,9 +170,10 @@ export function useChannelTest(api: ChannelTestApi = messageNotificationApi) {
     parameters: Array.isArray(settings.value.parameters) ? settings.value.parameters.filter(row => row && typeof row.name === 'string' && typeof row.value === 'string') : [],
     missing: missing.value, stage: stage.value, error: error.value, canSend: canSend.value,
     recipientMode: recipientMode.value, address: address.value, ownRecipient: ownRecipient.value, ownLabel: ownLabel.value,
-    identityState: identityState.value, recipientIssue: touched.value ? recipientIssue.value : '',
+    identityState: identityState.value, memberState: memberState.value, memberOptions: memberOptions.value,
+    recipientIssue: touched.value && (!choosingMember.value || memberState.value === 'ready') ? recipientIssue.value : '',
     sentTo: sentTo.value, sentAt: sentAt.value,
   }))
-  return { model, open, configId, sending, show, loadIdentity, selectRecipient, setAddress, validateRecipient, send, again, close }
+  return { model, open, configId, sending, show, loadIdentity, loadMembers, selectRecipient, setAddress, validateRecipient, send, again, close }
 }
 export type ChannelTestModel = ReturnType<typeof useChannelTest>['model']['value']

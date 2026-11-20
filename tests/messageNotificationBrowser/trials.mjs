@@ -34,8 +34,8 @@ async function open(extra = '', record = trialRecords[0]) {
     }
     return route.continue()
   })
-  await page.goto(`${entry.href}?unifiedTests&permission=no-template&writeDelay=900${extra}#/channels?channel=${record.type}:${record.provider}&configId=${record.id}`)
-  await page.waitForFunction(() => document.documentElement.dataset.notificationSmoke === 'ready')
+  await page.goto(`${entry.href}?unifiedTests&permission=no-template&writeDelay=900${extra}#/channels?channel=${record.type}:${record.provider}&configId=${record.id}`, { waitUntil: 'domcontentloaded', timeout: 30000 })
+  await page.waitForFunction(() => document.documentElement.dataset.notificationSmoke === 'ready', undefined, { timeout: 30000 })
   await page.locator(record.provider === 'dingTalkRobotWebHook' ? '.robot-configurations' : '.channel-configuration').waitFor()
   return page
 }
@@ -58,7 +58,7 @@ async function snapshot(page, name) {
 }
 try {
   if (!process.env.TRIAL_SETTINGS_ONLY) {
-    const page = await open()
+    const page = await open('&dingTalkRecipients')
     for (const record of trialRecords.filter(item => item.provider !== 'officialMessage')) {
       await choose(page, record)
       await beginChannelEdit(page)
@@ -66,9 +66,7 @@ try {
       assert.ok(await page.locator(record.provider === 'dingTalkRobotWebHook' ? '.robot-configuration-modal input' : '.inline-edit-field__editor').count() > 0)
       await cancelChannelEdit(page)
       assert.equal(await page.evaluate(() => window.__notificationSmoke.calls.filter(([method]) => method === 'updateConfig').length), 0)
-      await page.getByRole('button', { name: '更多操作' }).click()
-      assert.doesNotMatch(await page.locator('.ant-dropdown:visible').innerText(), /管理模[板版]/)
-      await page.locator('.notification-channels__heading h2').click()
+      assert.equal(await page.locator('.notification-channels__heading').getByRole('button', { name: '更多操作' }).count(), 0)
       const dialog = await show(page)
       assert.match(await dialog.innerText(), /发一条测试 ·/)
       assert.equal(await dialog.locator('textarea, .ant-select').count(), 0)
@@ -88,6 +86,7 @@ try {
       const payload = (await sends(page)).at(-1)[1]
       assert.equal(payload.configId, record.id)
       assert.equal(payload.template.id, undefined)
+      if (record.provider === 'dingTalkRobotWebHook') assert.equal(Object.hasOwn(payload.template.template, 'at'), false)
       if (record.provider === 'dingTalkMessage') assert.equal(payload.template.template.userIdList, 'self_dingTalkMessage')
       if (record.provider === 'corpMessage') assert.equal(payload.template.template.toUser, 'self_corpMessage')
       if (record.provider === 'aliyun') {
@@ -101,6 +100,44 @@ try {
       await dialog.waitFor({ state: 'hidden' })
     }
     pass('All seven supported providers share the modal, saved target rules, submitted feedback and template-free menu/permissions')
+    const recipientChannels = trialRecords.filter(record => ['dingTalkMessage', 'corpMessage'].includes(record.provider))
+    await page.evaluate(() => {
+      const { failures, deniedPermissions } = window.__notificationSmoke
+      failures.add('dingTalkUsers')
+      deniedPermissions.add('system/MessageNotification/Channels:bind')
+    })
+    for (const record of recipientChannels) {
+      const dingTalk = record.provider === 'dingTalkMessage'
+      const queryCall = dingTalk ? ['remoteOption', `/notifier/dingtalk/corp/${record.id}/users`] : ['members', record.id]
+      const queryCount = () => page.evaluate(([method, target]) => window.__notificationSmoke.calls
+        .filter(([name, value]) => name === method && value === target).length, queryCall)
+      await choose(page, record)
+      const dialog = await show(page)
+      const before = await queryCount()
+      await dialog.getByRole('radio', { name: '其他接收人', exact: true }).check()
+      assert.equal(await button(dialog, '发送').isDisabled(), true)
+      const member = dialog.getByRole('combobox', { name: '其他接收人', exact: true })
+      if (dingTalk) {
+        await dialog.getByText(/通讯录加载失败/).waitFor()
+        assert.equal(await member.isDisabled(), true)
+        await page.evaluate(() => window.__notificationSmoke.failures.delete('dingTalkUsers'))
+        await button(dialog, '重新加载').click()
+      }
+      const target = dingTalk ? 'fixture-user-a' : 'corp-manual'
+      await member.click()
+      await member.fill(dingTalk ? '测试用户甲' : target)
+      await page.locator('.ant-select-dropdown:visible .ant-select-item-option').getByText(`(${target})`, { exact: false }).click()
+      await button(dialog, '发送').click()
+      await dialog.getByText('已提交，请检查接收端', { exact: true }).waitFor()
+      const [, payload] = (await sends(page)).at(-1)
+      assert.equal(payload.configId, record.id)
+      assert.equal(payload.template.template[dingTalk ? 'userIdList' : 'toUser'], target)
+      assert.equal(await queryCount(), before + (dingTalk ? 2 : 1))
+      await button(dialog, '关闭').click()
+      await dialog.waitFor({ state: 'hidden' })
+    }
+    await page.evaluate(() => window.__notificationSmoke.deniedPermissions.delete('system/MessageNotification/Channels:bind'))
+    pass('DingTalk and WeCom look up other recipients by configuration, retry and send only the selected member')
     await choose(page, trialRecords[0])
     let dialog = await show(page)
     await dialog.getByRole('radio', { name: '其他接收人', exact: true }).check()
@@ -165,11 +202,19 @@ try {
   for (const language of ['zh', 'en', 'ja']) {
     await corpPage.evaluate(language => { window.__notificationSmoke.i18n.global.locale.value = language }, language)
     const testLabel = await corpPage.evaluate(() => window.__notificationSmoke.i18n.global.t('messageNotification.channels.test'))
-    assert.equal(await button(corpPage, testLabel).count(), 0, 'configurations without a saved trial AgentId do not offer a trial')
+    assert.equal(await button(corpPage, testLabel).isEnabled(), true)
     assert.equal(await corpPage.locator('.channel-configuration input').count(), 2)
     await corpAgentId.waitFor()
     assert.deepEqual(await corpPage.locator('[data-help-section]').evaluateAll(sections => sections.map(section => section.dataset.helpSection)), ['corpId', 'corpSecret', 'weixinAgentId'])
   }
+  await corpPage.evaluate(() => { window.__notificationSmoke.i18n.global.locale.value = 'zh' })
+  const incompleteWeChat = await show(corpPage)
+  await incompleteWeChat.getByText(/请先在渠道配置中补齐.*AgentId/).waitFor()
+  assert.equal(await button(incompleteWeChat, '发送').isDisabled(), true)
+  await button(incompleteWeChat, '去改配置').click()
+  await incompleteWeChat.waitFor({ state: 'hidden' })
+  await corpPage.locator('[data-help-section="weixinAgentId"][aria-current="true"]').waitFor()
+  assert.deepEqual(await sends(corpPage), [])
   await corpPage.locator('.channel-configuration input').first().fill('updated-corp-fixture')
   await corpAgentId.fill('8000001')
   await saveChannelDraft(corpPage)
@@ -180,9 +225,16 @@ try {
   await corpPage.setViewportSize({ width: 390, height: 844 })
   assert.equal(await corpPage.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
   await snapshot(corpPage, 'corp-agent-id-mobile')
-  assert.deepEqual(await sends(corpPage), [])
+  const wechatTrial = await show(corpPage)
+  await eventually(async () => assert.equal(await button(wechatTrial, '发送').isEnabled(), true))
+  await button(wechatTrial, '发送').click()
+  await eventually(async () => assert.equal((await sends(corpPage)).length, 1))
+  const [[, wechatRequest]] = await sends(corpPage)
+  assert.equal(wechatRequest.configId, trialRecords[3].id)
+  assert.equal(wechatRequest.template.template.agentId, '8000001')
+  assert.equal(wechatRequest.template.template.toUser, 'self_corpMessage')
   await corpPage.close()
-  pass('WeCom documents AgentId in three languages, saves the template AgentId and protects the existing Secret')
+  pass('WeCom trials show the missing AgentId and use it after saving through the channel form on mobile')
 
   const voicePage = await open('', trialRecords[5])
   for (const language of ['zh', 'en', 'ja']) {

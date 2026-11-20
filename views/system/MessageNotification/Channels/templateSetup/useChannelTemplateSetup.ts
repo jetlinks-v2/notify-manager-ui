@@ -5,7 +5,7 @@ import { publishNotificationConfigurationChange, type NotificationChannel } from
 import type { useChannelWorkspace } from '../useChannelWorkspace'
 import { messageTemplateDefaultsKey, wechatCorpChannel } from '../wechat/templateDefaults'
 import {
-  channelTemplateDefaultsKey, dingTalkWorkChannel, readTemplateSetup, savedTemplateDefaults, supportsTemplateSetup,
+  channelTemplateDefaultsKey, dingTalkRobotChannel, dingTalkWorkChannel, readTemplateSetup, savedTemplateDefaults, supportsTemplateSetup,
   templateSetupFields, templateSetupIssues,
 } from './templateDefaults'
 import { fillMessageTemplates, type TemplateFillResult } from './fillMessageTemplates'
@@ -53,16 +53,21 @@ export function useChannelTemplateSetup(
     workspace.changeField(storageKey, { ...savedTemplateDefaults(configuration[storageKey]), [key]: key === 'agentId' ? value.trim() : value })
   }
 
+  /** 校验模板参数，并将生成群机器人模板所需的默认值随渠道保存。 */
   function prepareForSave() {
     const { value: selected } = current
     if (!selected) return true
     submittedId.value = selected.draft.id
     // 工作通知 AgentId 由现有渠道校验标记，错误显示在原字段上。
     if (Object.keys(issues.value).some(key => key !== 'agentId' || channelId.value !== dingTalkWorkChannel)) return false
-    if (channelId.value !== wechatCorpChannel && fields.value.length) {
-      const defaults = Object.fromEntries(fields.value.map(({ key }) => [key, values.value[key]]))
+    if (channelId.value === dingTalkRobotChannel) {
+      const { messageType, title, message, messageUrl } = values.value
       workspace.changeField(channelTemplateDefaultsKey, {
-        ...savedTemplateDefaults(selected.draft.configuration[channelTemplateDefaultsKey]), ...defaults,
+        ...savedTemplateDefaults(selected.draft.configuration[channelTemplateDefaultsKey]),
+        messageType,
+        title,
+        message,
+        ...(messageType === 'link' ? { messageUrl } : {}),
       })
     }
     return true

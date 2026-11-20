@@ -1,5 +1,5 @@
 import type { NotifierConfig, NotifierConfigPayload, NotificationObject, NotificationConfigProperty } from '../shared'
-import { buildNotificationConfigPayload, createNotificationConfigDraft, isNotificationSecretMask, NotificationSecretInputRequiredError, notificationSecretsRequiringInput, notificationEnumValue, resolveNotificationChannel } from '../shared'
+import { buildNotificationConfigPayload, createNotificationConfigDraft, isNotificationSecretMask, NotificationSecretInputRequiredError, notificationSecretsRequiringInput, resolveNotificationChannel } from '../shared'
 import type { ChannelDefinition } from './configuration/channelMetadata'
 import { aliyunRegionElements } from '../../../notice/channel/hooks/noticeChannelModel'
 import { channelTestSettingsKinds, testSettingsIssues } from './testing/channelTestConfig'
@@ -34,18 +34,31 @@ function hasValue(value: unknown): boolean {
   return typeof value === 'string' ? !!value.trim() : value !== undefined && value !== null
 }
 
-/** Header values can be bearer credentials; blank their inputs just like provider passwords. */
+/** Server-side masks describe an unavailable credential and must stay out of the input. */
+function savedSecretInput(value: unknown): string {
+  return typeof value === 'string' && value.trim() && !isNotificationSecretMask(value) ? value : ''
+}
+
+/** Initialize editable credentials and header values from this configuration's saved values. */
 export function createChannelConfigDraft(record: NotifierConfig, definition?: ChannelDefinition): NotifierConfigPayload {
-  const draft = createNotificationConfigDraft(record, definition?.secretFields)
-  if (notificationEnumValue(record.type) === 'webhook' && notificationEnumValue(record.provider) === 'http') {
+  const draft = createNotificationConfigDraft(record, [])
+  const secretFields = definition?.secretFields ?? resolveNotificationChannel(draft.type, draft.provider)?.secretFields ?? []
+  // The robot dialog edits the URL while preserving hidden credentials through the baseline.
+  const robot = draft.type === 'dingTalk' && draft.provider === 'dingTalkRobotWebHook'
+  for (const key of secretFields) {
+    draft.configuration[key] = robot && key !== 'url' ? '' : savedSecretInput(draft.configuration[key])
+  }
+  if (draft.type === 'webhook' && draft.provider === 'http') {
     const headers = draft.configuration.headers
-    if (Array.isArray(headers)) draft.configuration.headers = headers.map(row => row && typeof row === 'object' ? { ...row, value: '' } : row)
+    if (Array.isArray(headers)) {
+      draft.configuration.headers = headers.map(row => row && typeof row === 'object' ? { ...row, value: savedSecretInput(row.value) } : row)
+    }
   }
   return draft
 }
 
 function savedHeaderValue(key: string, baseline?: NotifierConfig): unknown {
-  const headers = baseline?.configuration.headers
+  const headers = baseline?.configuration?.headers
   return Array.isArray(headers) ? headers.find(row => row && typeof row.key === 'string' && row.key.toLowerCase() === key.toLowerCase())?.value : undefined
 }
 
@@ -55,7 +68,7 @@ function effectiveHeaderValue(key: string, value: unknown, baseline?: NotifierCo
   return typeof candidate === 'string' && candidate.trim() && !isNotificationSecretMask(candidate) ? candidate : undefined
 }
 
-/** Validate local input before writing; known baseline secrets count as values without exposing them. */
+/** Validate local input before writing and allow an unchanged credential to retain its saved value. */
 export function validateChannelDraft(draft: NotifierConfigPayload, baseline?: NotifierConfig, definition?: ChannelDefinition, clearFields: readonly string[] = []): ChannelValidationIssue[] {
   const issues: ChannelValidationIssue[] = []
   if (!draft.id?.trim()) issues.push({ path: 'id', key: 'required' })
@@ -67,20 +80,21 @@ export function validateChannelDraft(draft: NotifierConfigPayload, baseline?: No
       continue
     }
     const value = draft.configuration[field.key]
-    if (field.required && !hasValue(value) && !(field.kind === 'secret' && hasValue(baseline?.configuration[field.key]))) {
+    if (field.required && !hasValue(value) && !(field.kind === 'secret' && hasValue(baseline?.configuration?.[field.key]))) {
       issues.push({ path: field.key, key: 'required' })
     }
     if (field.key === 'port' && field.kind === 'number' && hasValue(value) && (!Number.isInteger(value) || Number(value) < 1 || Number(value) > 65535)) {
       issues.push({ path: field.key, key: 'port' })
     }
     const isHttpUrl = field.kind === 'url' || (draft.type === 'dingTalk' && draft.provider === 'dingTalkRobotWebHook' && field.key === 'url')
-    const url = isHttpUrl ? (isNotificationSecretMask(value) ? undefined : value) || baseline?.configuration[field.key] : undefined
+    const url = isHttpUrl ? (isNotificationSecretMask(value) ? undefined : value) || baseline?.configuration?.[field.key] : undefined
     if (hasValue(url)) {
       try {
         if (!['http:', 'https:'].includes(new URL(String(url)).protocol)) throw new Error()
       } catch { issues.push({ path: field.key, key: 'url' }) }
     }
-    if (hasValue(value) && field.property && !validMetadataValue(value, field.property)) issues.push({ path: field.key, key: 'invalidValue' })
+    const unchangedSecret = field.kind === 'secret' && baseline?.id === draft.id && value === baseline?.configuration?.[field.key]
+    if (!unchangedSecret && hasValue(value) && field.property && !validMetadataValue(value, field.property)) issues.push({ path: field.key, key: 'invalidValue' })
   }
   const pairFields: ['properties' | 'headers', 'name' | 'key'][] = draft.type === 'email' && draft.provider === 'embedded' ? [['properties', 'name']] : draft.type === 'webhook' && draft.provider === 'http' ? [['headers', 'key']] : []
   for (const [key, nameKey] of pairFields) {

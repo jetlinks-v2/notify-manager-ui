@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, resolve } from 'node:path'
 import test from 'node:test'
+import createDOMPurify from 'dompurify'
 import { transformSync } from 'esbuild'
+import { JSDOM } from 'jsdom'
 import * as vue from 'vue'
 import { compileScript, parse } from 'vue/compiler-sfc'
 
@@ -16,6 +18,9 @@ const cache = new Map()
 let unique = 0
 let io
 const t = (key, params) => params ? `${key}:${JSON.stringify(params)}` : key
+const { window: emailWindow } = new JSDOM()
+const emailPurifier = createDOMPurify(emailWindow)
+test.after(() => emailWindow.close())
 globalThis.window = { btoa, atob }
 class TestFocusableElement {
   isConnected = true
@@ -36,6 +41,7 @@ function load(filename) {
     if (name === '@jetlinks-web-core/components/DocumentHelp') return { __esModule: true, default: vue.defineComponent({
       props: ['code', 'helpKey'], setup: props => () => vue.h('span', { 'data-help-code': props.code, 'data-help-key': props.helpKey }),
     }) }
+    if (name === 'dompurify') return emailPurifier
     if (name === 'vue-i18n') return { useI18n: () => ({ t }) }
     if (name === 'vue-router') return {
       useRoute: () => io.route,
@@ -211,6 +217,32 @@ test('historical EnumDict text and saved content remain unchanged, including can
   assert.equal(presentation.historyTime(NaN), '—')
 })
 
+test('record table replaces blank and standalone dash values with contextual labels', () => {
+  const { historyTableCells } = presentation
+  const empty = {
+    notifyTime: 'comm.table.empty-2', channel: 'comm.table.empty', channelIcon: 'NotificationOutlined',
+    receiver: 'messageNotification.records.receiverUnspecified', reason: 'messageNotification.records.noException',
+    state: '', stateLabel: 'comm.table.empty-2', message: undefined,
+  }
+  assert.deepEqual(historyTableCells({ id: 'missing' }, t), empty)
+  assert.deepEqual(historyTableCells({
+    id: 'legacy', notifyTime: NaN, notifyType: { value: '-', text: '—' }, provider: '--',
+    receiver: [' ', ' – ', '--'], errorMessage: '—', errorType: ' -- ', state: '—', notifyMessage: '-',
+  }, t), empty)
+
+  const reported = {
+    id: 'reported', notifyTime: 0, notifyType: { value: 'weixin', text: 'WeCom-North' }, provider: '-',
+    receiver: ['--', ' ops-team@example.org ', ' '], state: { value: 'error', text: '-' },
+    errorMessage: '--', errorType: 'SMTP-TIMEOUT', notifyMessage: 'Reading -2',
+  }
+  assert.deepEqual(historyTableCells(reported, t), {
+    notifyTime: presentation.historyTime(0), channel: 'WeCom-North', channelIcon: 'WechatOutlined',
+    receiver: 'ops-team@example.org', reason: 'SMTP-TIMEOUT', state: 'error',
+    stateLabel: 'messageNotification.records.state.error', message: { text: 'Reading -2' },
+  })
+  assert.equal(historyTableCells({ ...reported, errorMessage: 'SMTP-TIMEOUT - relay' }, t).reason, 'SMTP-TIMEOUT - relay')
+})
+
 test('the selected detail is an isolated snapshot and permission revocation closes it', async () => {
   const record = fixture('one')
   const result = controller({ available: true, query: async () => ({ data: [record] }) })
@@ -245,6 +277,7 @@ const renderer = vue.createRenderer({
   parentNode: node => node?.parent, nextSibling: node => node?.parent?.children[node.parent.children.indexOf(node) + 1],
 })
 const walk = (node, predicate) => [node, ...(node.children || []).flatMap(child => walk(child, predicate))].filter(predicate)
+const emailBodies = rootNode => walk(rootNode, node => node.props?.class === 'record-detail__email').map(node => node.props.innerHTML)
 
 function mount(component, props = {}, adapter) {
   const rootNode = { type: 'root', children: [] }
@@ -352,17 +385,23 @@ test('real page renders unavailable HTTP feedback with zero default counts and n
 test('real detail renders requested fields and failure reasons only for failed records, retaining exit focus restoration', async () => {
   const Detail = load(resolve(pageRoot, 'components/RecordDetail.vue')).default
   let closed = 0
-  const props = vue.reactive({ open: true, record: fixture('saved', { value: 'cancel', text: 'Cancelled on server' }), onClosed: () => closed++ })
+  const content = '<p style="font-size: 32px">Saved <strong>notice</strong></p>'
+  const props = vue.reactive({
+    open: true, onClosed: () => closed++,
+    record: {
+      ...fixture('saved', { value: 'cancel', text: 'Cancelled on server' }),
+      notifyType: { value: 'email', text: 'Mail' }, notifyMessage: content,
+    },
+  })
   const mounted = mount(Detail, props)
   await flush()
-  const blocks = walk(mounted.rootNode, node => node.type === 'CodeBlock')
-  assert.deepEqual(blocks.map(block => block.props.content), ['Saved saved'])
+  assert.deepEqual(emailBodies(mounted.rootNode), ['<p>Saved <strong>notice</strong></p>'])
+  assert.equal(walk(mounted.rootNode, node => node.type === 'CodeBlock').length, 0)
   assert.ok(walk(mounted.rootNode, node => node.type === 'a-button').some(button => walk(button, node => node.text === 'Template display name').length))
   assert.deepEqual(walk(mounted.rootNode, node => node.type === 'dt').map(node => node.text), [
-    'messageNotification.records.field.notifyTime', 'messageNotification.records.detail.notificationType',
+    'messageNotification.records.field.notifyTime',
     'messageNotification.records.field.channel', 'messageNotification.records.field.receiver',
     'messageNotification.records.detail.messageTemplate',
-    'messageNotification.records.detail.retryCount',
   ])
   assert.deepEqual(walk(mounted.rootNode, node => node.type === 'h3').map(node => node.text), ['messageNotification.records.field.notifyMessage'])
   for (const [record, reason] of [
@@ -373,16 +412,20 @@ test('real detail renders requested fields and failure reasons only for failed r
     [{ state: 'retrying', errorType: 'timeout' }, undefined],
     [{ state: { value: 'cancel', text: '已取消' }, errorMessage: 'Previous failure' }, undefined],
   ]) {
-    props.record = { ...fixture('saved'), ...record }
+    props.record = { ...fixture('saved'), ...record, notifyMessage: 'Saved saved\nsecond line' }
     await flush()
     assert.deepEqual(walk(mounted.rootNode, node => node.type === 'h3').map(node => node.text), [
       'messageNotification.records.field.notifyMessage', ...(reason ? ['messageNotification.records.detail.failureReason'] : []),
     ])
-    assert.deepEqual(walk(mounted.rootNode, node => node.type === 'CodeBlock').map(node => node.props.content), [
-      'Saved saved', ...(reason ? [reason] : []),
-    ])
+    assert.deepEqual(emailBodies(mounted.rootNode), ['Saved saved<br>second line'])
+    assert.deepEqual(walk(mounted.rootNode, node => node.type === 'CodeBlock').map(node => node.props.content), reason ? [reason] : [])
   }
+  props.record = { ...fixture('saved'), notifyType: 'weixin', provider: 'corpMessage', notifyMessage: content }
+  await flush()
+  assert.deepEqual(emailBodies(mounted.rootNode), [])
+  assert.deepEqual(walk(mounted.rootNode, node => node.type === 'CodeBlock').map(node => node.props.content), [content])
   const drawer = walk(mounted.rootNode, node => node.type === 'JlDrawerShell')[0]
+  assert.equal(drawer.props.title, 'messageNotification.records.detail.title')
   assert.equal(drawer.props.keyboard, true)
   assert.equal(drawer.props.autofocus, true)
   await drawer.props.onAfterOpenChange(false)
@@ -390,9 +433,15 @@ test('real detail renders requested fields and failure reasons only for failed r
   mounted.unmount()
 })
 
-test('injected rows exercise the actual page filters, clickable content and return keyboard focus after close', async () => {
+test('record list previews email formatting and opens the full content with focus restored on close', async () => {
   const requests = []
-  const adapter = { available: true, query: async query => { requests.push(query); return { data: [fixture('server-record', 'cancel')], total: 1 } } }
+  const emailMessage = '<p>Saved <strong>server-record</strong></p><p><a href="https://example.test/alarm">Open alarm</a><br><img src="/file/alarm.png" alt="Alarm image"></p>'
+  const wechatMessage = 'Saved <strong>as text</strong>'
+  const rows = [
+    { ...fixture('server-record', 'cancel'), notifyType: { value: 'email', text: 'Mail' }, notifyMessage: emailMessage },
+    { ...fixture('wechat', 'cancel'), notifyType: 'weixin', provider: 'corpMessage', notifyMessage: wechatMessage },
+  ]
+  const adapter = { available: true, query: async query => { requests.push(query); return { data: rows, total: rows.length } } }
   const Page = load(resolve(pageRoot, 'index.vue')).default
   const mounted = mount(Page, {}, adapter)
   await flush()
@@ -407,14 +456,20 @@ test('injected rows exercise the actual page filters, clickable content and retu
   assert.equal(requests.length, 3)
   assert.equal(io.route.query.state, 'cancel')
   const origin = new TestFocusableElement()
-  const viewButton = walk(mounted.rootNode, node => node.type === 'j-permission-button' && node.props.class === 'notification-records__content')[0]
-  assert.equal(viewButton.props.title, 'Saved server-record')
+  const [viewButton, wechatButton] = walk(mounted.rootNode, node => node.type === 'j-permission-button' && node.props.class === 'notification-records__content')
+  assert.equal(viewButton.props.title, 'Saved server-record Open alarm Alarm image')
+  const preview = walk(viewButton, node => node.props?.class === 'notification-records__content-text')[0]
+  assert.match(preview.props.innerHTML, /^Saved <strong>server-record<\/strong>\s+Open alarm\s+Alarm image$/)
+  assert.equal(wechatButton.props.title, wechatMessage)
+  const wechatPreview = walk(wechatButton, node => node.props?.class === 'notification-records__content-text')[0]
+  assert.equal(wechatPreview.props.innerHTML, undefined)
+  assert.equal(wechatPreview.text, wechatMessage)
   assert.equal(viewButton.props['has-permission'], shared.notificationPermissions.records.query)
   viewButton.props.onClick({ currentTarget: origin })
   await flush()
   const drawer = walk(mounted.rootNode, node => node.type === 'JlDrawerShell')[0]
   assert.equal(drawer.props.open, true)
-  assert.ok(walk(mounted.rootNode, node => node.type === 'CodeBlock').some(node => node.props.content === 'Saved server-record'))
+  assert.deepEqual(emailBodies(mounted.rootNode), [emailMessage])
   drawer.props['onUpdate:open'](false)
   await flush()
   await drawer.props.onAfterOpenChange(false)
@@ -526,12 +581,10 @@ test('details preserve reported values, fill missing fields and navigate by actu
   const mounted = mount(Harness)
   await flush()
   const values = () => Object.fromEntries(detail.summary.value.map(item => [item.key, item.value]))
-  assert.equal(values().notificationType, 'alarm')
   assert.equal(Object.hasOwn(values(), 'relatedObject'), false)
   assert.equal(values().receiver, 'user@example.org')
   assert.equal(values().messageTemplate, 'Template display name')
   assert.deepEqual(io.templateCalls, ['template/#'])
-  assert.equal(values().retryCount, 'messageNotification.records.detail.unreported')
   detail.navigate('channels')
   detail.navigate('templates')
   assert.deepEqual(io.jumps, [
@@ -545,11 +598,9 @@ test('details preserve reported values, fill missing fields and navigate by actu
   record.value = { id: 'missing', receiver: [' ', ''], notifyTime: NaN }
   assert.deepEqual(values(), {
     notifyTime: 'messageNotification.records.detail.unreported',
-    notificationType: 'messageNotification.records.detail.unreported',
     channel: 'messageNotification.records.detail.unconfigured',
     receiver: 'messageNotification.records.detail.unreported',
     messageTemplate: 'messageNotification.records.detail.unconfigured',
-    retryCount: 'messageNotification.records.detail.unreported',
   })
   assert.ok(detail.summary.value.every(item => item.missing))
   assert.equal(detail.sentContent.value, 'messageNotification.records.detail.unreported')

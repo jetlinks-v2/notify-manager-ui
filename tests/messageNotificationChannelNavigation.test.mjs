@@ -5,17 +5,26 @@ import test from 'node:test'
 import { transformSync } from 'esbuild'
 import { reactive } from 'vue'
 import * as vue from 'vue'
+import { createI18n } from 'vue-i18n'
 
-const filename = resolve(import.meta.dirname, '../views/system/MessageNotification/Templates/hooks/useTemplateChannelNavigation.ts')
-const { code } = transformSync(readFileSync(filename, 'utf8'), { loader: 'ts', format: 'cjs' })
-const module = { exports: {} }
-new Function('require', 'module', 'exports', code)(name => {
-  if (name === 'vue') return vue
-  if (name === 'vue-i18n') return { useI18n: () => ({ t: key => key }) }
-  throw new Error(`Unexpected dependency in pure navigation test: ${name}`)
-}, module, module.exports)
-const { useTemplateChannelNavigation } = module.exports
-const channel = (type, provider, name = provider) => ({ id: `${type}:${provider}`, type, provider, name })
+const root = resolve(import.meta.dirname, '../views/system/MessageNotification')
+const locale = JSON.parse(readFileSync(resolve(import.meta.dirname, '../locales/lang/zh.json'), 'utf8'))
+const i18n = createI18n({ legacy: false, locale: 'zh', messages: { zh: locale } })
+function load(path) {
+  const { code } = transformSync(readFileSync(resolve(root, path), 'utf8'), { loader: 'ts', format: 'cjs' })
+  const module = { exports: {} }
+  new Function('require', 'module', 'exports', code)(name => {
+    if (name === 'vue') return vue
+    if (name === 'vue-i18n') return { useI18n: () => i18n.global }
+    if (name === '../../shared') return load('shared/catalog.ts')
+    throw new Error(`Unexpected dependency in pure navigation test: ${name}`)
+  }, module, module.exports)
+  return module.exports
+}
+const { useTemplateChannelNavigation } = load('Templates/hooks/useTemplateChannelNavigation.ts')
+const channel = (type, provider, providerName = provider, typeName = type) => ({
+  id: `${type}:${provider}`, type, provider, providerName, typeName, name: `${typeName} · ${providerName}`,
+})
 const fixture = [
   channel('email', 'embedded'),
   channel('dingTalk', 'dingTalkRobotWebHook'), channel('dingTalk', 'customDing'), channel('dingTalk', 'dingTalkMessage'),
@@ -34,6 +43,23 @@ test('grouping retains every available provider exactly once, including extensio
   assert.deepEqual(result.groups.value.flatMap(group => group.channels.map(item => item.id)).sort(), fixture.map(item => item.id).sort())
   assert.deepEqual(result.groups.value.map(group => group.key), ['email:embedded', 'dingTalk', 'weixin', 'customType:primary', 'customType:secondary', 'sms:aliyunSms'])
   assert.deepEqual(result.groups.value.find(group => group.key === 'dingTalk').channels.map(item => item.provider), ['dingTalkRobotWebHook', 'customDing', 'dingTalkMessage'])
+  assert.deepEqual(result.groups.value.filter(group => group.key.startsWith('customType:')).map(group => group.label),
+    ['customType · primary', 'customType · secondary'])
+})
+
+test('template navigation uses channel directory type names and DingTalk provider labels', () => {
+  const { result } = setup([
+    channel('webhook', 'http', 'HTTP', 'WebHook'),
+    channel('weixin', 'corpMessage', '工作通知', '企业微信'),
+    channel('sms', 'aliyunSms', '阿里云短信', '短信'),
+    channel('email', 'embedded'),
+    channel('voice', 'aliyun', '阿里云语音', '语音'),
+    channel('dingTalk', 'dingTalkRobotWebHook', '群消息'),
+    channel('dingTalk', 'dingTalkMessage', '应用消息'),
+  ])
+  assert.deepEqual(result.groups.value.map(group => group.label), ['WebHook', '微信', '短信', '邮件', '语音', '钉钉'])
+  result.selectGroup('dingTalk')
+  assert.deepEqual(result.subChannels.value.map(item => item.label), ['群机器人', '工作通知'])
 })
 
 test('primary family selection emits its real work provider ID rather than a visual grouping key', () => {

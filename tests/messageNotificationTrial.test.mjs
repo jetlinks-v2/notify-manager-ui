@@ -72,7 +72,7 @@ test('seven provider payloads use explicit single recipients and saved configura
     'email:embedded': { subject: 'Test title', text: 'Test message', sendTo: ['target@example.test'] },
     'dingTalk:dingTalkMessage': { agentId: '1001', message: 'Test message', userIdList: 'member', toAllUser: false },
     'weixin:corpMessage': { agentId: '1002', message: 'Test message', toUser: 'member' },
-    'dingTalk:dingTalkRobotWebHook': { messageType: 'text', text: { content: 'Test message' }, at: { atAll: false } },
+    'dingTalk:dingTalkRobotWebHook': { messageType: 'text', text: { content: 'Test message' } },
     'webhook:http': { method: 'POST', url: '', contextAsBody: false, body: '{"message":"Test message"}' },
     'sms:aliyunSms': { signName: '测试签名', code: 'SMS_REAL', phoneNumber: '13800138000' },
     'voice:aliyun': { templateType: 'tts', templateCode: 'TTS_REAL', ttsCode: 'TTS_REAL', calledShowNumbers: '01012345678', calledNumber: '13800138000', playTimes: 1 },
@@ -129,13 +129,17 @@ test('missing and failed self identity reads differ and retry preserves an expli
 })
 
 test('self bindings require exact provider type and configuration', async () => {
-  const api = apiFixture(), trial = useChannelTest(api)
+  const api = apiFixture(), trial = useChannelTest(api, {
+    'weixin:corpMessage': async () => [{ id: 'explicit-member', name: '测试成员' }],
+  })
   api.getCurrentBindings = async () => [
     { type: 'weixin_corpMessage', provider: 'another', thirdPartyUserId: 'wrong-config' },
     { type: 'other', provider: 'weixin:corpMessage', thirdPartyUserId: 'wrong-type' },
   ]
   trial.show(context(config('weixin:corpMessage'))); await flush()
   assert.equal(trial.model.value.identityState, 'empty')
+  assert.equal(trial.model.value.memberState, 'ready')
+  trial.setAddress('arbitrary-member'); assert.equal(await trial.send(), false)
   trial.setAddress('explicit-member'); assert.equal(await trial.send(), true)
   assert.equal(api.calls[0][1].template.toUser, 'explicit-member')
   trial.close(); api.getCurrentBindings = async () => [
@@ -144,6 +148,37 @@ test('self bindings require exact provider type and configuration', async () => 
   ]
   trial.show(context(config('weixin:corpMessage'))); await flush()
   assert.equal(trial.model.value.identityState, 'error')
+})
+
+test('trial member options load on demand, retry and stay scoped to the saved configuration', async () => {
+  let finishDingTalk
+  const queried = []
+  let failWeChat = true
+  const trial = useChannelTest(apiFixture(), {
+    'dingTalk:dingTalkMessage': id => {
+      queried.push(id)
+      return new Promise(resolve => { finishDingTalk = resolve })
+    },
+    'weixin:corpMessage': async id => {
+      queried.push(id)
+      if (failWeChat) throw { status: 403 }
+      return []
+    },
+  })
+  trial.show(context(config('dingTalk:dingTalkMessage'))); await flush()
+  assert.deepEqual(queried, [])
+  trial.selectRecipient('other')
+  assert.equal(trial.model.value.memberState, 'loading')
+  trial.show(context(config('weixin:corpMessage', 'wechat-app-b'))); await flush()
+  assert.equal(trial.model.value.recipientMode, 'other')
+  assert.equal(trial.model.value.memberState, 'forbidden')
+  failWeChat = false
+  await trial.loadMembers()
+  finishDingTalk([{ id: 'previous', name: 'Previous app member' }]); await flush()
+  assert.equal(trial.model.value.memberState, 'empty')
+  assert.deepEqual(trial.model.value.memberOptions, [])
+  assert.equal(trial.model.value.canSend, false)
+  assert.deepEqual(queried, ['dingTalk:dingTalkMessage', 'wechat-app-b', 'wechat-app-b'])
 })
 
 test('single-recipient validation rejects lists, broadcasts, malformed addresses and phone numbers', () => {
@@ -228,8 +263,16 @@ test('late identity reads cannot overwrite a different channel, including delaye
 
 test('saved configuration is snapshotted and sample parameters cannot redirect a trial', async () => {
   const api = apiFixture(), trial = useChannelTest(api), record = config('weixin:corpMessage')
-  trial.show(context(record)); await flush(); record.configuration.agentId = 'modified-draft'
-  await trial.send(); assert.equal(api.calls[0][1].template.agentId, '1002')
+  record.configuration.alarmTemplateDefaults = { agentId: '2000001' }
+  trial.show(context(record)); await flush()
+  record.configuration.alarmTemplateDefaults.agentId = '2000002'
+  assert.equal(await trial.send(), true)
+  assert.equal(api.calls[0][1].template.agentId, '2000001')
+  record.configuration.alarmTemplateDefaults.agentId = 'invalid'
+  trial.show(context(record)); await flush()
+  assert.deepEqual(trial.model.value.missing, ['agentId'])
+  assert.equal(await trial.send(), false)
+  assert.equal(api.calls.length, 1)
   for (const id of ['sms:aliyunSms', 'voice:aliyun']) for (const parameters of [[{ name: 'phoneNumber', value: 'another-recipient' }], [{ name: 'calledNumber', value: 'another-recipient' }], [{ name: 'name', value: 'x' }, { name: ' name ', value: 'y' }], [{ name: '', value: 'x' }], [null], 'invalid']) {
     const record = config(id); record.configuration.testTemplate.parameters = parameters
     assert.ok(testSettingsIssues(id, record.configuration.testTemplate, true).includes('parameters'))

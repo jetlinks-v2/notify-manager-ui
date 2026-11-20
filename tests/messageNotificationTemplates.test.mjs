@@ -1048,36 +1048,52 @@ test('standalone new drafts can be cancelled without a write and read-only users
 })
 
 
-test('business directory retains only business groups and actual bindings without guessing name associations', () => {
+test('business directory orders the three known groups and appends extensions with their actual bindings', () => {
   const { buildTemplateDirectory, filterTemplateDirectory, flattenTemplateDirectory, templateBusinessKey } = load(resolve(templatesRoot, 'templateDirectoryModel.ts'))
   const templates = [record('template-alarm'), ...directoryFixture.templates, record('template-maintenance'), record('unbound', { name: '设备告警 · 邮件' })]
-  const names = { iot: '物联告警', video: '视联告警', system: '系统公告' }
+  const names = { iot: '物联告警', video: '视联告警', system: '系统消息' }
   const translate = key => names[key.split('.').at(-1)] || key
-  // 覆盖当前接口仍返回旧分组，且公告先于告警返回的情况。
+  const [device, recovery, compliance, security, scene, maintenance] = directoryFixture.businessTypes
+  const businessEvent = { id: 'businessEvent', name: '业务监控' }
+  const bulletin = { id: 'bulletin-config', provider: 'SystemBulletin', name: '系统公告', type: { id: 'SystemBulletin', name: '系统公告' }, channels: [] }
+  const extension = { provider: 'extension-event', name: '扩展事件', type: { id: 'system', name: '扩展运维' }, channels: [] }
+  // 打乱已知业务顺序，覆盖原分组相同的业务，以及与页面分组使用相同 ID 的扩展。
   const businesses = [
-    { id: 'bulletin-config', provider: 'SystemBulletin', name: '系统公告', type: { id: 'SystemBulletin', name: '系统公告' }, channels: [] },
-    ...directoryFixture.businessTypes.map(item => ({ ...item, type: item.provider === 'scene'
-      ? { id: 'business', name: '业务监控' } : item.type.id === 'other' ? item.type : { id: 'alarm', name: '告警' } })),
+    extension,
+    { ...maintenance, name: '系统运行异常', type: { id: 'systemEvent', name: '系统运维' } },
+    security,
+    { provider: 'device-transparent-codec', name: '设备透传消息解析异常', type: businessEvent, channels: [] },
+    { provider: 'extension-monitor', name: '扩展监控', type: businessEvent, channels: [] },
+    { ...scene, type: businessEvent },
+    recovery,
+    compliance,
+    device,
+    bulletin,
   ]
   const before = structuredClone(businesses)
   const tree = buildTemplateDirectory(templates, businesses, { other: '其他' }, translate)
-  assert.deepEqual(tree.map(node => node.title), ['物联告警', '视联告警', '系统公告', '其他'])
+  assert.deepEqual(tree.map(node => node.title), ['物联告警', '视联告警', '系统消息', '扩展运维', '业务监控'])
+  assert.equal(new Set(tree.map(node => node.key)).size, tree.length)
+  assert.deepEqual(tree.map(group => group.children.map(node => node.business.provider)), [
+    ['alarm-device', 'alarm-device-relieve', 'scene', 'device-transparent-codec'],
+    ['aiComplianceAlarm', 'aiSecurityAlarm'],
+    ['SystemBulletin', 'system-event'],
+    ['extension-event'],
+    ['extension-monitor'],
+  ])
   assert.deepEqual(businesses, before)
   const alarm = tree[0].children[0]
   assert.equal(alarm.title, '设备告警')
   assert.equal(alarm.templateId, 'template-alarm')
-  assert.equal(alarm.business, businesses[1])
-  assert.equal(alarm.key, templateBusinessKey(businesses[1]))
+  assert.equal(alarm.business, device)
+  assert.equal(alarm.key, templateBusinessKey(device))
   assert.equal(alarm.hasTemplate, true)
   const relieve = tree[0].children[1]
   assert.equal(relieve.title, '告警解除')
   assert.equal(relieve.templateId, 'template-relieve')
-  assert.equal(relieve.key, templateBusinessKey(businesses[2]))
-  assert.equal(tree[0].children[2].business.provider, 'scene')
+  assert.equal(relieve.key, templateBusinessKey(recovery))
   assert.ok(tree.every(group => group.children.every(node => !node.children?.length)))
-  assert.deepEqual(tree[1].children.map(node => node.business.provider), ['aiComplianceAlarm', 'aiSecurityAlarm'])
-  assert.equal(tree[2].children[0].business.provider, 'SystemBulletin')
-  assert.equal(tree[3].children[0].templateId, 'template-maintenance')
+  assert.equal(tree[2].children[1].templateId, 'template-maintenance')
   assert.equal(tree[1].children[0].selectable, true)
   assert.ok(flattenTemplateDirectory(tree).every(node => node.templateId !== 'unbound'))
   assert.deepEqual(buildTemplateDirectory(templates, [], { other: '其他' }, translate), [])
@@ -1089,11 +1105,12 @@ test('business directory retains only business groups and actual bindings withou
   assert.equal(filterTemplateDirectory(tree, '视联告警')[0].children.length, 2)
   assert.equal(filterTemplateDirectory(tree, '系统公告')[0].children[0].business.provider, 'SystemBulletin')
   assert.equal(filterTemplateDirectory(tree, '场景联动')[0].title, '物联告警')
+  assert.equal(filterTemplateDirectory(tree, '透传消息')[0].title, '物联告警')
   const orphan = buildTemplateDirectory(templates, [directoryFixture.businessTypes[1]], { other: '其他' }, translate)
   assert.equal(orphan[0].children[0].templateId, 'template-relieve')
   assert.deepEqual(orphan.map(node => node.title), ['物联告警'])
   assert.deepEqual(filterTemplateDirectory(orphan, '视联告警'), [])
-  const english = buildTemplateDirectory([], [businesses[0]], { other: 'Other' }, key => `English ${key.split('.').at(-1)}`)
+  const english = buildTemplateDirectory([], [bulletin], { other: 'Other' }, key => `English ${key.split('.').at(-1)}`)
   assert.deepEqual(english.map(node => node.title), ['English system'])
   assert.equal(english[0].children[0].selectable, true)
 })

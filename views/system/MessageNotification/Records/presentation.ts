@@ -2,8 +2,9 @@ import dayjs from 'dayjs'
 import type { ConditionFilterField } from '@jetlinks-web-core/components/ConditionFilter'
 import {
   notificationChannels, notificationEnumText, notificationEnumValue, notificationStates,
-  resolveNotificationChannel, type NotificationEnum,
+  resolveNotificationChannel, type NotificationEnum, type NotificationHistory,
 } from '../shared'
+import { formatEmailListPreview } from '../Templates/definition/emailTemplateContent'
 
 type Translate = (key: string, values?: Record<string, unknown>) => string
 
@@ -31,6 +32,49 @@ export function historyChannelLabel(type: NotificationEnum | undefined, provider
 /** Timestamp zero is valid historical data; missing or invalid values stay unspecified. */
 export function historyTime(value?: number): string {
   return value !== undefined && Number.isFinite(value) && dayjs(value).isValid() ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '—'
+}
+
+/** 将空白和独立横线识别为缺省值，保留文本中的连字符。 */
+function reportedText(value?: string | null): string | undefined {
+  const text = value?.trim()
+  return text && !/^[-–—−－]+$/.test(text) ? text : undefined
+}
+
+function reportedEnum(value?: NotificationEnum): NotificationEnum | undefined {
+  if (typeof value === 'object' && value) {
+    return { value: reportedText(value.value) ?? '', text: reportedText(value.text) }
+  }
+  return reportedText(value)
+}
+
+function historyTableMessage(
+  value: string | undefined,
+  type: NotificationEnum | undefined,
+  t: Translate,
+): { text: string; html?: string } | undefined {
+  const text = reportedText(value)
+  if (text === undefined) return undefined
+  if (notificationEnumValue(type) !== 'email') return { text }
+  const preview = formatEmailListPreview(text)
+  return reportedText(preview.text) ? preview : { text: t('messageNotification.records.viewDetail') }
+}
+
+/** 表格和悬浮提示共用展示值，避免把缺省文案写入发送记录。 */
+export function historyTableCells(row: NotificationHistory, t: Translate) {
+  const type = reportedEnum(row.notifyType)
+  const provider = reportedEnum(row.provider)
+  const state = reportedEnum(row.state)
+
+  return {
+    notifyTime: reportedText(historyTime(row.notifyTime)) ?? t('comm.table.empty-2'),
+    channel: reportedText(historyChannelLabel(type, provider, t)) ?? t('comm.table.empty'),
+    channelIcon: historyChannelIcon(type),
+    receiver: row.receiver?.map(reportedText).filter(Boolean).join(', ') || t('messageNotification.records.receiverUnspecified'),
+    reason: reportedText(row.errorMessage) ?? reportedText(row.errorType) ?? t('messageNotification.records.noException'),
+    state: notificationEnumValue(state),
+    stateLabel: reportedText(historyStateLabel(state, t)) ?? t('comm.table.empty-2'),
+    message: historyTableMessage(row.notifyMessage, type, t),
+  }
 }
 
 /** Display stored content as text, preserving invalid serialized JSON and never evaluating templates. */

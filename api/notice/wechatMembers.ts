@@ -26,8 +26,8 @@ export const wechatMemberApi = {
   async departments(configId: string): Promise<WechatDepartment[]> {
     return checked(request.get(`/notifier/wechat/corp/${segment(configId)}/departments/tree`))
   },
-  async members(configId: string): Promise<WechatMember[]> {
-    return checked(request.get(`/notifier/wechat/corp/${segment(configId)}/users`))
+  async members(configId: string, options?: { hiddenError?: boolean }): Promise<WechatMember[]> {
+    return checked(request.get(`/notifier/wechat/corp/${segment(configId)}/users`, undefined, options))
   },
   async users(pageIndex: number, pageSize: number): Promise<NotificationPage<MemberPlatformUser>> {
     return normalizeNotificationPage(await checked<NotificationPage<MemberPlatformUser>>(request.post('/user/detail/_query', {

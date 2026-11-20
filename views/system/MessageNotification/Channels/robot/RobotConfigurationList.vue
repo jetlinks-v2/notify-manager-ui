@@ -14,8 +14,6 @@
               <a-menu class="robot-configurations__menu">
                 <a-menu-item key="edit"><j-permission-button type="link" block :has-permission="[notificationPermissions.channels.update]" :disabled="disabled" @click="emit('action', item.id, 'edit')">{{ t('messageNotification.common.edit') }}</j-permission-button></a-menu-item>
                 <a-menu-item v-if="canFillTemplates" key="fill"><j-permission-button type="link" block :has-permission="[notificationPermissions.channels.update]" :disabled="disabled" @click="emit('action', item.id, 'fill')">{{ t('messageNotification.channels.templateSetup.fill') }}</j-permission-button></a-menu-item>
-                <a-menu-divider />
-                <a-menu-item key="delete"><j-permission-button type="link" block danger :has-permission="[notificationPermissions.channels.delete]" :disabled="disabled" @click="emit('action', item.id, 'delete')">{{ t('messageNotification.common.delete') }}</j-permission-button></a-menu-item>
               </a-menu>
             </template>
           </a-dropdown>
@@ -31,7 +29,7 @@ import { EllipsisOutlined } from '@ant-design/icons-vue'
 import { notificationPermissions } from '../../shared'
 import type { RobotConfigurationRow } from './robotPresentation'
 defineProps<{ items: RobotConfigurationRow[]; disabled: boolean; canFillTemplates: boolean }>()
-const emit = defineEmits<{ (event: 'action', id: string, action: 'edit' | 'test' | 'delete' | 'fill'): void }>()
+const emit = defineEmits<{ (event: 'action', id: string, action: 'edit' | 'test' | 'fill'): void }>()
 const { t } = useI18n()
 </script>
 

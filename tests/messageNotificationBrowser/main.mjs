@@ -170,10 +170,19 @@ const queryRows = (rows, query) => rows.filter(row => (query.terms || []).every(
 }))
 
 // Direct legacy remote-option hooks are isolated too; the fixture never reaches a real service.
-notificationRequest.get = async path => {
+notificationRequest.get = async (path, params) => {
   record('remoteOption', path)
   if (/\/templates$/.test(path)) return { success: true, result: [{ templateCode: 'SMS_FIXTURE', templateName: '设备告警', templateContent: '设备 ${detail.targetName} 发生告警：${detail.alarmConfigName}' }] }
   if (/\/signs$/.test(path)) return { success: true, result: [{ signName: '测试签名' }] }
+  if (flags.has('dingTalkRecipients') && path.startsWith('/notifier/dingtalk/corp/')) {
+    if (path.endsWith('/departments') && params?.fetchChild) {
+      return { success: true, result: [{ id: '101', name: '运维部' }, { id: '102', name: '运维一组' }] }
+    }
+    if (path.endsWith('/users') && !failures.has('dingTalkUsers')) {
+      return { success: true, result: [{ id: 'fixture-user-a', name: '测试用户甲' }, { id: 'fixture-user-b', name: '测试用户乙' }] }
+    }
+    return { success: false, result: [] }
+  }
   if (/department|user|tag/.test(path)) return { success: true, result: [] }
   throw new Error(`Unexpected request in isolated fixture: ${path}`)
 }

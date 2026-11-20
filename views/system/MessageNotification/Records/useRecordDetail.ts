@@ -4,6 +4,7 @@ import { usePermission } from '@jetlinks-web/hooks'
 import { useMenuStore } from '@jetlinks-web-core/store/menu'
 import { messageNotificationApi } from '../../../../api/notice/messageNotification'
 import { notificationEnumValue, notificationNavigationTarget, notificationPermissions, resolveNotificationChannel, type NotificationHistory } from '../shared'
+import { sanitizeEmailPreview } from '../Templates/definition/emailTemplateContent'
 import { historyChannelIcon, historyChannelLabel, historyTime } from './presentation'
 
 /** Own the saved-detail presentation and transition focus, leaving the component to render and delegate. */
@@ -40,6 +41,11 @@ export function useRecordDetail(record: Ref<NotificationHistory | undefined>, op
   }, { immediate: true, flush: 'sync' })
   const channelIcon = computed(() => historyChannelIcon(record.value?.notifyType))
   const sentContent = computed(() => record.value?.notifyMessage?.trim() ? record.value.notifyMessage : t('messageNotification.records.detail.unreported'))
+  // 历史邮件正文可能含外部输入，复用模板预览的净化规则后再渲染。
+  const emailContentHtml = computed(() => {
+    if (notificationEnumValue(record.value?.notifyType) !== 'email') return undefined
+    return sanitizeEmailPreview(sentContent.value)
+  })
   const contentSections = computed(() => {
     const sections = [{ key: 'notifyMessage', label: t('messageNotification.records.field.notifyMessage'), content: sentContent.value }]
     if (notificationEnumValue(record.value?.state) === 'error') {
@@ -59,14 +65,11 @@ export function useRecordDetail(record: Ref<NotificationHistory | undefined>, op
     const time = historyTime(current?.notifyTime)
     const template = field('messageTemplate', 'detail.messageTemplate', templateName.value, current?.templateId?.trim() ? 'unreported' : 'unconfigured')
     if (templateLoading.value) template.value = t('messageNotification.common.loading')
-    // Keep the requested fields visible without inferring absent historical names or retry counts.
     return [
       field('notifyTime', 'field.notifyTime', time === '—' ? undefined : time),
-      field('notificationType', 'detail.notificationType', current?.bizType),
       field('channel', 'field.channel', notificationEnumValue(current?.notifyType) ? historyChannelLabel(current?.notifyType, current?.provider, t) : undefined, 'unconfigured'),
       field('receiver', 'field.receiver', current?.receiver?.filter(value => value.trim()).join(', ')),
       template,
-      field('retryCount', 'detail.retryCount'),
     ]
   })
 
@@ -86,5 +89,5 @@ export function useRecordDetail(record: Ref<NotificationHistory | undefined>, op
     closeButton.value?.focus()
   }
 
-  return { summary, channelIcon, sentContent, contentSections, closeButton, afterOpenChange, canGoChannel, canGoTemplate, navigate }
+  return { summary, channelIcon, sentContent, contentSections, emailContentHtml, closeButton, afterOpenChange, canGoChannel, canGoTemplate, navigate }
 }

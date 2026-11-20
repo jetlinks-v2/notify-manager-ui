@@ -69,7 +69,9 @@ export type NoticeTemplateFieldSchema = {
   disabled?: boolean
   hidden?: boolean
   loading?: boolean
+  optionLoadError?: boolean
   showSearch?: boolean
+  commaSeparated?: boolean
   copyable?: boolean
   rows?: number
   min?: number

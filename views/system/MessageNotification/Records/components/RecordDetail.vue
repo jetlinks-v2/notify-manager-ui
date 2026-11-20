@@ -1,10 +1,9 @@
 <template>
   <JlDrawerShell
-    :open="open" :width="520" :title="record?.notifyMessage || t('messageNotification.records.detail.title')"
+    :open="open" :width="520" :title="t('messageNotification.records.detail.title')"
     :keyboard="true" :autofocus="true"
     @update:open="emit('update:open', $event)" @after-open-change="afterOpenChange"
   >
-    <template #head><b class="record-detail__title" :title="record?.notifyMessage">{{ record?.notifyMessage || t('messageNotification.records.detail.title') }}</b></template>
     <template #head-extra>
       <a-tag v-if="record?.state" :color="notificationEnumValue(record.state) === 'error' ? 'error' : notificationEnumValue(record.state) === 'success' ? 'success' : 'default'">{{ historyStateLabel(record.state, t) }}</a-tag>
       <DocumentHelp v-if="record" code="system/MessageNotification/Records" help-key="record.state" />
@@ -22,7 +21,8 @@
       </KvGrid>
       <section v-for="section in contentSections" :key="section.key" class="record-detail__section">
         <h3>{{ section.label }}</h3>
-        <CodeBlock variant="light" :content="section.content" />
+        <div v-if="section.key === 'notifyMessage' && emailContentHtml !== undefined" class="record-detail__email" v-html="emailContentHtml" />
+        <CodeBlock v-else variant="light" :content="section.content" />
       </section>
     </template>
     <template #foot>
@@ -52,7 +52,7 @@ const emit = defineEmits<{
   (event: 'closed'): void
 }>()
 const { t } = useI18n()
-const { summary, channelIcon, contentSections, closeButton, afterOpenChange, canGoChannel, canGoTemplate, navigate } = useRecordDetail(toRef(props, 'record'), toRef(props, 'open'), () => emit('closed'))
+const { summary, channelIcon, contentSections, emailContentHtml, closeButton, afterOpenChange, canGoChannel, canGoTemplate, navigate } = useRecordDetail(toRef(props, 'record'), toRef(props, 'open'), () => emit('closed'))
 </script>
 
 <style scoped>
@@ -60,9 +60,21 @@ const { summary, channelIcon, contentSections, closeButton, afterOpenChange, can
 .record-detail__summary .kv-cell { min-width: 0; }
 .record-detail__summary dt { margin-bottom: var(--space-1); color: var(--ink-4); font-size: var(--fs-12); font-weight: 400; }
 .record-detail__summary dd { margin: 0; color: var(--ink-1); font-size: var(--fs-14); overflow-wrap: anywhere; }
-.record-detail__title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .record-detail__link { height: auto; padding: 0; white-space: normal; text-align: left; overflow-wrap: anywhere; }
 .record-detail__channel { display: inline-flex; align-items: center; gap: var(--space-2); }
 .kv-cell .record-detail__missing { color: var(--ink-4); }
 .record-detail__section h3 { margin: 0 0 var(--space-2); font-size: var(--fs-14); font-weight: var(--chrome-label-font-weight); color: var(--text-color); }
+.record-detail__email {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  color: var(--ink-2);
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+  overflow-x: auto;
+}
+.record-detail__email :deep(p) { margin: 0 0 var(--space-2); }
+.record-detail__email :deep(p:last-child) { margin-bottom: 0; }
+.record-detail__email :deep(img) { max-width: 100%; height: auto; }
+.record-detail__email :deep(pre) { white-space: pre-wrap; }
 </style>

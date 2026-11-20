@@ -10,7 +10,7 @@ const baseURL = process.env.SMOKE_BASE_URL || 'http://127.0.0.1:9200'
 const output = process.env.SMOKE_OUTPUT || '/tmp/robot-configurations-browser'
 const entry = new URL(`/@fs${fileURLToPath(new URL('./index.html', import.meta.url))}`, baseURL)
 const report = { assertions: [], screenshots: [], errors: [], blockedRequests: [] }
-const browser = await chromium.launch({ headless: true })
+const browser = await chromium.launch({ headless: true, channel: process.env.SMOKE_CHROMIUM_CHANNEL })
 await mkdir(output, { recursive: true })
 const pass = message => report.assertions.push(message)
 async function eventually(assertion) {
@@ -27,6 +27,7 @@ const config = (page, id) => page.evaluate(id => window.__notificationSmoke.conf
 const updates = page => page.evaluate(() => window.__notificationSmoke.calls.filter(([method]) => method === 'updateConfig').length)
 const row = (page, id) => page.locator(`.robot-configurations__row[data-config-id="${id}"]`)
 const modal = page => page.locator('.robot-configuration-modal')
+const field = async (page, key) => modal(page).getByLabel(await t(page, `messageNotification.channels.robot.${key}`), { exact: true })
 async function open(flags = 'robotSigning', configId = 'robot-one') {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, serviceWorkers: 'block' })
   page.setDefaultTimeout(8000)
@@ -39,8 +40,8 @@ async function open(flags = 'robotSigning', configId = 'robot-one') {
     }
     return route.continue()
   })
-  await page.goto(`${entry.href}?${flags}&writeDelay=350#/channels?channel=dingTalk:dingTalkRobotWebHook${configId ? `&configId=${configId}` : ''}`)
-  await page.waitForFunction(() => document.documentElement.dataset.notificationSmoke === 'ready')
+  await page.goto(`${entry.href}?${flags}&writeDelay=350#/channels?channel=dingTalk:dingTalkRobotWebHook${configId ? `&configId=${configId}` : ''}`, { waitUntil: 'domcontentloaded', timeout: 30000 })
+  await page.waitForFunction(() => document.documentElement.dataset.notificationSmoke === 'ready', undefined, { timeout: 30000 })
   await eventually(async () => assert.equal(await editButton(page, await t(page, 'messageNotification.channels.robot.add')).isEnabled(), !flags.includes('permission=read')))
   return page
 }
@@ -52,7 +53,7 @@ async function action(page, id, key) {
   if (key === 'edit') await modal(page).waitFor()
 }
 async function fill(page, key, value) {
-  await modal(page).getByRole('textbox', { name: await t(page, `messageNotification.channels.robot.${key}`), exact: true }).fill(value)
+  await (await field(page, key)).fill(value)
 }
 async function save(page) { await modal(page).locator('.ant-modal-footer .ant-btn-primary').click() }
 async function cancel(page) {
@@ -87,6 +88,9 @@ try {
     await action(page, `robot-${id}`, 'edit')
     await assertHidden(page)
     assert.equal(await modal(page).locator('.ant-form-item input').count(), 2)
+    const webhook = await field(page, 'webhook')
+    assert.equal(await webhook.getAttribute('type'), 'password')
+    assert.equal(await webhook.inputValue(), (await config(page, `robot-${id}`)).configuration.url)
     await fill(page, 'webhook', `https://oapi.dingtalk.com/robot/send?access_token=private-${id}-1234`)
     await save(page)
     await modal(page).waitFor({ state: 'hidden' })
@@ -97,11 +101,23 @@ try {
   pass('robot credential edits preserve each signing configuration and redact URLs')
   await snapshot(page, 'robot-list')
   await action(page, 'robot-two', 'edit')
+  const webhook = await field(page, 'webhook')
+  const savedUrl = (await config(page, 'robot-two')).configuration.url
+  const saveButton = modal(page).locator('.ant-modal-footer .ant-btn-primary')
+  await modal(page).locator('.ant-input-password-icon').click()
+  await eventually(async () => assert.equal(await webhook.getAttribute('type'), 'text'))
+  assert.equal(await webhook.inputValue(), savedUrl)
+  assert.equal(await saveButton.isEnabled(), false)
   await fill(page, 'name', 'Cancel this name')
+  await fill(page, 'webhook', 'https://fixture.example.test/canceled')
   await cancel(page)
   assert.equal((await config(page, 'robot-two')).name, 'robot-two')
   await action(page, 'robot-two', 'edit')
+  assert.equal(await webhook.getAttribute('type'), 'password')
+  assert.equal(await webhook.inputValue(), savedUrl)
+  pass('saved Webhook can be revealed without a write and reopens masked after cancellation')
   await fill(page, 'name', 'Updated robot name')
+  await webhook.fill('')
   await page.evaluate(() => window.__notificationSmoke.failures.add('updateConfig'))
   await save(page)
   await eventually(async () => assert.equal(await modal(page).locator('.ant-modal-footer .ant-btn-primary').isEnabled(), true))
@@ -109,6 +125,7 @@ try {
   await save(page)
   await modal(page).waitFor({ state: 'hidden' })
   assert.equal((await config(page, 'robot-two')).name, 'Updated robot name')
+  assert.equal((await config(page, 'robot-two')).configuration.url, savedUrl)
   pass('cancel restores saved values; failed updates keep input and retry the selected robot')
   await action(page, 'robot-masked', 'edit')
   const beforeMasked = await updates(page)
@@ -126,13 +143,17 @@ try {
   await editButton(page.locator('.notification-channel-test'), await t(page, 'messageNotification.channelTest.send')).click()
   await eventually(async () => assert.equal(await page.evaluate(() => window.__notificationSmoke.calls.filter(([method]) => method === 'sendInline').at(-1)?.[1].configId), 'robot-two'))
   await editButton(page.locator('.notification-channel-test'), await t(page, 'messageNotification.common.close')).click()
-  await action(page, 'robot-two', 'delete')
-  await page.locator('.notification-channels__clear').waitFor()
-  assert.match(await page.locator('.notification-channels__clear').innerText(), /Updated robot name/)
-  await editButton(page.locator('.notification-channels__clear'), await t(page, 'messageNotification.channels.clearConfirm')).click()
-  await row(page, 'robot-two').waitFor({ state: 'hidden' })
+  await page.locator('.notification-channel-test').waitFor({ state: 'hidden' })
+  await editButton(row(page, 'robot-two'), await t(page, 'messageNotification.channels.more')).click()
+  const menu = page.locator('.ant-dropdown:visible')
+  await menu.getByRole('menuitem').first().waitFor()
+  assert.equal(await editButton(menu, await t(page, 'messageNotification.common.delete')).count(), 0)
+  await page.locator('.notification-channels__heading h2').click()
+  await menu.waitFor({ state: 'hidden' })
+  assert.equal((await config(page, 'robot-two')).name, 'Updated robot name')
   assert.equal((await config(page, 'robot-one')).configuration.secret, 'SECfixture-one')
-  pass('row test and delete use the clicked robot ID and keep other robots intact')
+  assert.equal(await page.evaluate(() => window.__notificationSmoke.calls.some(([method]) => method === 'deleteConfig')), false)
+  pass('row test uses the clicked robot ID and the row menu offers no deletion')
   for (const language of ['zh', 'en', 'ja']) {
     await page.evaluate(language => { window.__notificationSmoke.i18n.global.locale.value = language }, language)
     await action(page, 'robot-one', 'edit')
@@ -170,7 +191,7 @@ try {
   await cancel(fresh)
   assert.equal(await fresh.evaluate(() => window.__notificationSmoke.calls.filter(([method]) => method === 'createConfig').length), 0)
   await editButton(fresh, await t(fresh, 'messageNotification.channels.robot.add')).click()
-  assert.equal(await modal(fresh).getByRole('textbox', { name: await t(fresh, 'messageNotification.channels.robot.webhook'), exact: true }).inputValue(), '')
+  assert.equal(await (await field(fresh, 'webhook')).inputValue(), '')
   await fill(fresh, 'name', '运维值班群')
   await fill(fresh, 'webhook', 'https://oapi.dingtalk.com/robot/send?access_token=new-private-a8f3')
   await snapshot(fresh, 'robot-add-modal')

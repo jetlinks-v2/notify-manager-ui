@@ -27,6 +27,7 @@ async function open(route, flags = '') {
   return page
 }
 const translate = (page, key) => page.evaluate(key => window.__notificationSmoke.i18n.global.t(key), key)
+const labels = async locator => (await locator.allTextContents()).map(text => text.trim())
 const button = async (page, key, scope = page) => scope.getByRole('button', { name: new RegExp(`^${(await translate(page, key)).split('').join('\\s*')}$`) })
 try {
   const channels = await open('channels?configId=smtp-backup')
@@ -40,7 +41,6 @@ try {
   await channels.waitForFunction(() => window.__notificationSmoke.calls.some(([method, value]) => method === 'getConfigMetadata' && value.type === 'voice'))
   await channels.screenshot({ path: `${output}/voice-channel.png`, fullPage: true })
   report.passed.push('voice:aliyun opens the matching provider configuration')
-  await channels.close()
 
   const linked = await open('templates?topicProvider=alarm-device-relieve&channelProvider=notifier-email', '?directory=tree')
   await linked.waitForFunction(() => window.__notificationSmoke.calls.some(([method, input]) => method === 'getBusinessTemplate' && input.providerId === 'relieve-config'))
@@ -53,7 +53,7 @@ try {
 
   const wechat = await open('templates?channel=email:embedded&business=wechat-device-topic', '?unifiedTests&wechatTemplates&existingWechatTemplates')
   const channelNav = wechat.locator('.template-channel-navigation')
-  const wechatButton = channelNav.getByRole('button', { name: /^企业微信 ·/ })
+  const wechatButton = channelNav.getByRole('button', { name: /^微信 ·/ })
   await wechatButton.click()
   await wechat.locator('.wechat-template__card').waitFor()
   await wechat.getByText('已保存', { exact: true }).waitFor()
@@ -68,9 +68,35 @@ try {
   await wechat.setViewportSize({ width: 1440, height: 1000 })
   await channelNav.getByRole('button', { name: /^钉钉 ·/ }).click()
   await channelNav.getByRole('tab', { name: '工作通知', exact: true }).waitFor()
-  await channelNav.getByRole('tab', { name: '群消息', exact: true }).click()
+  await channelNav.getByRole('tab', { name: '群机器人', exact: true }).click()
   await wechat.waitForFunction(() => window.__notificationSmoke.router.currentRoute.value.query.channel === 'dingTalk:dingTalkRobotWebHook')
-  report.passed.push('WeCom opens work notifications directly with both WeChat providers in the backend catalog; DingTalk tabs remain selectable')
+  report.passed.push('WeChat opens work notifications directly with both WeChat providers in the backend catalog; DingTalk tabs remain selectable')
+
+  for (const language of ['zh', 'en', 'ja']) {
+    await Promise.all([channels, wechat].map(page => page.evaluate(language => {
+      window.__notificationSmoke.i18n.global.locale.value = language
+    }, language)))
+    const primary = await labels(channelNav.getByRole('button'))
+    const providers = await labels(channelNav.getByRole('tab'))
+    const tree = await labels(channels.locator('.notification-channels__tree .notification-channels__node-label'))
+    assert.deepEqual(tree.sort(), [...primary, ...providers].sort(), language)
+
+    await channels.setViewportSize({ width: 390, height: 844 })
+    await channels.locator('.notification-channels__mobile-nav').click()
+    const options = channels.locator('.ant-select-dropdown:visible .ant-select-item-option-content')
+    await options.first().waitFor()
+    const dingTalk = await translate(channels, 'NoticeCenter.channel.type.dingTalk')
+    const items = primary.flatMap(label => label === dingTalk ? providers.map(provider => `${label} · ${provider}`) : [label])
+    assert.deepEqual((await labels(options)).sort(), items.sort(), language)
+    if (language === 'zh') {
+      await options.filter({ hasText: /^钉钉 · 群机器人$/ }).click()
+      await channels.waitForFunction(() => window.__notificationSmoke.router.currentRoute.value.query.channel === 'dingTalk:dingTalkRobotWebHook')
+    }
+    await channels.setViewportSize({ width: 1440, height: 1000 })
+  }
+  await channels.close()
+  report.passed.push('channel tree, mobile select and template navigation share the same labels in Chinese, English and Japanese')
+  await wechat.evaluate(() => { window.__notificationSmoke.i18n.global.locale.value = 'zh' })
   await wechat.evaluate(() => window.__notificationSmoke.router.push({ path: '/templates', query: {
     channel: 'weixin:officialMessage', business: 'wechat-device-topic', configId: 'trial-officialMessage',
   } }))
@@ -107,7 +133,7 @@ try {
   await (await button(missing, 'messageNotification.templates.edit')).click()
   await missing.locator('.template-editor').waitFor()
   assert.equal(await missing.evaluate(() => window.__notificationSmoke.router.currentRoute.value.query.topicProvider), 'actual-scene')
-  await missing.getByRole('button', { name: await translate(missing, 'messageNotification.channel.sms') }).click()
+  await missing.getByRole('button', { name: /^短信 ·/ }).click()
   await missing.waitForFunction(() => window.__notificationSmoke.router.currentRoute.value.query.channel === 'sms:aliyunSms')
   assert.equal(await missing.evaluate(() => window.__notificationSmoke.router.currentRoute.value.query.topicProvider), 'actual-scene')
   report.passed.push('unbound business previews defaults without writes and explicit enable preserves its concrete record across channels')

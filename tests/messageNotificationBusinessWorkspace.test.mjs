@@ -224,10 +224,14 @@ test('new external channels fill four message types with their saved config ID, 
         else assert.match(message, /\$\{detail\./)
         assert.equal(item.channel.channelConfiguration.variables.userIdList.relation.objectSource.upperKey, 'subscriber')
       } },
-    { id: 'dingTalk:dingTalkRobotWebHook', configuration: { messageTemplateDefaults: { messageType: 'link', title: '${topic}', message: '${message}', messageUrl: 'https://fixture.example.test/details' } },
+    { id: 'dingTalk:dingTalkRobotWebHook', configuration: { messageTemplateDefaults: { messageType: 'link', title: '旧标题', message: '旧正文', messageUrl: 'https://fixture.example.test/details' } },
       verify: item => {
         assert.deepEqual(item.template.template, { messageType: 'link', link: { title: '${topic}', text: '${message}', messageUrl: 'https://fixture.example.test/details' } })
         assert.deepEqual(item.channel.channelConfiguration.variables, {})
+      } },
+    { id: 'dingTalk:dingTalkRobotWebHook', configuration: { messageTemplateDefaults: { messageType: 'text' } },
+      verify: item => {
+        assert.deepEqual(item.template.template, { messageType: 'text', text: { content: '${message}' } })
       } },
     { id: 'webhook:http', configuration: { url: 'https://fixture.example.test/webhook' },
       verify: (item, provider) => {
@@ -274,7 +278,7 @@ test('template setup requires DingTalk AgentId and mode-specific robot fields wi
   assert.deepEqual(issues('email:embedded', { messageTemplateDefaults: { subject: '', message: '<p><br></p>' } }), {})
   assert.deepEqual(Object.keys(issues('dingTalk:dingTalkMessage', { messageTemplateDefaults: { message: '   ' } })), ['agentId'])
   assert.deepEqual(issues('dingTalk:dingTalkMessage', { agentId: 1024, messageTemplateDefaults: { message: '   ' } }), {})
-  assert.deepEqual(Object.keys(issues('dingTalk:dingTalkRobotWebHook', { messageTemplateDefaults: { messageType: 'link', title: '', messageUrl: 'invalid' } })), ['title', 'messageUrl'])
+  assert.deepEqual(Object.keys(issues('dingTalk:dingTalkRobotWebHook', { messageTemplateDefaults: { messageType: 'link', title: '', message: '   ', messageUrl: 'invalid' } })), ['messageUrl'])
   assert.deepEqual(issues('dingTalk:dingTalkRobotWebHook', { messageTemplateDefaults: { messageType: 'text', title: '', messageUrl: '' } }), {})
   assert.deepEqual(issues('webhook:http', {}), {})
 })

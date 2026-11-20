@@ -3,7 +3,7 @@ import { readonly, shallowRef } from 'vue'
 export interface NotificationConfigurationChange {
   id: string
   channel: string
-  action: 'saved' | 'deleted' | 'message-templates-created'
+  action: 'saved' | 'deleted'
   revision: number
 }
 

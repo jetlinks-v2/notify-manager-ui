@@ -2,6 +2,8 @@ import { computed, reactive, ref, watch } from 'vue'
 import {
   queryAliyunSmsSigns_api,
   queryAliyunSmsTemplates_api,
+  queryDingTalkCorpDepartments_api,
+  queryDingTalkCorpUsers_api,
   queryWechatCorpDepartments_api,
   queryWechatCorpTags_api,
   queryWechatCorpUsers_api,
@@ -24,6 +26,7 @@ import { createTemplateRemoteFieldResolver } from './noticeTemplateRemoteFieldRe
 import {
   asList,
   asText,
+  compactOptions,
   normalizeDepartments,
   normalizeSmsSigns,
   normalizeSmsTemplates,
@@ -34,6 +37,7 @@ import {
 type RemoteState = {
   options: NoticeTemplateFieldOption[]
   loading: boolean
+  failed?: boolean
 }
 
 const createRemoteState = (): RemoteState => reactive({
@@ -62,6 +66,45 @@ export const useNoticeTemplateEditorOptions = (
   const isSms = computed(() => context.type === 'sms')
   const isCorpWeixin = computed(() => context.type === 'weixin' && context.provider === 'corpMessage')
   const selectedDepartmentId = computed(() => asText(form.template.toParty).trim())
+  const dingTalkConfigId = computed(() => context.type === 'dingTalk' && context.provider === 'dingTalkMessage'
+    ? configId.value : '')
+
+  /** Keep each directory independent and ignore requests from a previous binding or a closed editor. */
+  const watchDingTalkOptions = (query: typeof queryDingTalkCorpUsers_api) => {
+    const state = createRemoteState()
+    let refresh: (() => Promise<void>) | undefined
+    watch(dingTalkConfigId, (id, _previousId, onCleanup) => {
+      let active = true
+      onCleanup(() => { active = false })
+      const isCurrent = () => active && id === dingTalkConfigId.value
+      Object.assign(state, { options: [], loading: false, failed: false })
+      refresh = async () => {
+        if (!id || !isCurrent() || state.loading) return
+        state.loading = true
+        state.failed = false
+        try {
+          const response = await query(id)
+          if (!isCurrent()) return
+          state.failed = !response.success
+          if (response.success) {
+            state.options = compactOptions(asList<NoticeCorpUser>(response).map(item => {
+              const value = asText(item?.id)
+              return { value, label: item?.name || value }
+            }))
+          }
+        } catch {
+          if (isCurrent()) state.failed = true
+        } finally {
+          if (isCurrent()) state.loading = false
+        }
+      }
+      void refresh()
+    }, { immediate: true })
+    return { state, retry: () => state.failed ? refresh?.() : undefined }
+  }
+
+  const dingTalkDepartments = watchDingTalkOptions(queryDingTalkCorpDepartments_api)
+  const dingTalkUsers = watchDingTalkOptions(queryDingTalkCorpUsers_api)
 
   const loadSmsTemplates = async () => {
     const currentConfigId = configId.value
@@ -136,7 +179,11 @@ export const useNoticeTemplateEditorOptions = (
     wechatUsers.options = normalizeWechatUsers(asList<NoticeCorpUser>(response))
   }
 
-  const loadRemoteOptions = () => Promise.resolve()
+  const loadRemoteOptions = async (field: NoticeTemplateFieldSchema) => {
+    if (!dingTalkConfigId.value) return
+    if (field.key === 'departmentIdList') await dingTalkDepartments.retry()
+    if (field.key === 'userIdList') await dingTalkUsers.retry()
+  }
 
   const {
     resolveField,
@@ -144,7 +191,8 @@ export const useNoticeTemplateEditorOptions = (
   } = createTemplateRemoteFieldResolver(
     context,
     form,
-    { smsTemplates, smsSigns, wechatDepartments, wechatUsers, wechatTags },
+    { smsTemplates, smsSigns, wechatDepartments, wechatUsers, wechatTags,
+      dingTalkDepartments: dingTalkDepartments.state, dingTalkUsers: dingTalkUsers.state },
     () => configId.value,
     () => selectedDepartmentId.value,
     code => smsTemplateMap.value.get(code),

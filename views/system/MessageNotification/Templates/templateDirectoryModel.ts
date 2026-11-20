@@ -14,11 +14,14 @@ export interface TemplateDirectoryNode {
   children?: TemplateDirectoryNode[]
 }
 
-const displayGroupIds = ['iot', 'video', 'system'] as const
-const businessDisplayGroups = new Map<string, string>([
-  ['alarm-device', 'iot'], ['alarm-device-relieve', 'iot'], ['scene', 'iot'],
-  ['aiComplianceAlarm', 'video'], ['aiSecurityAlarm', 'video'], ['SystemBulletin', 'system'],
-])
+const displayGroups = [
+  ['iot', ['alarm-device', 'alarm-device-relieve', 'scene', 'device-transparent-codec']],
+  ['video', ['aiComplianceAlarm', 'aiSecurityAlarm']],
+  ['system', ['SystemBulletin', 'system-event']],
+] as const
+const businessDisplay = new Map<string, { groupId: string; order: number }>(
+  displayGroups.flatMap(([groupId, providers]) => providers.map((provider, order) => [provider, { groupId, order }] as const)),
+)
 
 /** 业务身份独立于当前渠道模板，未保存的业务也能成为选中对象。 */
 export function templateBusinessKey(item: NoticeChannelConfig, index = 0): string {
@@ -32,17 +35,23 @@ export function buildTemplateDirectory(
 ): TemplateDirectoryNode[] {
   if (!businessTypes.length) return []
   const templateMap = new Map(templates.map(item => [item.id, item]))
-  // 预置分类顺序，填充业务后隐藏空分类；业务身份仍使用接口原始 type 与 provider。
-  const groups = new Map<string, TemplateDirectoryNode>(displayGroupIds.map(id => {
+  // 按固定顺序预置分类。扩展分类使用独立的 key，避免与页面分类的 ID 冲突。
+  const groups = new Map<string, TemplateDirectoryNode>(displayGroups.map(([id]) => {
+    const key = JSON.stringify(['group', id])
     const title = translate(`messageNotification.templates.groups.${id}`)
-    return [id, {
-      key: JSON.stringify(['group', id]), title, searchText: title,
+    return [key, {
+      key, title, searchText: title,
       kind: 'group', class: 'template-directory__group', selectable: false, children: [],
     }]
   }))
-  businessTypes.forEach((item, index) => {
+  // 已知业务按组内顺序排列。扩展业务和同类的多条记录保留接口顺序及源索引。
+  const ordered = businessTypes.map((item, index) => {
     const provider = item.provider || item.providerId || item.id || ''
-    const groupId = businessDisplayGroups.get(provider) || item.type?.id || 'other'
+    return { item, index, provider, display: businessDisplay.get(provider) }
+  }).sort((left, right) => (left.display?.order ?? businessDisplay.size) - (right.display?.order ?? businessDisplay.size))
+  for (const { item, index, provider, display } of ordered) {
+    const groupKey = display ? JSON.stringify(['group', display.groupId])
+      : JSON.stringify(['backend-group', item.type?.id || 'other'])
     const key = templateBusinessKey(item, index)
     const translated = item.i18nName ? translate(item.i18nName) : ''
     const title = translated && translated !== item.i18nName ? translated : item.name || provider
@@ -53,8 +62,8 @@ export function buildTemplateDirectory(
       searchText: [title, provider, ...ids.map(id => `${templateMap.get(id)!.name} ${id}`)].join(' '),
       selectable: true,
     }
-    const group = groups.get(groupId) || {
-      key: JSON.stringify(['group', groupId]), title: item.type?.name || labels.other,
+    const group = groups.get(groupKey) || {
+      key: groupKey, title: item.type?.name || labels.other,
       kind: 'group' as const, class: 'template-directory__group',
       searchText: item.type?.name || labels.other, selectable: false, children: [],
     }
@@ -67,8 +76,8 @@ export function buildTemplateDirectory(
         searchText: `${title} ${provider} ${template.name} ${id}`, selectable: true,
       }
     }))
-    groups.set(groupId, group)
-  })
+    groups.set(groupKey, group)
+  }
   return [...groups.values()].filter(group => group.children?.length)
 }
 
