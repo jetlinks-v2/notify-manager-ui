@@ -22,17 +22,21 @@
           </div>
         </div>
       </template>
-      <template #notifyTime="row">{{ historyTime(row.notifyTime) }}</template>
-      <template #channel="row"><span class="notification-records__channel"><AIcon :type="historyChannelIcon(row.notifyType)" aria-hidden="true" />{{ historyChannelLabel(row.notifyType, row.provider, t) }}</span></template>
-      <template #errorMessage="row"><span :title="row.errorMessage || row.errorType">{{ row.errorMessage || row.errorType || '—' }}</span></template>
-      <template #state="row"><j-badge-status class="notification-records__status" :text="historyStateLabel(row.state, t)" :status="notificationEnumValue(row.state)" :status-names="{ success: 'success', error: 'error', retrying: 'processing', cancel: 'default' }" /></template>
-      <template #receiver="row"><span :title="row.receiver?.join(', ')">{{ row.receiver?.join(', ') || '—' }}</span></template>
+      <template #notifyTime="row">{{ tableCells.get(row.id)?.notifyTime }}</template>
+      <template #channel="row"><span class="notification-records__channel"><AIcon :type="tableCells.get(row.id)?.channelIcon" aria-hidden="true" />{{ tableCells.get(row.id)?.channel }}</span></template>
+      <template #errorMessage="row"><span :title="tableCells.get(row.id)?.reason">{{ tableCells.get(row.id)?.reason }}</span></template>
+      <template #state="row"><j-badge-status class="notification-records__status" :text="tableCells.get(row.id)?.stateLabel" :status="tableCells.get(row.id)?.state" :status-names="{ success: 'success', error: 'error', retrying: 'processing', cancel: 'default' }" /></template>
+      <template #receiver="row"><span :title="tableCells.get(row.id)?.receiver">{{ tableCells.get(row.id)?.receiver }}</span></template>
       <template #notifyMessage="row">
         <j-permission-button
-          v-if="row.notifyMessage" type="link" class="notification-records__content" :title="row.notifyMessage"
+          v-if="tableCells.get(row.id)?.message" type="link" class="notification-records__content"
+          :title="tableCells.get(row.id)?.message?.text"
           :has-permission="notificationPermissions.records.query" @click="openDetail(row, $event)"
-        ><span class="notification-records__content-text">{{ row.notifyMessage }}</span></j-permission-button>
-        <span v-else>—</span>
+        >
+          <span v-if="tableCells.get(row.id)?.message?.html" class="notification-records__content-text" v-html="tableCells.get(row.id)?.message?.html" />
+          <span v-else class="notification-records__content-text">{{ tableCells.get(row.id)?.message?.text }}</span>
+        </j-permission-button>
+        <span v-else>{{ t('comm.table.empty-2') }}</span>
       </template>
       <template #action="row">
         <TableActions>
@@ -75,14 +79,13 @@
 
 <script setup lang="ts">
 import ConditionFilter from '@jetlinks-web-core/components/ConditionFilter'
-import { notificationEnumValue, notificationPermissions } from '../shared'
+import { notificationPermissions } from '../shared'
 import RecordDetail from './components/RecordDetail.vue'
-import { historyChannelIcon, historyChannelLabel, historyStateLabel, historyTime } from './presentation'
 import { useRecordsPage } from './useRecordsPage'
 
 defineOptions({ name: 'MessageNotificationRecords' })
 const {
-  t, fields, stateOptions, columns,
+  t, fields, stateOptions, columns, tableCells,
   rows, total, state, selected, detailOpen, terms, selectedState, pageIndex, pageSize,
   interactive, changeTerms, changeState, changePage, load, openDetail, restoreDetailFocus,
   selectionCount, rowSelection, clearSelection, exportSelected,

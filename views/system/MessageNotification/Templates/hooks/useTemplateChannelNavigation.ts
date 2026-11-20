@@ -1,6 +1,6 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { NotificationChannel, NotificationLoadState } from '../../shared'
+import { notificationChannelLabels, type NotificationChannel, type NotificationLoadState } from '../../shared'
 
 interface ChannelGroup {
   key: string
@@ -13,7 +13,7 @@ interface ChannelGroup {
 /** Visual channel families keep the actual provider ID as the selection and route identity. */
 export function useTemplateChannelNavigation(props: { channels: NotificationChannel[]; value: string; configurationStates: Readonly<Record<string, NotificationLoadState>> }, emit: (event: 'change', id: string) => void) {
   const { t } = useI18n()
-  const label = (channel: NotificationChannel) => channel.labelKey ? t(channel.labelKey) : channel.name || channel.id
+  const { typeTitle, providerTitle } = notificationChannelLabels(t)
   /** Only a successful empty snapshot means unconfigured; unreadable configuration remains unknown. */
   function groupState(channels: NotificationChannel[]): NotificationLoadState {
     const states = channels.map(channel => props.configurationStates[channel.id] ?? 'idle')
@@ -29,10 +29,15 @@ export function useTemplateChannelNavigation(props: { channels: NotificationChan
   const groups = computed(() => {
     const result: ChannelGroup[] = []
     for (const channel of props.channels) {
-      const key = ['dingTalk', 'weixin'].includes(channel.type) ? channel.type : channel.id
+      const grouped = channel.type === 'dingTalk' || channel.type === 'weixin'
+      const key = grouped ? channel.type : channel.id
       let group = result.find(item => item.key === key)
       if (!group) {
-        group = { key, label: key === 'dingTalk' ? t('messageNotification.templates.visual.dingTalk') : key === 'weixin' ? t('messageNotification.templates.visual.wechat') : label(channel), channels: [], configurationState: 'idle', statusText: '' }
+        const title = typeTitle(channel.type, channel.typeName)
+        // 平铺多个同类服务商时保留提供商名称，便于区分入口。
+        const needsProvider = !grouped && props.channels.some(item => item.type === channel.type && item.id !== channel.id)
+        const label = needsProvider ? `${title} · ${providerTitle(channel)}` : title
+        group = { key, label, channels: [], configurationState: 'idle', statusText: '' }
         result.push(group)
       }
       group.channels.push(channel)
@@ -44,8 +49,7 @@ export function useTemplateChannelNavigation(props: { channels: NotificationChan
   })
   const activeGroup = computed(() => groups.value.find(item => item.channels.some(channel => channel.id === props.value)))
   const subChannels = computed(() => activeGroup.value && activeGroup.value.channels.length > 1 ? activeGroup.value.channels.map(channel => ({
-    id: channel.id, label: channel.provider === 'dingTalkMessage' || channel.provider === 'corpMessage' ? t('messageNotification.templates.visual.workNotification')
-      : channel.provider === 'dingTalkRobotWebHook' ? t('messageNotification.templates.visual.groupMessage') : label(channel),
+    id: channel.id, label: providerTitle(channel),
   })) : [])
   function selectGroup(key: string) {
     const group = groups.value.find(item => item.key === key)

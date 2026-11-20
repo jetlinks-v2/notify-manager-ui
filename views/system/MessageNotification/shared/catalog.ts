@@ -1,3 +1,4 @@
+import type { Composer } from 'vue-i18n'
 import type { NotificationEnum, NotifyState, NotifyType } from '../../../../api/notice/messageNotificationTypes'
 
 export interface NotificationChannel {
@@ -27,6 +28,32 @@ export const notificationChannels: readonly NotificationChannel[] = [
   { id: 'sms:aliyunSms', type: 'sms', provider: 'aliyunSms', labelKey: 'messageNotification.channel.sms', group: 'telephone', secretFields: ['secret'] },
   { id: 'webhook:http', type: 'webhook', provider: 'http', labelKey: 'messageNotification.channel.webhook', group: 'integration', secretFields: [] },
 ]
+
+/** 通知渠道与消息模板共用类型和提供商的导航文案。 */
+export function notificationChannelLabels(t: Composer['t']) {
+  function channelTitle(channel: NotificationChannel): string {
+    return channel.labelKey ? t(channel.labelKey) : channel.name || channel.id
+  }
+
+  function typeTitle(type: string, name?: string): string {
+    if (type === 'weixin') return t('messageNotification.channels.wechat')
+    const key = `NoticeCenter.channel.type.${type}`
+    // 运行时语言包使用平铺键，t 能解析这些键且保留接口名称回退。
+    const translated = t(key, {}, { missingWarn: false, fallbackWarn: false })
+    return translated === key ? name || type : translated
+  }
+
+  function providerTitle(channel: NotificationChannel): string {
+    switch (channel.id) {
+      case 'dingTalk:dingTalkRobotWebHook': return t('messageNotification.channels.groupRobot')
+      case 'dingTalk:dingTalkMessage':
+      case 'weixin:corpMessage': return t('messageNotification.channels.workNotification')
+      default: return channel.providerName || channelTitle(channel)
+    }
+  }
+
+  return { channelTitle, typeTitle, providerTitle }
+}
 
 export const notificationStates: readonly NotifyState[] = ['success', 'error', 'retrying', 'cancel']
 

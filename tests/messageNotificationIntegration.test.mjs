@@ -44,7 +44,10 @@ function evaluate(source, filename) {
     if (/Announcement\/register(?:\.ts)?$/.test(name)) return { getRegisterComponents: () => ({}) }
     if (name.endsWith('.less')) return {}
     if (name.endsWith('/menuBadge') || name.endsWith('/menuBadge.ts')) return { isComingSoonMenuMeta: () => false }
-    if (name.endsWith('/menuLocale') || name.endsWith('/menuLocale.ts')) return { getMenuLocaleText: item => item.name }
+    if (name.endsWith('/menuLocale') || name.endsWith('/menuLocale.ts')) return {
+      getMenuLocaleText: item => item.name,
+      retainMenuSourceLabels: meta => ({ ...meta }),
+    }
     if (name === '@jetlinks-web-core/utils/consts') return { langKey: 'language', isSubApp: false, OpenMicroApp: false, USER_CENTER_MENU_CODE: 'account/center' }
     if (name.startsWith('@jetlinks-web-core/')) return load(resolve(core, `${name.slice('@jetlinks-web-core/'.length)}.ts`))
     if (name.startsWith('.') || name.startsWith('/')) {

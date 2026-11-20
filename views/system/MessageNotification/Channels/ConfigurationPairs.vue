@@ -3,7 +3,10 @@
     <a-alert v-if="!validShape" type="error" :message="t('messageNotification.channels.invalidPairs')" show-icon />
     <div v-for="(row, index) in rows" :key="index" class="configuration-pairs__row">
       <a-input :value="row[nameKey]" :aria-label="t('messageNotification.channels.fields.propertyName')" :placeholder="t('messageNotification.channels.fields.propertyName')" :disabled="model.disabled" @update:value="update(index, nameKey, $event)" />
-      <a-input-password v-if="model.kind === 'headers'" :value="row.value" autocomplete="new-password" :aria-label="t('messageNotification.channels.fields.propertyValue')" :placeholder="model.savedKeys.includes(String(row[nameKey] || '').toLowerCase()) ? t('messageNotification.channels.keepSecret') : t('messageNotification.channels.fields.propertyValue')" :disabled="model.disabled" @update:value="update(index, 'value', $event)" />
+      <a-input-password v-if="model.kind === 'headers'" :key="row[nameKey]" :value="model.disabled ? '' : row.value"
+        :visible="model.disabled ? false : undefined" :visibility-toggle="!model.disabled" autocomplete="new-password"
+        :aria-label="t('messageNotification.channels.fields.propertyValue')" :placeholder="model.savedKeys.includes(String(row[nameKey] || '').toLowerCase()) ? t('messageNotification.channels.keepSecret') : t('messageNotification.channels.fields.propertyValue')"
+        :disabled="model.disabled" @update:value="update(index, 'value', $event)" />
       <a-input v-else :value="row.value" :aria-label="t('messageNotification.channels.fields.propertyValue')" :placeholder="t('messageNotification.channels.fields.propertyValue')" :disabled="model.disabled" @update:value="update(index, 'value', $event)" />
       <a-input v-if="model.kind === 'properties'" :value="row.description" :aria-label="t('messageNotification.channels.fields.propertyDescription')" :placeholder="t('messageNotification.channels.fields.propertyDescription')" :disabled="model.disabled" @update:value="update(index, 'description', $event)" />
       <a-button :disabled="model.disabled" danger type="text" :aria-label="t('messageNotification.channels.removeProperty')" @click="remove(index)">

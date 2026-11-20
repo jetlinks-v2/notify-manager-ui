@@ -1,7 +1,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { notificationStates } from '../shared'
-import { historyFilterFields } from './presentation'
+import { historyFilterFields, historyTableCells } from './presentation'
 import { useNotificationRecords } from './useNotificationRecords'
 import { useHistorySelection } from './useHistorySelection'
 
@@ -10,6 +10,7 @@ export function useRecordsPage() {
   const { t } = useI18n()
   const fields = computed(() => historyFilterFields(t))
   const records = useNotificationRecords(fields)
+  const tableCells = computed(() => new Map(records.rows.value.map(row => [row.id, historyTableCells(row, t)])))
   const selection = useHistorySelection(records.rows, records.selectionScope, computed(() => records.interactive.value && !['forbidden', 'unavailable'].includes(records.state.value)), t)
   const stateOptions = computed(() => [
     { value: 'all', label: t('messageNotification.records.all'), count: records.counts.value?.all ?? 0 },
@@ -25,5 +26,5 @@ export function useRecordsPage() {
     { title: t('messageNotification.records.field.action'), dataIndex: 'action', key: 'action', scopedSlots: true, fixed: 'right', width: 100 },
   ])
 
-  return { t, fields, stateOptions, columns, ...records, ...selection }
+  return { t, fields, stateOptions, columns, tableCells, ...records, ...selection }
 }

@@ -59,8 +59,10 @@ async function addRobot(page) {
   await editButton(page, await t(page, 'messageNotification.channels.robot.add')).click()
   const modal = page.getByRole('dialog')
   await text(modal, await t(page, 'messageNotification.channels.robot.name')).fill('验收机器人')
-  await text(modal, await t(page, 'messageNotification.channels.robot.webhook')).fill('https://fixture.example.test/robot')
+  await modal.getByLabel(await t(page, 'messageNotification.channels.robot.webhook'), { exact: true }).fill('https://fixture.example.test/robot')
   await setup(modal).waitFor()
+  assert.equal(await setup(modal).locator('.ant-select-selection-item').innerText(), 'markdown')
+  assert.equal(await setup(modal).getByRole('textbox', { name: /^(标题|正文)$/ }).count(), 0)
   return modal
 }
 
@@ -84,7 +86,7 @@ try {
   await email.screenshot({ path: join(output, 'email-templates.png') })
   await email.close()
 
-  const work = await open('dingTalk:dingTalkMessage')
+  const work = await open('dingTalk:dingTalkMessage', 1440, 'dingTalkRecipients&fail=dingTalkUsers')
   for (const [key, value] of [['appKey', 'fixture-key'], ['appSecret', 'fixture-secret']]) {
     await channelField(work, await t(work, `messageNotification.channels.fields.${key}`)).locator('input').fill(value)
   }
@@ -106,7 +108,54 @@ try {
   await saveChannelDraft(work)
   await occupied.waitFor({ state: 'hidden' })
   await summary(work, 0, 4)
+  const robotConfig = (await snapshot(work)).configs.find(item => item.provider === 'dingTalkRobotWebHook')
+  assert.deepEqual(robotConfig.configuration.messageTemplateDefaults, { messageType: 'markdown', title: '${topic}', message: '${message}' })
   assert.deepEqual((await savedTemplates(work, 'dingTalk', 'dingTalkMessage')).generated, workSaved.generated)
+
+  const [business] = (await snapshot(work)).businessTypes
+  const templateId = business.channels.find(item => item.channelProvider === 'notifier-dingTalk').channelConfiguration.templateId
+  await work.evaluate(({ businessId, templateId }) => {
+    const { router, templates } = window.__notificationSmoke
+    const template = templates.find(item => item.id === templateId).template
+    template.departmentIdList = '101'
+    template.userIdList = 'legacy-user'
+    return router.push({ path: '/templates', query: { channel: 'dingTalk:dingTalkMessage', business: businessId } })
+  }, { businessId: business.id, templateId })
+  const editTemplate = work.getByRole('button', { name: /编\s*辑/ })
+  await editTemplate.click()
+  const saveTemplate = work.getByRole('button', { name: '保存模板', exact: true })
+  const recipients = label => work.locator('.ding-editor .ant-form-item').filter({ has: work.getByText(label, { exact: true }) })
+  const departments = recipients('接收部门')
+  const users = recipients('接收用户')
+  await departments.getByText('运维部', { exact: true }).waitFor()
+  await users.getByText('legacy-user', { exact: true }).waitFor()
+  assert.equal(await saveTemplate.isDisabled(), true)
+  const userInput = users.getByRole('combobox', { name: '接收用户' })
+  const popup = work.locator('.ant-select-dropdown:visible')
+  await userInput.click()
+  await popup.getByText('选项加载失败，请重新打开下拉框重试', { exact: true }).waitFor()
+  await userInput.press('Escape')
+  await work.evaluate(() => window.__notificationSmoke.failures.delete('dingTalkUsers'))
+  await userInput.click()
+  await popup.getByText('测试用户甲', { exact: true }).click()
+  const departmentInput = departments.getByRole('combobox', { name: '接收部门' })
+  await departmentInput.click()
+  await departmentInput.fill('一组')
+  await popup.getByText('运维一组', { exact: true }).click()
+  await saveTemplate.click()
+  await editTemplate.waitFor()
+  const savedRecipients = (await snapshot(work)).templates.find(item => item.id === templateId).template
+  assert.equal(savedRecipients.departmentIdList, '101,102')
+  assert.equal(savedRecipients.userIdList, 'legacy-user,fixture-user-a')
+  const directoryCalls = (await snapshot(work)).calls.filter(([method]) => method === 'remoteOption').map(([, path]) => path)
+  const directory = `/notifier/dingtalk/corp/${workSaved.config.id}`
+  assert.deepEqual([...new Set(directoryCalls)].sort(), [`${directory}/departments`, `${directory}/users`])
+  await editTemplate.click()
+  await users.locator('.ant-select').hover()
+  await users.locator('.ant-select-clear').click()
+  await saveTemplate.click()
+  await editTemplate.waitFor()
+  assert.equal((await snapshot(work)).templates.find(item => item.id === templateId).template.userIdList, '')
   await work.close()
 
   const robot = await open('dingTalk:dingTalkRobotWebHook', 390)
@@ -114,6 +163,8 @@ try {
   await setup(modal).locator('.inline-edit-field').filter({ hasText: '消息类型' }).locator('.ant-select-selector').click()
   await robot.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: /^link$/ }).click()
   const link = text(setup(modal), '跳转地址')
+  await link.waitFor()
+  assert.equal(await setup(modal).getByRole('textbox', { name: /^(标题|正文)$/ }).count(), 0)
   await saveChannelDraft(robot)
   await setup(modal).getByText(await t(robot, 'messageNotification.channels.validation.required'), { exact: true }).waitFor()
   assert.equal((await snapshot(robot)).configs.length, 0)
@@ -123,6 +174,9 @@ try {
   await modal.waitFor({ state: 'hidden' })
   await summary(robot, 4, 0)
   const robotSaved = await savedTemplates(robot, 'dingTalk', 'dingTalkRobotWebHook')
+  assert.deepEqual(robotSaved.config.configuration.messageTemplateDefaults, {
+    messageType: 'link', title: '${topic}', message: '${message}', messageUrl: 'https://fixture.example.test/details',
+  })
   assert.ok(robotSaved.generated.every(item => item.template.messageType === 'link' && item.template.link.messageUrl === 'https://fixture.example.test/details'
     && item.template.link.title === '${topic}' && item.template.link.text === '${message}'))
   await editButton(robot.locator('.robot-configurations__row'), await t(robot, 'messageNotification.channels.more')).click()

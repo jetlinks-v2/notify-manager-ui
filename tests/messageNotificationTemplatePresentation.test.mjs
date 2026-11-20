@@ -15,6 +15,8 @@ const requests = []
 const remoteApi = {
   queryAliyunSmsTemplates_api: async id => { requests.push(['smsTemplates', id]); return { result: [{ templateCode: 'SMS_1', templateName: 'Alarm', templateContent: 'Alarm ${detail.targetName}' }] } },
   queryAliyunSmsSigns_api: async id => { requests.push(['smsSigns', id]); return { result: [] } },
+  queryDingTalkCorpDepartments_api: async id => { requests.push(['dingTalkDepartments', id]); return { success: true, result: [] } },
+  queryDingTalkCorpUsers_api: async id => { requests.push(['dingTalkUsers', id]); return { success: true, result: [] } },
   queryWechatCorpDepartments_api: async id => { requests.push(['departments', id]); return { result: [] } },
   queryWechatCorpUsers_api: async id => { requests.push(['users', id]); return { result: [] } },
   queryWechatCorpTags_api: async id => { requests.push(['tags', id]); return { result: [] } },
@@ -146,6 +148,41 @@ test('robot editing publishes the selected message shape and keeps stored extens
   assert.deepEqual(payload.vendorExtra, { keep: true })
   assert.equal(item.props.draft.provider, 'dingTalkRobotWebHook')
   item.stop()
+})
+
+test('DingTalk directory ignores late options from the previous configuration', async () => {
+  requests.length = 0
+  const queryUsers = remoteApi.queryDingTalkCorpUsers_api
+  let finishPrevious
+  const previous = new Promise(resolve => { finishPrevious = resolve })
+  remoteApi.queryDingTalkCorpUsers_api = async id => {
+    requests.push(['dingTalkUsers', id])
+    return id === 'config-one' ? previous : { success: true, result: [{ id: 'current', name: 'Current member' }] }
+  }
+  const draft = draftFor('dingTalk', 'dingTalkMessage', { agentId: '1', userIdList: 'stored' })
+  const savedJson = draft.templateJson
+  const item = editor(draft, { configs: [configFor(draft), { ...configFor(draft), id: 'config-two' }] })
+  try {
+    const users = () => item.value.fields.value.find(field => field.key === 'userIdList')
+    assert.equal(users().loading, true)
+    item.props.draft.configId = 'config-two'
+    await flush()
+    assert.deepEqual(users().options, [{ value: 'current', label: 'Current member' }])
+    finishPrevious({ success: true, result: [{ id: 'stale', name: 'Previous member' }] })
+    await flush()
+    assert.deepEqual(users().options, [{ value: 'current', label: 'Current member' }])
+    item.props.configs = [configFor(draft)]
+    await flush()
+    assert.deepEqual(users().options, [])
+    assert.equal(users().disabled, true)
+    assert.equal(users().loading, false)
+    assert.equal(item.props.draft.templateJson, savedJson)
+    assert.deepEqual(requests, [['dingTalkDepartments', 'config-one'], ['dingTalkUsers', 'config-one'],
+      ['dingTalkDepartments', 'config-two'], ['dingTalkUsers', 'config-two']])
+  } finally {
+    item.stop()
+    remoteApi.queryDingTalkCorpUsers_api = queryUsers
+  }
 })
 
 test('SMS remote options use only an exact readable configuration and selected templates update content', async () => {

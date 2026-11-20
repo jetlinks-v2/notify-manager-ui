@@ -232,6 +232,13 @@ export const queryAliyunSmsTemplates_api = (configId: string): Promise<any> =>
 export const queryAliyunSmsSigns_api = (configId: string): Promise<any> =>
   request.get(`/notifier/sms/aliyun/${encodeURIComponent(configId)}/signs`)
 
+/** The application directory includes child departments of the bound notifier. */
+export const queryDingTalkCorpDepartments_api = (configId: string): Promise<AxiosResponseRewrite<NoticeCorpDepartment[]>> =>
+  request.get(`/notifier/dingtalk/corp/${encodeURIComponent(configId)}/departments`, { fetchChild: true }, { hiddenError: true })
+
+export const queryDingTalkCorpUsers_api = (configId: string): Promise<AxiosResponseRewrite<NoticeCorpUser[]>> =>
+  request.get(`/notifier/dingtalk/corp/${encodeURIComponent(configId)}/users`, undefined, { hiddenError: true })
+
 export const queryWechatCorpDepartments_api = (configId: string): Promise<any> =>
   request.get(`/notifier/wechat/corp/${encodeURIComponent(configId)}/departments/tree`)
 

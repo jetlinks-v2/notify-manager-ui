@@ -45,16 +45,9 @@
                 <div class="notification-channels__title-row"><h2>{{ channelTitle(channel) }}</h2><StatusPill v-if="!isRobot && ['ready', 'empty'].includes(state)" :status="t(state === 'empty' ? 'messageNotification.channels.unconfigured' : dirty || entry?.isNew ? 'messageNotification.channels.draft' : 'messageNotification.channels.configured')" /></div>
                 <p>{{ help.description }}</p>
               </div>
-              <div v-if="isRobot || entry" class="notification-page__actions">
+              <div v-if="isRobot || (configurationVisible && trialSupported)" class="notification-page__actions">
                 <j-permission-button v-if="isRobot" type="primary" :has-permission="[notificationPermissions.channels.add]" :disabled="!robotCanAdd" @click="robot.add"><template #icon><PlusOutlined aria-hidden="true" /></template>{{ t('messageNotification.channels.robot.add') }}</j-permission-button>
-                <j-permission-button v-else-if="configurationVisible && trialSupported" :has-permission="[notificationPermissions.channels.action]" :disabled="!canTrial || operationBusy" @click="showSend"><template #icon><SendOutlined aria-hidden="true" /></template>{{ t('messageNotification.channels.test') }}</j-permission-button>
-                <a-dropdown v-if="!isRobot && entry && configurationVisible && !entry.isNew" :trigger="['click']" :disabled="operationBusy">
-                  <a-button style="padding: 0 0.5rem"
-                      :aria-label="t('messageNotification.channels.more')"><AIcon type="MoreOutlined" /></a-button>
-                  <template #overlay><a-menu class="notification-channels__menu">
-                    <a-menu-item key="delete"><j-permission-button type="link" block class="notification-channels__menu-action" danger :has-permission="[notificationPermissions.channels.delete]" :disabled="operationBusy" @click="requestRemove"><template #icon><DeleteOutlined aria-hidden="true" /></template>{{ t('messageNotification.channels.clear') }}</j-permission-button></a-menu-item>
-                  </a-menu></template>
-                </a-dropdown>
+                <j-permission-button v-else :has-permission="[notificationPermissions.channels.action]" :disabled="!canTrial || operationBusy" @click="showSend"><template #icon><SendOutlined aria-hidden="true" /></template>{{ t('messageNotification.channels.test') }}</j-permission-button>
               </div>
             </header>
             <div v-if="!isRobot && multipleConfigurations && configs.length" class="notification-page__toolbar">
@@ -113,19 +106,16 @@
         <ChannelTemplateSetup v-if="robotModal.open" :model="templateSetupModel" mode="fields" @change="templateSetup.change" />
       </template>
     </RobotConfigurationModal>
-    <ChannelTestModal :model="testModel" @close="trial.close()" @recipient="trial.selectRecipient" @address="trial.setAddress" @validate="trial.validateRecipient" @retry-identity="trial.loadIdentity" @send="trial.send" @again="trial.again" @fix="fixTestConfiguration" @closed="afterTestClosed" />
+    <ChannelTestModal :model="testModel" @close="trial.close()" @recipient="trial.selectRecipient" @address="trial.setAddress" @validate="trial.validateRecipient" @retry-identity="trial.loadIdentity" @retry-members="trial.loadMembers" @send="trial.send" @again="trial.again" @fix="fixTestConfiguration" @closed="afterTestClosed" />
     <WechatMembersDrawer :model="memberDrawer" @close="closeMembers" @reload="reloadMembers" @save="members.save" @unbind="members.unbind" @assign="members.assign" @filter="updateMemberFilters" @match="members.autoMatch" @status="updateMemberStatus" @reset-filters="resetMemberFilters" />
     <JlConfirmDialog :open="memberDiscardOpen" :title="t('messageNotification.members.discardTitle')" :message="t('messageNotification.members.discardMessage')" :confirm-text="t('messageNotification.channels.leave')" :cancel-text="t('messageNotification.channels.stay')" @confirm="decideMemberDiscard(true)" @cancel="decideMemberDiscard(false)" @update:open="!$event && decideMemberDiscard(false)" />
-    <a-modal v-if="channel" class="notification-channels__clear" :open="deleteOpen" :title="t('messageNotification.channels.clearTitle', { channel: clearChannelName })" :width="420" centered :closable="false" :mask-closable="false" :ok-text="t('messageNotification.channels.clearConfirm')" :cancel-text="t('messageNotification.common.cancel')" :ok-button-props="{ danger: true, disabled: operationBusy }" @ok="remove" @cancel="deleteOpen = false">
-      <p class="notification-channels__clear-message">{{ clearMessage }}</p>
-    </a-modal>
     <JlConfirmDialog :open="leaveOpen" :title="t('messageNotification.channels.leaveTitle')" :message="t('messageNotification.channels.confirmLeave')" :confirm-text="t('messageNotification.channels.leave')" :cancel-text="t('messageNotification.channels.stay')" @confirm="decideLeave(true)" @cancel="decideLeave(false)" @update:open="!$event && decideLeave(false)" />
   </FullPage>
 </template>
 
 <script setup lang="ts">
 import { defineAsyncComponent } from 'vue'
-import { DeleteOutlined, PlusOutlined, SendOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, SendOutlined } from '@ant-design/icons-vue'
 import { DingTalk, Email, Sms, Voice, Webhook, WeixinCorp } from '@jetlinks-web-core/assets/notice'
 import AutoTree from '@jetlinks-web-core/components/AutoTree'
 import { useChannelsPage } from './useChannelsPage'
@@ -146,8 +136,8 @@ const {
   t, notificationPermissions, isNarrow, channelOptions, channelSearch, filteredChannelTree, openChannelKeys, selectChannel, configurationOptions,
   canQuery, channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId,
   busy, dirty, canEdit, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave,
-  workspace, trial, testModel, fixTestConfiguration, afterTestClosed, refresh, save, remove, showSend, configurationVisible,
-  catalog, directoryState, providerFeedback, channelTitle, help, saveFields, focusField, activeHelpSection, helpFocusVersion, sending, deleteOpen, clearChannelName, clearMessage, requestRemove,
+  workspace, trial, testModel, fixTestConfiguration, afterTestClosed, refresh, save, showSend, configurationVisible,
+  catalog, directoryState, providerFeedback, channelTitle, help, saveFields, focusField, activeHelpSection, helpFocusVersion, sending,
   members, memberDrawer, canSyncMembers, showMembers, autoMatchMembers, closeMembers, reloadMembers, memberDiscardOpen, decideMemberDiscard, updateMemberFilters, updateMemberStatus, resetMemberFilters,
 } = useChannelsPage()
 </script>
@@ -155,7 +145,6 @@ const {
 <style scoped src="../shared/layout.css"></style>
 <style scoped>
 .notification-channels__tree { background: transparent; }
-.notification-channels__clear-message { margin: 0; color: var(--text-color-secondary); }
 .notification-channels__tree :deep(.ant-tree-title) { display: block; width: 100%; min-width: 0; }
 .notification-channels__node { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
 .notification-channels__node-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -169,8 +158,6 @@ const {
 .notification-channels__title-row h2 { margin: 0; font-size: var(--fs-18); font-weight: 500; }
 .notification-channels__summary p { margin: var(--space-2) 0 0; font-size: var(--fs-12); color: var(--text-color-secondary); }
 .notification-channels__selector { flex: 1 1 15rem; min-width: 0; max-width: 28rem; }
-.notification-channels__menu :deep(.ant-dropdown-menu-item) { padding: 0; }
-.notification-channels__menu-action { text-align: left; }
 .notification-channels__body { display: flex; flex-direction: column; overflow: hidden; }
 .notification-channels__editor { min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .notification-channels__members { margin-top: var(--space-6); padding-top: var(--space-4); border-top: 1px solid var(--line); }
@@ -188,10 +175,4 @@ const {
   .notification-channels__editor { overflow: visible; }
 }
 @media (max-width: 48rem) { .notification-channels__heading { flex-wrap: wrap; } .notification-channels__summary { flex-basis: calc(100% - 3rem); } }
-</style>
-
-<style>
-.notification-channels__clear .ant-modal-header { background: transparent; }
-.notification-channels__clear .ant-modal-header .ant-modal-title { padding-bottom: 0; }
-.notification-channels__clear .ant-modal-footer { box-shadow:none; }
 </style>

@@ -24,23 +24,22 @@
 
   <a-select
     v-else-if="field.kind === 'select'"
-    :value="value"
+    :value="selectValue"
+    :options="selectOptions"
+    :mode="field.commaSeparated ? 'multiple' : undefined"
+    :label-in-value="field.commaSeparated"
+    :allow-clear="field.commaSeparated"
+    :show-arrow="field.commaSeparated || undefined"
     :placeholder="placeholder"
     :disabled="field.disabled"
     :loading="field.loading"
     :show-search="field.showSearch"
-    :filter-option="filterOption"
-    :not-found-content="field.loading ? $t('NoticeCenter.template.option.loading') : $t('NoticeCenter.template.option.empty')"
-    @update:value="emitUpdate"
-  >
-    <a-select-option
-      v-for="option in field.options"
-      :key="String(option.value)"
-      :value="option.value"
-    >
-      {{ option.labelKey ? $t(option.labelKey) : option.label }}
-    </a-select-option>
-  </a-select>
+    :status="field.optionLoadError ? 'error' : undefined"
+    option-filter-prop="label"
+    :not-found-content="selectFeedback"
+    @dropdown-visible-change="handleSelectOpen"
+    @update:value="emitSelectUpdate"
+  />
 
   <a-select
     v-else-if="field.kind === 'remoteSelect'"
@@ -181,6 +180,25 @@ const stringValue = computed(() =>
   props.value === undefined || props.value === null ? '' : String(props.value),
 )
 
+const selectOptions = computed(() => (props.field.options ?? []).flatMap(option => {
+  const { value } = option
+  if (typeof value !== 'string' && typeof value !== 'number') return []
+  return [{ value, label: option.labelKey ? $t(option.labelKey) : option.label || String(value) }]
+}))
+
+// Resolve labels against the current directory so missing entries retain their stored IDs.
+const selectValue = computed(() => {
+  if (!props.field.commaSeparated) {
+    return typeof props.value === 'string' || typeof props.value === 'number' ? props.value : undefined
+  }
+  const labels = new Map(selectOptions.value.map(option => [option.value, option.label]))
+  const ids = stringValue.value.split(',').map(id => id.trim()).filter(Boolean)
+  return Array.from(new Set(ids), value => ({ value, label: labels.get(value) ?? value }))
+})
+
+const selectFeedback = computed(() => props.field.loading ? $t('NoticeCenter.template.option.loading')
+  : props.field.optionLoadError ? $t('NoticeCenter.template.option.loadFailed') : $t('NoticeCenter.template.option.empty'))
+
 const numberValue = computed(() =>
   typeof props.value === 'number' ? props.value : undefined,
 )
@@ -197,6 +215,15 @@ const emitUpdate = (value: unknown) => {
   emit('update', value)
 }
 
+const emitSelectUpdate = (value: unknown) => {
+  // The dropdown emits labeled options, while the template stores a comma-separated ID list.
+  if (props.field.commaSeparated && Array.isArray(value)) {
+    emitUpdate(value.map((option: { value: string }) => option.value).join(','))
+    return
+  }
+  emitUpdate(value)
+}
+
 const emitActivate = () => {
   emit('activate', props.field.path)
 }
@@ -205,11 +232,8 @@ const emitLoadOptions = (keyword?: string) => {
   emit('load-options', props.field, keyword)
 }
 
-const filterOption = (input: string, option: any) => {
-  const value = option?.value
-  const matched = props.field.options?.find(item => item.value === value)
-  const label = matched?.labelKey ? $t(matched.labelKey) : matched?.label || value || ''
-  return String(label).toLowerCase().includes(input.toLowerCase())
+const handleSelectOpen = (open: boolean) => {
+  if (open && props.field.optionLoadError) emitLoadOptions()
 }
 </script>
 

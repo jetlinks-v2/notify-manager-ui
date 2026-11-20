@@ -34,10 +34,11 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
   const groups = computed(() => [...new Set(fields.value.map(field => field.group || 'configuration'))].map(key => ({
     key, fields: fields.value.filter(field => (field.group || 'configuration') === key),
   })))
+  const initial = computed<NotifierConfigPayload>(() => JSON.parse(props.entry.snapshot))
   const pairKind = computed(() => props.entry.draft.type === 'email' && props.entry.draft.provider === 'embedded' && fields.value.some(field => field.key === 'properties') ? 'properties' : props.entry.draft.type === 'webhook' && props.entry.draft.provider === 'http' && fields.value.some(field => field.key === 'headers') ? 'headers' : undefined)
   const savedHeaderKeys = computed(() => {
-    const rows = props.entry.baseline?.configuration.headers
-    return Array.isArray(rows) ? rows.filter(row => row && typeof row.key === 'string').map(row => row.key.toLowerCase()) : []
+    const rows = initial.value.configuration.headers
+    return Array.isArray(rows) ? rows.filter(row => typeof row?.key === 'string' && typeof row.value === 'string' && row.value.trim()).map(row => row.key.toLowerCase()) : []
   })
   const emailOptionsVisible = computed(() => props.entry.draft.type === 'email' && props.entry.draft.provider === 'embedded' && ['host', 'port', 'properties'].every(key => configuredFields.value.some(field => field.key === key)))
   const { preset, presetOptions, smtpOptions, encryption, encryptionOptions, setPreset, setSmtpHost, selectSmtpHost, setEncryption, filterSmtpOption } = useEmailSmtpSettings(props, emailOptionsVisible, change)
@@ -54,7 +55,10 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
     const key = `messageNotification.channels.fields.${field.key}`
     return known && (known.some(item => item.key === field.key) || ['properties', 'headers'].includes(field.key)) ? t(key) : field.property?.name || field.key
   }
-  function fieldType(field: ChannelField) { return field.options?.length ? 'enum' : field.property?.valueType.type || (field.kind === 'number' ? 'int' : 'string') }
+  function fieldType(field: ChannelField) {
+    if (field.kind === 'secret') return 'password'
+    return field.options?.length ? 'enum' : field.property?.valueType.type || (field.kind === 'number' ? 'int' : 'string')
+  }
   function numberBounds(field: ChannelField) {
     const smtpPort = props.entry.draft.type === 'email' && props.entry.draft.provider === 'embedded' && field.key === 'port'
     return { min: field.property?.valueType.min ?? (smtpPort ? 1 : undefined), max: field.property?.valueType.max ?? (smtpPort ? 65535 : undefined) }
@@ -79,7 +83,6 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
     const value = propertyRules(field.property).maxLength
     return typeof value === 'number' ? value : undefined
   }
-  const initial = computed<NotifierConfigPayload>(() => JSON.parse(props.entry.snapshot))
   const formMessages = computed<InlineEditMessages>(() => ({
     save: t('messageNotification.common.save'), cancel: t('messageNotification.common.cancel'),
     empty: t('messageNotification.channels.notFilled'), saving: t('messageNotification.channels.savingField'), failed: t('messageNotification.state.error'),
@@ -122,13 +125,16 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
       else clearSecretError.value = fieldError('secret') || t('messageNotification.state.error')
     } finally { clearSecretPending.value = false }
   }
+  /** Route saved credentials to the channel's password editor in the form slot. */
   function mappedField(field: ChannelField): InlineEditFieldDefinition {
     const type = fieldType(field)
     const saved = initial.value.configuration[field.key]
     const value = props.entry.draft.configuration[field.key]
+    const secret = field.kind === 'secret'
+    const savedSecret = secret && typeof saved === 'string' && !!saved.trim()
     const isSelect = ['boolean', 'enum'].includes(type)
     const pairs = pairKind.value === field.key
-    const editor = emailOptionsVisible.value && field.key === 'host' ? 'custom' : field.kind === 'secret' ? 'password' : pairs || ['array', 'object', 'date', 'time'].includes(type) ? 'custom'
+    const editor = secret || (emailOptionsVisible.value && field.key === 'host') || pairs || ['array', 'object', 'date', 'time'].includes(type) ? 'custom'
       : isSelect ? 'select' : ['int', 'long', 'float', 'double'].includes(type) ? 'number' : 'text'
     const pairDisplay = pairs && Array.isArray(saved) ? saved.map(row => `${row[pairKind.value === 'headers' ? 'key' : 'name']}: ${pairKind.value === 'headers' ? notificationSecretMask : row.value}`).join('\n') : undefined
     const trialSettings = readTestSettings(saved)
@@ -140,9 +146,9 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
       key: `config:${field.key}`, label: label(field), editor, required: field.required,
       value: isSelect ? selectedValue(field) : value,
       initialValue: isSelect ? (() => { const index = rawSelectOptions(field).findIndex(option => option.value === saved); return index < 0 ? undefined : index })() : saved,
-      displayValue: testDisplay || pairDisplay, options: isSelect ? selectOptions(field) : undefined,
-      secretSet: !!props.entry.baseline?.configuration[field.key],
-      placeholder: field.kind === 'secret' ? t(props.entry.baseline ? 'messageNotification.channels.keepSecret' : 'messageNotification.channels.enterSecret') : undefined,
+      displayValue: secret ? (savedSecret ? notificationSecretMask : formMessages.value.empty) : testDisplay || pairDisplay,
+      options: isSelect ? selectOptions(field) : undefined,
+      placeholder: secret ? t(savedSecret ? 'messageNotification.channels.keepSecret' : 'messageNotification.channels.enterSecret') : undefined,
       error: fieldError(field.key) || preservationError, fullWidth: !['port', 'password', 'sender'].includes(field.key),
       ...numberBounds(field), precision: ['int', 'long'].includes(type) ? 0 : field.property?.valueType.scale, maxLength: maxLength(field),
     }

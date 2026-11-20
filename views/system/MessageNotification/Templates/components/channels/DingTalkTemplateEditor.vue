@@ -1,8 +1,9 @@
 <template>
   <div class="ding-editor">
-    <a-form-item v-for="field in advancedFields" :key="field.key" :label="t(field.labelKey)" :required="field.required">
+    <a-form-item v-for="field in advancedFields" :key="field.key" :label="t(field.labelKey)" :required="field.required"
+      :html-for="field.commaSeparated ? `${recipientId}-${field.key}` : undefined">
       <div @focusin="captureProviderCaret($event, field.path)" @click="captureProviderCaret($event, field.path)" @keyup="captureProviderCaret($event, field.path)" @input="captureProviderCaret($event, field.path)">
-        <TemplateProviderField :field="field" :editor="editor" />
+        <TemplateProviderField :id="field.commaSeparated ? `${recipientId}-${field.key}` : undefined" :field="field" :editor="editor" />
       </div>
     </a-form-item>
     <template v-if="!robot">
@@ -29,6 +30,7 @@
 </template>
 
 <script setup lang="ts">
+import { useId } from 'vue'
 import type { TemplateDraft } from '../../model'
 import type { TemplateEditorController } from '../../channelViewTypes'
 import { useDingTalkTemplateEditor } from '../../hooks/useDingTalkTemplateEditor'
@@ -36,6 +38,7 @@ import TemplateVariableInput from '../../variables/TemplateVariableInput.vue'
 import TemplateProviderField from '../../variables/TemplateProviderField.vue'
 
 const props = defineProps<{ draft: TemplateDraft; editor: TemplateEditorController; disabled?: boolean }>()
+const recipientId = useId()
 const { t, fieldValue, captureProviderCaret } = props.editor
 const { title, body, robot, mainFields, advancedFields, changeTitle, changeBody } = useDingTalkTemplateEditor(props.editor)
 </script>

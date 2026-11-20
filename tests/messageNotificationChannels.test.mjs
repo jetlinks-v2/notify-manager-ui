@@ -156,7 +156,7 @@ test('reset restores nested values and errors only for the current cached config
   assert.equal(workspace.editing.value, true)
   workspace.resetDraft()
   assert.deepEqual(workspace.entry.value.draft, JSON.parse(snapshot))
-  assert.equal(workspace.entry.value.draft.configuration.secret, '')
+  assert.equal(workspace.entry.value.draft.configuration.secret, 'saved-secret')
   assert.deepEqual(workspace.entry.value.issues, [])
   assert.deepEqual(workspace.entry.value.fieldFailures, {})
   assert.equal(workspace.editing.value, true)
@@ -205,7 +205,9 @@ test('whole-form editing obeys permissions and pending locks and preserves faile
 })
 
 test('legacy configuration IDs remain addressable without rewriting existing data', async () => {
-  const io = testApi([email('one'), email('two'), sms()])
+  const second = email('two')
+  second.configuration.password = 'second-password'
+  const io = testApi([email('one'), second, sms()])
   const navigations = []
   const workspace = useChannelWorkspace({ api: io.api, permissions: permissions(), navigate: value => navigations.push(value) })
   await workspace.activate('email:embedded')
@@ -213,14 +215,15 @@ test('legacy configuration IDs remain addressable without rewriting existing dat
   assert.equal(workspace.entry.value.draft.id, 'one')
   assert.equal(workspace.selectedConfigId.value, 'one')
   assert.equal(workspace.entry.value.draft.configuration.host, 'smtp.example.org')
-  assert.equal(workspace.entry.value.draft.configuration.password, '')
+  assert.equal(workspace.entry.value.draft.configuration.password, 'saved-password')
   assert.equal(workspace.dirty.value, false)
   assert.deepEqual(navigations.at(-1), { channel: 'email:embedded', configId: 'one' })
   await workspace.selectConfig('two')
-  assert.equal(workspace.entry.value.draft.configuration.password, '')
+  assert.equal(workspace.entry.value.draft.configuration.password, 'second-password')
   workspace.changeField('name', 'edited two', true)
   workspace.changeField('password', 'new-secret')
   await workspace.selectConfig('one')
+  assert.equal(workspace.entry.value.draft.configuration.password, 'saved-password')
   workspace.changeField('name', 'edited one', true)
   await workspace.activate('sms:aliyunSms')
   assert.equal(workspace.entry.value.draft.id, 'sms-real')
@@ -329,7 +332,7 @@ test('failed saves preserve every input; a later success retains the known secre
   io.api.updateConfig = update
   assert.equal(await workspace.save(), true)
   assert.equal(workspace.dirty.value, false)
-  assert.equal(workspace.entry.value.draft.configuration.password, '')
+  assert.equal(workspace.entry.value.draft.configuration.password, 'typed-secret')
   assert.equal(io.records.get('smtp-real').configuration.password, 'typed-secret')
   assert.deepEqual(io.records.get('smtp-real').configuration.preservedExtension, { value: 1 })
   workspace.changeField('name', 'Rename only', true)
@@ -344,6 +347,7 @@ test('masked saved credentials block unsafe update and permission checks protect
   const perms = permissions()
   const workspace = useChannelWorkspace({ api: io.api, permissions: perms })
   await workspace.activate('email:embedded')
+  assert.equal(workspace.entry.value.draft.configuration.password, '')
   workspace.changeField('name', 'Renamed', true)
   assert.equal(await workspace.save(), false)
   assert.deepEqual(workspace.entry.value.issues, [{ path: 'password', key: 'secretRequired' }])
@@ -417,12 +421,14 @@ test('SMTP fields and confidential HTTP header rows follow actual schema and saf
   assert.deepEqual(validateChannelDraft(invalid).map(issue => issue.path), ['host', 'port', 'properties'])
   const record = { id: 'hook', name: 'Hook', type: 'webhook', provider: 'http', configuration: { url: 'https://example.org', headers: [{ key: 'Authorization', value: 'Bearer stored' }], extension: 'keep' } }
   const draft = createChannelConfigDraft(record)
-  assert.equal(draft.configuration.headers[0].value, '')
+  assert.equal(draft.configuration.headers[0].value, 'Bearer stored')
   assert.deepEqual(validateChannelDraft(draft, record), [])
+  draft.configuration.headers[0].value = ''
   assert.equal(channelConfigPayload(draft, record).configuration.headers[0].value, 'Bearer stored')
   draft.configuration.headers[0].value = '******'
   assert.equal(channelConfigPayload(draft, record).configuration.headers[0].value, 'Bearer stored')
   record.configuration.headers[0].value = '******'
+  assert.equal(createChannelConfigDraft(record).configuration.headers[0].value, '')
   assert.equal(validateChannelDraft(draft, record).some(issue => issue.path === 'headers' && issue.key === 'secretRequired'), true)
   draft.configuration.headers[0].value = 'Bearer replacement'
   assert.equal(channelConfigPayload(draft, record).configuration.headers[0].value, 'Bearer replacement')
@@ -453,7 +459,7 @@ function* walk(node) {
   if (Array.isArray(node.children)) for (const child of node.children) if (typeof child === 'object') yield* walk(child)
 }
 
-test('saved configuration always renders empty credential inputs, disabled without edit permission', async () => {
+test('saved credentials populate a password input for channel editors', async () => {
   const original = email()
   const draft = createChannelConfigDraft(original)
   const entry = { key: 'record', draft, baseline: original, isNew: false, snapshot: JSON.stringify(draft), issues: [] }
@@ -462,6 +468,7 @@ test('saved configuration always renders empty credential inputs, disabled witho
   const lockedPassword = nodes.find(node => node.type?.name === 'a-input-password')
   assert.equal(lockedPassword.props.value, '')
   assert.equal(lockedPassword.props.disabled, true)
+  assert.equal(lockedPassword.props['visibility-toggle'], false)
   assert.equal(nodes.some(node => node.type === 'button' && node.props?.['aria-label'] === 'messageNotification.channels.fields.password'), false)
   assert.equal(nodes.some(node => node.children === 'saved-password'), false)
   assert.equal(nodes.some(node => node.props?.class === 'inline-edit-field__hint'), false)
@@ -470,7 +477,7 @@ test('saved configuration always renders empty credential inputs, disabled witho
   const editable = mount(ChannelConfiguration, { entry })
   await vue.nextTick()
   const password = [...walk(editable._instance.subTree)].find(node => node.type?.name === 'a-input-password')
-  assert.equal(password.props.value, '')
+  assert.equal(password.props.value, 'saved-password')
   assert.equal(password.props['aria-label'], 'messageNotification.channels.fields.password')
   editable.unmount()
 })
@@ -588,22 +595,13 @@ test('extracted page orchestration preserves route filters, send-only trial perm
     assert.deepEqual(pageContext.messages, [['messageNotification.state.error', 'error']])
     io.api.updateConfig = update
     await page.save()
-    assert.equal(page.entry.value.draft.configuration.password, '')
+    assert.equal(page.entry.value.draft.configuration.password, 'replacement-secret')
     assert.equal(pageContext.messages.length, 2)
     permissionRefs.get(notificationPermissions.templates.query).value = true
     assert.equal(page.canTrial.value, true)
     assert.equal(page.goTemplates, undefined)
     assert.deepEqual(pageContext.jumps, [])
     assert.equal(io.calls.some(([method]) => method === 'send'), false)
-    const serverMessage = '当前通知配置已绑定模板，不可删除'
-    request.remove = async () => { throw { response: { status: 400, data: { status: 400, code: 'error.data.referenced', message: serverMessage } } } }
-    page.requestRemove()
-    assert.equal(page.deleteOpen.value, true)
-    await page.remove()
-    assert.equal(page.deleteOpen.value, false)
-    assert.equal(page.entry.value.baseline.id, 'smtp-real')
-    assert.deepEqual(pageContext.messages.at(-1), [serverMessage, 'error'])
-    assert.equal(pageContext.messages.length, 3)
     pageContext.route.query = { configId: 'not-visible' }
     for (let index = 0; index < 24; index++) { await Promise.resolve(); await vue.nextTick() }
     assert.equal(page.state.value, 'unavailable')
@@ -758,12 +756,23 @@ test('metadata preserves unknown fields, false/zero defaults, constraints and se
   }
   const baseline = clone(draft)
   const editable = createChannelConfigDraft(baseline, definition)
-  assert.equal(editable.configuration.token, '')
+  assert.equal(editable.configuration.token, 'actual-token')
   editable.configuration.endpoint = 'https://changed.example.test'
   assert.equal(channelConfigPayload(editable, baseline, definition).configuration.token, 'actual-token')
+  const tokenType = definition.fields.find(field => field.key === 'token').property.valueType
+  tokenType.expands = { ...tokenType.expands, maxLength: 6 }
+  assert.deepEqual(validateChannelDraft(editable, baseline, definition), [])
+  editable.configuration.token = 'replacement-token'
+  assert.deepEqual(validateChannelDraft(editable, baseline, definition), [{ path: 'token', key: 'invalidValue' }])
   baseline.configuration.token = '******'
-  assert.equal(validateChannelDraft(editable, baseline, definition).some(issue => issue.path === 'token' && issue.key === 'secretRequired'), true)
-  assert.throws(() => channelConfigPayload(editable, baseline, definition))
+  const maskedDraft = createChannelConfigDraft(baseline, definition)
+  assert.equal(maskedDraft.configuration.token, '')
+  assert.equal(validateChannelDraft(maskedDraft, baseline, definition).some(issue => issue.path === 'token' && issue.key === 'secretRequired'), true)
+  assert.throws(() => channelConfigPayload(maskedDraft, baseline, definition))
+  const redactedRecord = { ...baseline, configuration: undefined }
+  assert.equal(createChannelConfigDraft(redactedRecord, definition).configuration.token, '')
+  const replacement = { ...draft, configuration: { ...draft.configuration, token: 'short' } }
+  assert.deepEqual(validateChannelDraft(replacement, redactedRecord, definition), [])
 })
 
 test('WeChat keeps the original two credentials with old or extended metadata and preserves saved values', () => {
@@ -783,7 +792,7 @@ test('WeChat keeps the original two credentials with old or extended metadata an
     for (const legacy of [{}, { agentId: 'saved-agent', extension: { preserved: true } }]) {
       const baseline = { ...fresh, configuration: { ...fresh.configuration, ...legacy } }
       const draft = createChannelConfigDraft(baseline, definition)
-      assert.equal(draft.configuration.corpSecret, '')
+      assert.equal(draft.configuration.corpSecret, 'new-secret')
       draft.configuration.corpId = 'updated-corp'
       assert.deepEqual(validateChannelDraft(draft, baseline, definition), [])
       assert.deepEqual(channelConfigPayload(draft, baseline, definition).configuration, { ...baseline.configuration, corpId: 'updated-corp' })
@@ -819,7 +828,7 @@ test('backend additions remain visible alongside explicit channel test settings'
   assert.deepEqual(official.secretFields, ['secret'])
   const baseline = { id: 'official', name: 'Official', type: 'weixin', provider: 'officialMessage', configuration: { secret: 'saved-secret' } }
   const draft = createChannelConfigDraft(baseline, official)
-  assert.equal(draft.configuration.secret, '')
+  assert.equal(draft.configuration.secret, 'saved-secret')
   assert.equal(channelConfigPayload(draft, baseline, official).configuration.secret, 'saved-secret')
 })
 
@@ -850,7 +859,7 @@ test('dynamic workspace supports first save, stable identity, drafts and safe me
   io.api.createConfig = create
   assert.equal(await workspace.save(), true)
   assert.equal(io.records.get(identity).configuration.enabled, false)
-  assert.equal(workspace.entry.value.draft.configuration.token, '')
+  assert.equal(workspace.entry.value.draft.configuration.token, 'typed-secret')
   assert.equal(workspace.entry.value.isNew, false)
   workspace.createConfig()
   assert.equal(workspace.entry.value.draft.name, customChannel.name)
@@ -1082,7 +1091,7 @@ test('inline saves merge only their fields and preserve unrelated drafts, extens
   assert.equal(workspace.entry.value.draft.configuration.sender, 'unsaved@example.test')
   assert.equal(workspace.dirty.value, true)
   assert.equal(JSON.parse(workspace.entry.value.snapshot).configuration.host, 'inline.example.test')
-  assert.equal(workspace.entry.value.draft.configuration.password, '')
+  assert.equal(workspace.entry.value.draft.configuration.password, 'saved-password')
 })
 
 test('inline validation and failed writes retain input; refresh retry after a successful write is read-only', async () => {
@@ -1191,14 +1200,14 @@ test('creation and deletion responses do not restore workspace data after permis
   }
 })
 
-test('inline password updates keep blank input and unknown metadata false/zero values retain their meaning', async () => {
+test('inline password updates show the saved replacement and unknown metadata false/zero values retain their meaning', async () => {
   const io = testApi()
   const workspace = useChannelWorkspace({ api: io.api, permissions: permissions() })
   await workspace.activate('email:embedded')
   workspace.changeField('password', 'replacement')
   assert.equal(await workspace.saveFields([{ key: 'password', value: 'replacement' }], 'password'), true)
   assert.equal(io.records.get('smtp-real').configuration.password, 'replacement')
-  assert.equal(workspace.entry.value.draft.configuration.password, '')
+  assert.equal(workspace.entry.value.draft.configuration.password, 'replacement')
   const custom = { id: 'custom', name: 'Custom', type: 'extension', provider: 'custom', configuration: { endpoint: 'https://receiver.example.test', token: 'saved-token', enabled: true, priority: 2, retries: 1 } }
   const customIO = testApi([custom])
   const extension = useChannelWorkspace({ api: customIO.api, permissions: permissions(), channels: vue.ref([customChannel]), loadDefinition: async () => customDefinition() })
@@ -1505,7 +1514,7 @@ function robotDialogFixture(records, navigate) {
   const app = mount(vue.defineComponent({ setup() {
     dialog = useRobotConfigurations({ workspace, permissions: perms, blocked, pending,
       test: () => actions.push(['test', workspace.entry.value.baseline.id]),
-      remove: () => actions.push(['delete', workspace.entry.value.baseline.id]),
+      fillTemplates: async id => { actions.push(['fill', id, workspace.entry.value.baseline.id]) },
     })
     return () => null
   } }))
@@ -1543,26 +1552,33 @@ test('canceling a new robot dialog removes its draft and reopening creates a fre
   } finally { f.dispose() }
 })
 
-test('robot row actions target the exact record and modal editing preserves hidden signing keys', async () => {
+test('robot editing loads the selected URL and preserves the hidden signing key', async () => {
   const first = robot('first'), second = robot('second')
+  first.configuration.url = 'https://fixture.example.test/robot?access_token=first-token'
+  second.configuration.url = 'https://fixture.example.test/robot?access_token=second-token'
   first.configuration.secret = 'SEC-first'
   second.configuration.secret = 'SEC-second'
   const f = robotDialogFixture([first, second])
   try {
     await f.workspace.activate('dingTalk:dingTalkRobotWebHook', 'first')
     await f.dialog.act('second', 'test')
-    await f.dialog.act('first', 'delete')
-    assert.deepEqual(f.actions, [['test', 'second'], ['delete', 'first']])
+    await f.dialog.act('first', 'fill')
+    assert.deepEqual(f.actions, [['test', 'second'], ['fill', 'first', 'first']])
     await f.dialog.act('second', 'edit')
+    assert.equal(f.dialog.modal.value.url, second.configuration.url)
+    assert.equal(f.dialog.modal.value.canSave, false)
     f.dialog.change('name', 'Second group')
-    f.dialog.change('url', 'https://oapi.dingtalk.com/robot/send?access_token=replacement')
+    const replacement = 'https://oapi.dingtalk.com/robot/send?access_token=replacement'
+    f.dialog.change('url', replacement)
     await f.dialog.save()
     assert.equal(f.dialog.modal.value.open, false)
     assert.equal(f.io.records.get('second').name, 'Second group')
+    assert.equal(f.io.records.get('second').configuration.url, replacement)
     assert.equal(f.io.records.get('second').configuration.secret, 'SEC-second')
     assert.equal(f.io.records.get('first').configuration.secret, 'SEC-first')
     assert.equal(f.io.calls.filter(([method]) => method === 'updateConfig').length, 1)
     await f.dialog.act('first', 'edit')
+    assert.equal(f.dialog.modal.value.url, first.configuration.url)
     f.dialog.change('name', 'Cancel this edit')
     f.dialog.close()
     assert.equal(f.workspace.dirty.value, false)
@@ -1573,7 +1589,10 @@ test('robot row actions target the exact record and modal editing preserves hidd
 test('robot dialog retains failed input and blocks masked-key updates with a visible error', async () => {
   const original = robot('masked')
   original.configuration.secret = '********'
-  const f = robotDialogFixture([original, robot('unsigned')])
+  const redacted = robot('masked-url')
+  redacted.configuration.url = 'https://oapi.dingtalk.com/robot/send?access_token=********'
+  const unsigned = robot('unsigned')
+  const f = robotDialogFixture([original, redacted, unsigned])
   try {
     await f.workspace.activate('dingTalk:dingTalkRobotWebHook')
     await f.dialog.act('masked', 'edit')
@@ -1583,8 +1602,16 @@ test('robot dialog retains failed input and blocks masked-key updates with a vis
     assert.equal(f.dialog.modal.value.error, 'messageNotification.channels.robot.protectedCredential')
     assert.equal(f.io.calls.some(([method]) => method === 'updateConfig'), false)
     f.dialog.close()
+    await f.dialog.act('masked-url', 'edit')
+    assert.equal(f.dialog.modal.value.url, '')
+    f.dialog.change('name', 'Masked URL')
+    await f.dialog.save()
+    assert.equal(f.dialog.modal.value.urlError, 'messageNotification.channels.validation.secretRequired')
+    assert.equal(f.io.calls.some(([method]) => method === 'updateConfig'), false)
+    f.dialog.close()
     await f.dialog.act('unsigned', 'edit')
     f.dialog.change('name', 'Retry name')
+    f.dialog.change('url', '')
     const update = f.io.api.updateConfig
     f.io.api.updateConfig = async () => { throw new Error('offline') }
     await f.dialog.save()
@@ -1593,6 +1620,7 @@ test('robot dialog retains failed input and blocks masked-key updates with a vis
     f.io.api.updateConfig = update
     await f.dialog.save()
     assert.equal(f.dialog.modal.value.open, false)
+    assert.equal(f.io.records.get('unsigned').configuration.url, unsigned.configuration.url)
     assert.equal(f.io.records.get('unsigned').configuration.secret, undefined)
   } finally { f.dispose() }
 })
@@ -1612,7 +1640,7 @@ test('robot dialog permissions and pending selection prevent wrong-row actions a
     f.io.api.getConfig = id => id === 'second' ? new Promise(resolve => { resolveDetail = resolve }) : get(id)
     const selecting = f.dialog.act('second', 'edit')
     assert.equal(f.pending.value, true)
-    await f.dialog.act('first', 'delete')
+    await f.dialog.act('first', 'fill')
     assert.deepEqual(f.actions, [])
     await f.workspace.activate('email:embedded')
     resolveDetail(robot('second'))

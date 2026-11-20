@@ -67,6 +67,10 @@ try {
       assert.equal(await page.locator('.inline-edit-field__trigger').count(), 0)
       for (const [key, section] of fields) {
         const input = await field(page, key)
+        if (['corpSecret', 'appSecret', 'password', 'secret'].includes(key)) {
+          assert.equal(await input.getAttribute('type'), 'password')
+          assert.equal(await input.inputValue(), 'fixture-only')
+        }
         await input.focus()
         await settle(async () => assert.equal(await doc.locator('.channel-help__section--active').getAttribute('data-help-section'), section))
         const active = await doc.locator('.channel-help__section--active').boundingBox()
@@ -91,7 +95,7 @@ try {
         await page.waitForTimeout(120)
         assert.equal(await doc.evaluate(element => element.scrollTop), 0, 'typing does not reposition the document')
         await cancelChannelEdit(page)
-        assert.equal(await secret.inputValue(), '')
+        assert.equal(await secret.inputValue(), 'fixture-only')
         await (await field(page, 'corpId')).focus()
         await settle(async () => assert.equal(await doc.locator('.channel-help__section--active').getAttribute('data-help-section'), 'corpId'))
         for (const width of [1280, 1920]) { await page.setViewportSize({ width, height: 1000 }); await split(page); await screenshot(page, `weixin-${width}`) }

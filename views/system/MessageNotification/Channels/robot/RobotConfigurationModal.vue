@@ -5,7 +5,11 @@
         <a-input :value="model.name" :disabled="model.disabled" :aria-label="t('messageNotification.channels.robot.name')" :aria-invalid="!!model.nameError" :placeholder="t('messageNotification.channels.robot.namePlaceholder')" autocomplete="off" autofocus @update:value="emit('change', 'name', $event)" />
       </a-form-item>
       <a-form-item :label="t('messageNotification.channels.robot.webhook')" :validate-status="model.urlError ? 'error' : undefined" :help="model.urlError" :extra="t(model.isNew ? 'messageNotification.channels.robot.webhookHint' : 'messageNotification.channels.robot.keepWebhook')">
-        <a-input :value="model.url" :disabled="model.disabled" :aria-label="t('messageNotification.channels.robot.webhook')" :aria-invalid="!!model.urlError" :placeholder="model.savedUrl || 'https://oapi.dingtalk.com/robot/send?access_token=…'" autocomplete="off" @update:value="emit('change', 'url', $event)" />
+        <a-input-password :value="model.disabled ? '' : model.url" :disabled="model.disabled"
+          :visible="model.open && !model.disabled ? undefined : false" :visibility-toggle="!model.disabled"
+          :aria-label="t('messageNotification.channels.robot.webhook')" :aria-invalid="!!model.urlError"
+          :placeholder="model.savedUrl || 'https://oapi.dingtalk.com/robot/send?access_token=…'" autocomplete="new-password"
+          @update:value="emit('change', 'url', $event)" />
       </a-form-item>
       <slot name="template-defaults" />
       <a-alert v-if="model.error" type="error" show-icon :message="model.error" role="alert" />

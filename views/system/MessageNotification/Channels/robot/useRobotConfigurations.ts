@@ -10,7 +10,6 @@ interface RobotOptions {
   blocked: Ref<boolean>
   pending: Ref<boolean>
   test: () => void
-  remove: () => void
   prepareTemplates?: () => boolean
   saved?: (id: string, created: boolean) => Promise<void>
   fillTemplates?: (id: string) => Promise<void>
@@ -49,7 +48,7 @@ export function useRobotConfigurations(options: RobotOptions) {
     const hiddenIssue = entry?.issues.find(item => !['name', 'url'].includes(item.path))
     return {
       open: open.value, isNew: !!entry?.isNew, name: entry?.draft.name || '',
-      url: String(entry?.draft.configuration.url || ''), savedUrl: robotWebhookSummary(entry?.baseline?.configuration.url),
+      url: String(entry?.draft.configuration.url || ''), savedUrl: robotWebhookSummary(entry?.baseline?.configuration?.url),
       nameError: issue('name'), urlError: issue('url'),
       error: hiddenIssue ? t(hiddenIssue.key === 'secretRequired' ? 'messageNotification.channels.robot.protectedCredential' : 'messageNotification.channels.validation.invalidValue') : undefined,
       busy: options.blocked.value, disabled: !workspace.canEdit.value || options.blocked.value,
@@ -63,8 +62,8 @@ export function useRobotConfigurations(options: RobotOptions) {
     if (workspace.entry.value?.isNew) editorKey.value = workspace.entry.value.key
   }
 
-  async function act(id: string, action: 'edit' | 'test' | 'delete' | 'fill') {
-    const allowed = action === 'edit' || action === 'fill' ? permissions.update : action === 'test' ? permissions.action : permissions.delete
+  async function act(id: string, action: 'edit' | 'test' | 'fill') {
+    const allowed = action === 'test' ? permissions.action : permissions.update
     if (!isRobot.value || options.blocked.value || open.value || !permissions.query.value || !allowed.value) return
     const version = ++actionVersion
     options.pending.value = true
@@ -76,11 +75,10 @@ export function useRobotConfigurations(options: RobotOptions) {
         workspace.startEditing()
         if (workspace.editing.value) editorKey.value = workspace.entry.value.key
       } else {
-        // Selection has settled; the existing test/delete guards may now accept the requested record.
+        // The selected record is ready for the test or template setup.
         options.pending.value = false
         if (action === 'test') options.test()
-        else if (action === 'fill') await options.fillTemplates?.(id)
-        else options.remove()
+        else await options.fillTemplates?.(id)
       }
     } finally { if (version === actionVersion) options.pending.value = false }
   }

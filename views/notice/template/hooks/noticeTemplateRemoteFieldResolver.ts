@@ -18,6 +18,8 @@ export type TemplateRemoteStates = {
   wechatDepartments: { options: NoticeTemplateFieldOption[]; loading: boolean }
   wechatUsers: { options: NoticeTemplateFieldOption[]; loading: boolean }
   wechatTags: { options: NoticeTemplateFieldOption[]; loading: boolean }
+  dingTalkDepartments: { options: NoticeTemplateFieldOption[]; loading: boolean; failed?: boolean }
+  dingTalkUsers: { options: NoticeTemplateFieldOption[]; loading: boolean; failed?: boolean }
 }
 
 export const createTemplateRemoteFieldResolver = (
@@ -149,6 +151,22 @@ export const createTemplateRemoteFieldResolver = (
     }
     if (context.type === 'weixin' && context.provider === 'corpMessage') {
       return resolveWeixinField(field, currentValue, template) || field
+    }
+    if (context.type === 'dingTalk' && context.provider === 'dingTalkMessage'
+      && (field.key === 'departmentIdList' || field.key === 'userIdList')) {
+      const { options, loading, failed } = field.key === 'departmentIdList' ? states.dingTalkDepartments : states.dingTalkUsers
+      const configId = getConfigId()
+      return {
+        ...field,
+        kind: 'select',
+        commaSeparated: true,
+        showSearch: true,
+        options,
+        loading,
+        optionLoadError: failed,
+        disabled: field.disabled || !configId,
+        placeholderKey: configId ? field.placeholderKey : 'NoticeCenter.template.placeholder.boundConfigRequired',
+      }
     }
     return field
   }

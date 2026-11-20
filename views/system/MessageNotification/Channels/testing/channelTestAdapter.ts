@@ -1,5 +1,6 @@
 import type { NotificationObject, NotificationTemplatePayload, NotifierConfig } from '../../shared'
 import { notificationEnumValue } from '../../shared'
+import { readWechatAgentId, validWechatAgentId, wechatCorpChannel } from '../wechat/templateDefaults'
 import { readTestSettings, testSettingsIssues, testText } from './channelTestConfig'
 
 export type ChannelTestRecipientKind = 'email' | 'phone' | 'member' | 'openid' | 'group' | 'endpoint'
@@ -29,8 +30,13 @@ function vendorPayload(input: TrialInput, template: NotificationObject): TrialPa
 export const channelTestAdapters: Readonly<Record<string, ChannelTestAdapter>> = {
   'email:embedded': { recipient: 'email', missing: ready, build: input => ({ template: { subject: input.title, text: input.message, sendTo: [input.recipient] } }) },
   'dingTalk:dingTalkMessage': { recipient: 'member', missing: requireAgent, build: input => ({ template: { agentId: testText(input.config.configuration.agentId), message: input.message, userIdList: input.recipient, toAllUser: false } }) },
-  'weixin:corpMessage': { recipient: 'member', missing: requireAgent, build: input => ({ template: { agentId: testText(input.config.configuration.agentId), message: input.message, toUser: input.recipient } }) },
-  'dingTalk:dingTalkRobotWebHook': { recipient: 'group', missing: ready, build: input => ({ template: { messageType: 'text', text: { content: input.message }, at: { atAll: false } } }) },
+  [wechatCorpChannel]: {
+    recipient: 'member',
+    missing: configuration => validWechatAgentId(readWechatAgentId(configuration)) ? [] : ['agentId'],
+    build: input => ({ template: { agentId: readWechatAgentId(input.config.configuration), message: input.message, toUser: input.recipient } }),
+  },
+  // 通知服务收到 at 时会渲染两个成员名单，普通群消息省略 at。
+  'dingTalk:dingTalkRobotWebHook': { recipient: 'group', missing: ready, build: input => ({ template: { messageType: 'text', text: { content: input.message } } }) },
   'webhook:http': { recipient: 'endpoint', missing: ready, build: input => ({ template: { method: 'POST', url: '', contextAsBody: false, body: JSON.stringify({ message: input.message }) } }) },
   'sms:aliyunSms': {
     recipient: 'phone', providerTemplate: true, missing: config => testSettingsIssues('sms:aliyunSms', config.testTemplate, true),

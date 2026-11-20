@@ -8,7 +8,7 @@ import { onlyMessage } from '@jetlinks-web/utils'
 import { useAuthStore } from '@jetlinks-web-core/store/auth'
 import { useMenuStore } from '@jetlinks-web-core/store/menu'
 import { useSystemStore } from '@jetlinks-web-core/store/system'
-import { findNotificationChannel, resolveNotificationChannel, notificationNavigationTarget, notificationPermissions, notificationQuery, normalizeNotificationNavigation, type NotificationChannel, type NotificationNavigation } from '../shared'
+import { findNotificationChannel, resolveNotificationChannel, notificationChannelLabels, notificationNavigationTarget, notificationPermissions, notificationQuery, normalizeNotificationNavigation, type NotificationChannel, type NotificationNavigation } from '../shared'
 import { useChannelWorkspace, type ChannelFieldChange } from './useChannelWorkspace'
 import { useChannelCatalog } from './useChannelCatalog'
 import { useChannelTest } from './testing/useChannelTest'
@@ -20,12 +20,13 @@ import { useChannelLeaveGuard } from './useChannelLeaveGuard'
 import { channelHelp, channelHelpSection } from './configuration/channelHelp'
 import { classifyNotificationFailure, notificationFailureMessage } from '../../../../api/notice/messageNotificationState'
 import { useRobotConfigurations } from './robot/useRobotConfigurations'
-import { dingTalkRobotChannel } from './templateSetup/templateDefaults'
+import { dingTalkRobotChannel, dingTalkWorkChannel } from './templateSetup/templateDefaults'
 import { useChannelTemplateSetup } from './templateSetup/useChannelTemplateSetup'
+import { wechatCorpChannel } from './wechat/templateDefaults'
 
 /** Own backend directory, routing, permissions and draft effects outside rendering components. */
 export function useChannelsPage() {
-  const { t, te } = useI18n()
+  const { t } = useI18n()
   const route = useRoute()
   const router = useRouter()
   const system = useSystemStore()
@@ -45,19 +46,17 @@ export function useChannelsPage() {
   }
   const canQuery = permissions.query
   const catalog = useChannelCatalog(canQuery)
-  const channelTitle = (item: NotificationChannel) => item.labelKey ? t(item.labelKey) : item.name || item.id
-  const channelOptions = computed(() => catalog.channels.value.map(item => ({ value: item.id, label: channelTitle(item) })))
-  const typeTitle = (id: string, name?: string) => id === 'weixin' ? t('messageNotification.channels.wechat')
-    : te(`NoticeCenter.channel.type.${id}`) ? t(`NoticeCenter.channel.type.${id}`) : name || id
-  const providerTitle = (item: NotificationChannel) => item.id === 'dingTalk:dingTalkRobotWebHook'
-    ? t('messageNotification.channels.groupRobot') : ['dingTalk:dingTalkMessage', 'weixin:corpMessage'].includes(item.id)
-      ? t('messageNotification.channels.workNotification') : item.providerName || channelTitle(item)
+  const { channelTitle, typeTitle, providerTitle } = notificationChannelLabels(t)
   const channelSearch = ref('')
   const channelTree = computed(() => catalog.types.value.map(type => {
     const items = catalog.channels.value.filter(item => item.type === type.id)
     const nested = items.length !== 1 || type.id === 'dingTalk'
     const leaf = (item: NotificationChannel) => ({ key: item.id, type: type.id, title: nested ? providerTitle(item) : typeTitle(type.id, type.name), count: catalog.count(item), multipleConfigurations: !!item.multipleConfigurations, children: [] })
     return nested ? { key: `type:${type.id}`, type: type.id, title: typeTitle(type.id, type.name), count: undefined, children: items.map(leaf) } : leaf(items[0])
+  }))
+  const channelOptions = computed(() => channelTree.value.flatMap(node => {
+    if (node.children.length) return node.children.map(child => ({ value: child.key, label: `${node.title} · ${child.title}` }))
+    return node.key === `type:${node.type}` ? [] : [{ value: node.key, label: node.title }]
   }))
   const filteredChannelTree = computed(() => {
     const keyword = channelSearch.value.trim().toLocaleLowerCase()
@@ -95,31 +94,12 @@ export function useChannelsPage() {
     channel, permitted: canFillTemplates, blocked: operationBusy, generating: fillingTemplates, translate: t,
   })
   const robot = useRobotConfigurations({
-    workspace, permissions, blocked: operationBusy, pending: robotPending, test: showSend, remove: requestRemove,
+    workspace, permissions, blocked: operationBusy, pending: robotPending, test: showSend,
     prepareTemplates: templateSetup.prepareForSave,
     saved: (id, created) => fillSavedTemplates(dingTalkRobotChannel, id, created),
     fillTemplates: id => templateSetup.fill(id),
   })
   const canFillRobotTemplates = computed(() => canFillTemplates.value && permissions.update.value)
-  const deleteOpen = ref(false)
-  const clearChannelName = computed(() => {
-    if (!channel.value) return ''
-    if (robot.isRobot.value) return entry.value?.baseline?.name || channelTitle(channel.value)
-    if (!findNotificationChannel(channelId.value) || channelId.value === 'weixin:corpMessage') return channelTitle(channel.value)
-    // The confirmation names the notification method, matching personal settings rather than the vendor.
-    return t(`messageNotification.records.type.${channel.value.type}`)
-  })
-  const clearMessage = computed(() => {
-    const id = channelId.value
-    if (id === 'dingTalk:dingTalkRobotWebHook') return t('messageNotification.channels.clearRobotMessage')
-    if (id === 'webhook:http') return t('messageNotification.channels.clearWebhookMessage')
-    if (!channel.value || !['email:embedded', 'sms:aliyunSms', 'voice:aliyun', 'dingTalk:dingTalkMessage', 'weixin:corpMessage'].includes(id)) return t('messageNotification.channels.confirmDelete')
-    // Legacy installations may have several configurations; clearing one cannot disable the whole channel.
-    const impact = t(configs.value.length > 1 ? 'messageNotification.channels.clearSharedMessage' : 'messageNotification.channels.clearNotificationMessage', { channel: clearChannelName.value })
-    return ['dingTalk:dingTalkMessage', 'weixin:corpMessage'].includes(id)
-      ? `${impact} ${t('messageNotification.channels.clearMembersMessage')}` : impact
-  })
-  function requestRemove() { if (!operationBusy.value && permissions.delete.value && entry.value && !entry.value.isNew) deleteOpen.value = true }
   const selectChannel: TreeProps['onSelect'] = (_keys, { node }) => {
     if (operationBusy.value) return
     const key = String(node.key)
@@ -131,12 +111,8 @@ export function useChannelsPage() {
   }
   const configurationVisible = computed(() => !!entry.value && ![state.value, detailState.value].some(value => ['loading', 'unavailable', 'forbidden', 'error'].includes(value)))
   const { leaveOpen, decideLeave } = useChannelLeaveGuard(computed(() => hasUnsavedChanges.value || members.dirty.value), operationBusy)
-  const trialSupported = computed(() => {
-    const adapter = channelTestAdapters[channelId.value]
-    // Inline tests use the AgentId stored in the trial configuration.
-    if (channelId.value === 'weixin:corpMessage') return !!adapter && !!entry.value?.baseline && !adapter.missing(entry.value.baseline.configuration).length
-    return !!adapter
-  })
+  // The dialog reports missing prerequisites for any supported channel.
+  const trialSupported = computed(() => !!channelTestAdapters[channelId.value])
   const canTrial = computed(() => trialSupported.value && canQuery.value && permissions.action.value && !!entry.value?.baseline?.id && !entry.value?.isNew && !dirty.value && configurationVisible.value)
   const canSyncMembers = computed(() => canQuery.value && permissions.bind.value && channelId.value === 'weixin:corpMessage' && !!entry.value?.baseline?.id && !entry.value?.isNew && !dirty.value)
   const configurationOptions = computed(() => configs.value.map(item => ({ value: item.id, label: `${item.name} · ${item.id}` })))
@@ -250,7 +226,6 @@ export function useChannelsPage() {
     if (ok) onlyMessage(t('messageNotification.channels.saveSuccess'), 'success')
     return ok
   }
-  async function remove() { deleteOpen.value = false; if (await workspace.deleteConfig()) onlyMessage(t('messageNotification.channels.deleteSuccess'), 'success') }
   function showSend() {
     if (!canTrial.value || !channel.value || !entry.value?.baseline?.id) return
     const id = entry.value.baseline.id
@@ -262,7 +237,7 @@ export function useChannelsPage() {
   function fixTestConfiguration() {
     if (sending.value) return
     const key = channelTestSettingsKinds[channelId.value] ? 'testTemplate'
-      : channelId.value === 'dingTalk:dingTalkMessage' ? 'agentId'
+      : [dingTalkWorkChannel, wechatCorpChannel].includes(channelId.value) ? 'agentId'
         : channelId.value === 'email:embedded' ? 'host' : 'url'
     pendingTestField.value = { configId: selectedConfigId.value || '', key }
     trial.close()
@@ -279,7 +254,7 @@ export function useChannelsPage() {
   watch([() => route.query.channel, () => route.query.ch, () => route.query.configId], () => trial.close(true))
   // A refreshed saved configuration invalidates the snapshot used by an open test.
   watch(() => entry.value?.baseline, () => trial.close(true))
-  watch([channelId, selectedConfigId], () => { trial.close(true); members.close(true); decideMemberDiscard(false); deleteOpen.value = false; focusedField.value = '' })
+  watch([channelId, selectedConfigId], () => { trial.close(true); members.close(true); decideMemberDiscard(false); focusedField.value = '' })
   watch([canQuery, permissions.bind], ([query, bind]) => { if (!query || !bind) { members.close(true); decideMemberDiscard(false) } })
   // A saved, readable configuration owns the summary; this read never creates suggestions or writes.
   watch([canSyncMembers, () => entry.value?.baseline, busy, detailState], () => {
@@ -301,8 +276,8 @@ export function useChannelsPage() {
     t, notificationPermissions, isNarrow, channelOptions, channelSearch, filteredChannelTree, openChannelKeys, selectChannel, configurationOptions,
     canQuery, channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId,
     busy, dirty, canEdit, editing, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave,
-    sending, workspace, trial, testModel: trial.model, fixTestConfiguration, afterTestClosed, refresh, save, remove, showSend, configurationVisible,
-    catalog, directoryState, providerFeedback, channelTitle, help, saveFields, focusField, activeHelpSection, helpFocusVersion, deleteOpen, clearChannelName, clearMessage, requestRemove,
+    sending, workspace, trial, testModel: trial.model, fixTestConfiguration, afterTestClosed, refresh, save, showSend, configurationVisible,
+    catalog, directoryState, providerFeedback, channelTitle, help, saveFields, focusField, activeHelpSection, helpFocusVersion,
     members, memberDrawer, canSyncMembers, showMembers, autoMatchMembers, closeMembers, reloadMembers, memberDiscardOpen, decideMemberDiscard, updateMemberFilters, updateMemberStatus, resetMemberFilters,
   }
 }

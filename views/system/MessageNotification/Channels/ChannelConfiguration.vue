@@ -2,8 +2,13 @@
   <div class="channel-configuration">
     <a-alert v-if="hiddenErrors.length" type="error" show-icon :message="hiddenErrors.join('；')" class="channel-configuration__error" />
     <InlineEditForm :key="entry.key" :groups="formGroups" mode="form" :disabled="disabled" :busy="busy" :messages="formMessages" @change="changeValue" @focus="emit('focus', $event)">
-      <template #editor="{ field, value, update, disabled: fieldDisabled }">
-        <div v-if="field.key === 'email:preset'" class="channel-configuration__brands">
+      <template #editor="{ field, inputId, value, update, disabled: fieldDisabled }">
+        <a-input-password v-if="metadataField(field.key)?.kind === 'secret'" :id="inputId"
+          :value="!fieldDisabled && typeof value === 'string' ? value : ''" :disabled="fieldDisabled"
+          :visible="fieldDisabled ? false : undefined" :visibility-toggle="!fieldDisabled"
+          :aria-label="field.label" :placeholder="field.placeholder" :status="field.error ? 'error' : undefined"
+          autocomplete="new-password" @update:value="update" />
+        <div v-else-if="field.key === 'email:preset'" class="channel-configuration__brands">
           <a-segmented :value="String(value)" :options="field.options" size="small" :disabled="fieldDisabled" :aria-label="field.label" @change="update" />
         </div>
         <template v-else-if="emailOptionsVisible && field.key === 'config:host'">
