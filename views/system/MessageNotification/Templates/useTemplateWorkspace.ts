@@ -9,6 +9,8 @@ import {
 import { buildTemplatePayload, createTemplateDraft, newTemplateDraft, templateDraftFingerprint, type TemplateDraft } from './model'
 import { createPrototypeTemplate, hasPrototypeTemplate, prototypeAvailableVariables, type PrototypeTranslate } from './definition/templateDefaults'
 import { filterUnsupportedRecommendedVariables, mergeTemplateVariableDeclarations } from '../../../notice/template/hooks/noticeTemplateModel'
+import { applyWorkRecipients, assertWorkConfig, emptyWorkRecipients, isWorkChannel, readWorkRecipients,
+  workRecipientContent, type WorkRecipients } from '../shared/workRecipients'
 import { useTemplateCatalog } from './hooks/useTemplateCatalog'
 import {
   buildBusinessTemplateItem, businessDraftKey, businessIdentity, channelProviderFor,
@@ -342,11 +344,12 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
 
   /** First save includes the supported built-in channel alongside the edited template. */
   async function saveBusiness(current: TemplateDraftEntry, payload: ReturnType<typeof buildTemplatePayload>, fingerprint: string,
-    insideMail?: NoticeChannelConfig) {
+    insideMail?: NoticeChannelConfig, recipients?: WorkRecipients) {
     const selected = business.value
     const channel = currentChannel.value
     if (!selected?.provider || !channel) throw new NotificationRequestError('error')
-    const item = buildBusinessTemplateItem(selected, channel, current, payload)
+    const base = buildBusinessTemplateItem(selected, channel, current, payload)
+    const item = recipients && isWorkChannel(channel.id) ? applyWorkRecipients(base, channel.id, recipients) : base
     if (selected.id) {
       const saved = await api.saveBusinessTemplate(selected.id, channelProviderFor(channel), item)
       if (!readBusinessTemplate(selected, channel, saved).template) throw new NotificationRequestError('error', saved)
@@ -374,8 +377,9 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
   async function saveTemplate(): Promise<boolean> {
     const current = entry.value
     if (!current || saving.value || !canSave.value) return false
-    const payload = buildTemplatePayload(current.draft, channels.value)
-    const fingerprint = templateDraftFingerprint(current.draft)
+    const submitted = cloneNotificationValue(current.draft)
+    const payload = buildTemplatePayload(submitted, channels.value, { baseline: current.baselineDraft, available: availableVariables.value })
+    const fingerprint = templateDraftFingerprint(submitted)
     const firstBusiness = business.value && !business.value.id ? businessIdentity(business.value) : undefined
     const key = activeKey.value
     const revision = detailRevision
@@ -384,17 +388,31 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     let writing = false
     try {
       const insideMail = firstBusiness ? await api.queryInsideMailChannel() : undefined
-      if (firstBusiness && (revision !== detailRevision || !canSave.value)) {
+      const id = `${payload.type}:${payload.provider}`
+      let recipients: WorkRecipients | undefined
+      if (isWorkChannel(id) && payload.configId) {
+        const config = await api.getConfig(payload.configId)
+        assertWorkConfig(config, payload.configId, id)
+        recipients = readWorkRecipients(config.configuration)
+        if (recipients || current.baselineDraft.configId && current.baselineDraft.configId !== payload.configId) {
+          payload.template = workRecipientContent(id, payload.template, recipients ?? emptyWorkRecipients())
+        }
+      }
+      if ((firstBusiness || isWorkChannel(id)) && (revision !== detailRevision || !canSave.value || current.draft.configId !== payload.configId)) {
         if (revision === detailRevision) saveState.value = 'idle'
         return false
       }
       writing = true
-      if (business.value) await saveBusiness(current, payload, fingerprint, insideMail)
+      if (business.value) await saveBusiness(current, payload, fingerprint, insideMail, recipients)
       else {
         if (current.existing && payload.id) await api.updateTemplate({ ...payload, id: payload.id })
         else await api.createTemplate(payload)
-        current.baseline = fingerprint
-        current.baselineDraft = cloneNotificationValue(current.draft)
+        // 保存时补齐的变量声明也进入独立模板的基线，再次编辑直接回显本次保存的格式。
+        const stored = isWorkChannel(id) ? createTemplateDraft({ ...payload, id: payload.id || '' })
+          : { ...submitted, variables: payload.variableDefinitions ?? [] }
+        if (templateDraftFingerprint(current.draft) === fingerprint) current.draft = stored
+        current.baseline = templateDraftFingerprint(stored)
+        current.baselineDraft = cloneNotificationValue(stored)
         if (payload.id) current.existing = true
         else if (activeKey.value === key) { drafts.delete(key); activeKey.value = ''; detailState.value = 'idle' }
         if (currentChannel.value) await loadTemplates(currentChannel.value.id, true)

@@ -8,6 +8,8 @@ import { mergeTemplateVariableDeclarations } from '../../../../notice/template/h
 import { useTemplateProviderEditor, type ProviderEditorProps } from './useTemplateProviderEditor'
 import type { NoticeChannelConfig } from '../../../../../api/notice-center'
 import { resolveTemplateVariables, templateVariableNames } from '../variables/catalog'
+import { useTemplateVariables } from './useTemplateVariables'
+import { templateVariableFormat } from '../variables/definitions'
 
 interface EditorProps extends ProviderEditorProps { configState: NotificationLoadState; availableVariables?: NotificationVariable[]; existing?: boolean; businessMode?: boolean; business?: NoticeChannelConfig }
 type TextField = 'subject' | 'text' | 'templateJson'
@@ -45,6 +47,7 @@ export function useTemplateEditor(props: EditorProps, emit: (event: 'uploading',
   })
   const displayVariables = computed(() => resolveTemplateVariables(props.availableVariables ?? [], props.draft.variables, props.business?.provider, t))
   const variableNames = templateVariableNames(() => displayVariables.value)
+  const variableList = useTemplateVariables(props, variableNames)
   const configFailure = computed(() => ['forbidden', 'unavailable', 'error'].includes(props.configState))
   const configOptions = computed(() => {
     const options = props.configs.filter(item => matchesTemplateConfiguration(props.draft, item))
@@ -114,6 +117,8 @@ export function useTemplateEditor(props: EditorProps, emit: (event: 'uploading',
     if (!available) return false
     const declaration = cloneNotificationValue(available)
     delete declaration.defaultValue
+    const format = templateVariableFormat(declaration)
+    if (format !== undefined) declaration.format = format
     props.draft.variables.push(declaration)
     return true
   }
@@ -144,5 +149,5 @@ export function useTemplateEditor(props: EditorProps, emit: (event: 'uploading',
   }
 
   return { t, emailDraft, builtinOptions, selectBuiltin, insertableVariables, displayVariables, variableNames, canInsertVariable, configFailure, configOptions, setUploading,
-    captureCaret, captureProviderCaret, captureCustomCaret, activateProviderField, insertVariable, registerVariable, ...providerEditor }
+    captureCaret, captureProviderCaret, captureCustomCaret, activateProviderField, insertVariable, registerVariable, ...variableList, ...providerEditor }
 }

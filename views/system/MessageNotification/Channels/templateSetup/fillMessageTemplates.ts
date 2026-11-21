@@ -7,10 +7,11 @@ import {
   classifyNotificationFailure, NotificationRequestError, resolveNotificationChannel,
   type NotificationChannel, type NotificationFailureKind, type NotifierConfig,
 } from '../../shared'
+import { applyWorkRecipients, isWorkChannel, readWorkRecipients } from '../../shared/workRecipients'
 import { wechatCorpChannel } from '../wechat/templateDefaults'
-import { createChannelMessageTemplate, dingTalkRobotChannel, readTemplateSetup, supportsTemplateSetup, templateSetupIssues } from './templateDefaults'
+import { createChannelMessageTemplate, dingTalkRobotChannel, readTemplateSetup, smsChannel, supportsTemplateSetup, templateSetupIssues } from './templateDefaults'
 
-type TemplateFillApi = Pick<MessageNotificationApi, 'getConfig' | 'queryTemplateDirectory' |
+type TemplateFillApi = Pick<MessageNotificationApi, 'getConfig' | 'getSmsTemplateContent' | 'queryTemplateDirectory' |
   'getBusinessTemplate' | 'queryInsideMailChannel' | 'saveBusinessTemplate' | 'saveBusinessTemplates'>
 
 export interface TemplateFillResult {
@@ -18,7 +19,7 @@ export interface TemplateFillResult {
   skipped: number
   failed: string[]
   unknown: boolean
-  loadFailure?: NotificationFailureKind
+  loadFailure?: NotificationFailureKind | 'smsDefaults'
 }
 
 function readBusiness(directory: NoticeChannelConfig[], code: string): NoticeChannelConfig | undefined {
@@ -51,6 +52,7 @@ export async function fillMessageTemplates(
   if (!supportsTemplateSetup(channel.id) || Object.keys(templateSetupIssues(channel.id, values)).length || !active()) return result
   const channelProvider = channelProviderFor(channel)
   let directory: NoticeChannelConfig[]
+  let recipients: ReturnType<typeof readWorkRecipients>
   try {
     const saved = await api.getConfig(config.id)
     // Confirm the defaults survived the channel write before creating any business record.
@@ -60,6 +62,7 @@ export async function fillMessageTemplates(
       throw new NotificationRequestError('error')
     }
     if (!active()) return result
+    recipients = isWorkChannel(channel.id) ? readWorkRecipients(saved.configuration) : undefined
     directory = await api.queryTemplateDirectory()
   } catch (error) {
     result.loadFailure = classifyNotificationFailure(error)
@@ -67,6 +70,7 @@ export async function fillMessageTemplates(
   }
 
   const channelName = channel.name || translate(channel.labelKey)
+  let smsContent: string | undefined
   let insideMailRequest: Promise<NoticeChannelConfig | undefined> | undefined
   // The same directory powers the template page and already applies the current business permissions.
   for (const code of new Set(directory.map(item => item.provider))) {
@@ -86,8 +90,23 @@ export async function fillMessageTemplates(
         continue
       }
       if (!active()) break
-      const template = createChannelMessageTemplate(business, channel, config.id, values, translate)
-      const item: NoticeChannelTemplateItem = {
+      // 首个缺失绑定才查询供应商，整批模板使用同一份审核原文。
+      if (channel.id === smsChannel && smsContent === undefined) {
+        try {
+          smsContent = await api.getSmsTemplateContent(config.id, values.code.trim(), values.signName.trim())
+        } catch (error) {
+          result.loadFailure = classifyNotificationFailure(error)
+          break
+        }
+        if (!smsContent) {
+          result.loadFailure = 'smsDefaults'
+          break
+        }
+        if (!active()) break
+      }
+      const defaults = smsContent === undefined ? values : { ...values, message: smsContent }
+      const template = createChannelMessageTemplate(business, channel, config.id, defaults, translate)
+      const base: NoticeChannelTemplateItem = {
         channel: {
           providerId: business.id,
           name: channelName,
@@ -104,6 +123,7 @@ export async function fillMessageTemplates(
         template: { ...template },
       }
 
+      const item = recipients && isWorkChannel(channel.id) ? applyWorkRecipients(base, channel.id, recipients) : base
       const insideMail = business.id ? undefined : await (insideMailRequest ??= api.queryInsideMailChannel())
       if (!active()) break
       writing = true

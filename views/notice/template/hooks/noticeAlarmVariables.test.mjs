@@ -83,7 +83,7 @@ test('declaration merge fills placeholder names and date metadata without replac
   const declared = [
     { id: 'detail.sourceType', name: 'detail.sourceType' },
     { id: 'detail.sourceName', name: 'NoticeCenter.template.variable.recommend.sourceName' },
-    { id: 'detail.alarmTime', name: '', expands: { mockValue: 1767240000000 } },
+    { id: 'detail.alarmTime', name: '', i18nName: '', expands: { mockValue: 1767240000000 } },
     { id: 'detail.relieveTime', name: '我的解除时间', type: 'date', format: 'timestamp', expands: { format: 'timestamp', keep: true } },
     { id: 'detail.targetName', name: '我的设备', type: 'string' },
     { id: 'targetName', name: '旧声明' },
@@ -93,6 +93,7 @@ test('declaration merge fills placeholder names and date metadata without replac
   assert.equal(merged.get('detail.sourceType').name, '告警源类型')
   assert.equal(merged.get('detail.sourceName').name, '告警源名称')
   assert.equal(merged.get('detail.alarmTime').name, '告警时间')
+  assert.equal(merged.get('detail.alarmTime').i18nName, 'NoticeCenter.template.variable.recommend.alarmTime')
   assert.equal(merged.get('detail.alarmTime').type, 'date')
   assert.equal(merged.get('detail.alarmTime').expands.format, 'yyyy-MM-dd HH:mm:ss')
   assert.equal(merged.get('detail.alarmTime').expands.mockValue, 1767240000000)

@@ -17,7 +17,10 @@ import type {
 import { classifyNotificationFailure, normalizeNotificationPage, NotificationRequestError } from './messageNotificationState'
 import { readHistoryCounts } from './notificationHistoryCounts'
 import { httpWebhookConfigMetadata, normalizeNotificationConfigMetadata } from './notificationConfigMetadata'
-import type { NoticeChannelConfig, NoticeChannelTemplateItem, NoticeProviderTemplateInfo } from '../notice-center'
+import {
+  queryAliyunSmsSigns_api, queryAliyunSmsTemplates_api, type NoticeChannelConfig, type NoticeChannelTemplateItem,
+  type NoticeProviderTemplateInfo, type NoticeSmsSignOption, type NoticeSmsTemplateOption,
+} from '../notice-center'
 
 export interface CurrentNotificationBinding { type: string; provider: string; providerName?: string; thirdPartyUserId: string }
 interface BusinessVariableMetadata extends NotificationVariable { valueType?: { type?: string; format?: string } }
@@ -192,6 +195,23 @@ export const messageNotificationApi = {
   },
   getConfig(id: string): Promise<NotifierConfig> {
     return checked<NotifierConfig>(request.get(`/notifier/config/${idSegment(id)}`))
+  },
+  /** 候选项绑定到已保存的通知配置，只有审核通过且有正文的模板可用于生成。 */
+  async getSmsTemplateOptions(configId: string): Promise<{ templates: NoticeSmsTemplateOption[]; signs: NoticeSmsSignOption[] }> {
+    const [templates, signs] = await Promise.all([
+      checked(queryAliyunSmsTemplates_api(configId)),
+      checked(queryAliyunSmsSigns_api(configId)),
+    ])
+    return {
+      templates: normalizeNotificationPage(templates).data.filter(item => item?.auditStatus === 'AUDIT_STATE_PASS'
+        && nonemptyString(item.templateCode) && nonemptyString(item.templateContent)),
+      signs: normalizeNotificationPage(signs).data.filter(item => item?.auditStatus === 'AUDIT_STATE_PASS' && nonemptyString(item.signName)),
+    }
+  },
+  /** 补齐前按配置重新校对选值，避免用已撤销的签名或过期的模板正文创建业务模板。 */
+  async getSmsTemplateContent(configId: string, code: string, signName: string): Promise<string | undefined> {
+    const { templates, signs } = await messageNotificationApi.getSmsTemplateOptions(configId)
+    if (signs.some(sign => sign.signName === signName)) return templates.find(template => template.templateCode === code)?.templateContent
   },
   createConfig(payload: NotifierConfigPayload): Promise<unknown> {
     return checked<unknown>(request.post('/notifier/config', payload, { hiddenError: true }))

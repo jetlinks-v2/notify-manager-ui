@@ -12,7 +12,7 @@
     <a-form-item v-if="!businessMode" :label="t('messageNotification.templates.description')">
       <a-textarea v-model:value="draft.description" :rows="2" />
     </a-form-item>
-    <p class="template-editor__intro">{{ t('messageNotification.templates.visual.contentOnlyHint') }}</p>
+    <p class="template-editor__intro">{{ t(workChannel ? 'messageNotification.recipients.templateHint' : 'messageNotification.templates.visual.contentOnlyHint') }}</p>
     <a-form-item v-if="needsConfiguration" required>
       <template #label>{{ t('messageNotification.templates.configuration') }} <DocumentHelp code="system/MessageNotification/Templates" help-key="template.configuration" /></template>
       <a-select v-model:value="draft.configId" :options="configOptions" :placeholder="t('messageNotification.templates.configPlaceholder')" />
@@ -47,6 +47,7 @@
         </template>
       </a-spin>
     </template>
+    <VariableDefinitions :variables="usedVariables" :disabled="disabled" @change-type="changeVariableType" @change-format="changeVariableFormat" />
   </a-form>
 </template>
 
@@ -54,6 +55,7 @@
 import DocumentHelp from '@jetlinks-web-core/components/DocumentHelp'
 import { computed, type Component, type PropType } from 'vue'
 import type { NotificationConfigMetadata, NotificationLoadState, NotificationVariable, NotifierConfig } from '../../shared'
+import { isWorkChannel } from '../../shared/workRecipients'
 import type { TemplateDraft } from '../model'
 import { useTemplateEditor } from '../hooks/useTemplateEditor'
 import EmailTemplateEditor from './channels/EmailTemplateEditor.vue'
@@ -66,6 +68,7 @@ import type { NoticeChannelConfig } from '../../../../../api/notice-center'
 import { provideTemplateVariableEditing } from '../variables/catalog'
 import TemplateVariableInput from '../variables/TemplateVariableInput.vue'
 import TemplateProviderField from '../variables/TemplateProviderField.vue'
+import VariableDefinitions from './VariableDefinitions.vue'
 
 const props = defineProps({
   draft: { type: Object as PropType<TemplateDraft>, required: true },
@@ -80,6 +83,7 @@ const props = defineProps({
   availableVariables: { type: Array as PropType<NotificationVariable[]>, default: () => [] },
 })
 const emit = defineEmits<{ (event: 'uploading', value: boolean): void }>()
+const workChannel = computed(() => isWorkChannel(`${props.draft.type}:${props.draft.provider}`))
 const editor = useTemplateEditor(props, emit)
 provideTemplateVariableEditing({ names: editor.variableNames, identity: computed(() => props.draft), captureCaret: editor.captureCustomCaret })
 const {
@@ -87,6 +91,7 @@ const {
   captureProviderCaret, insertVariable,
   known, fields, metadataFields, genericJson, metadataFailure, parsed,
   changeMetadata, metadataValue, metadataRequired,
+  usedVariables, changeVariableType, changeVariableFormat,
 } = editor
 const channelEditors: Record<string, Component> = {
   'email:embedded': EmailTemplateEditor, 'dingTalk:dingTalkMessage': DingTalkTemplateEditor,

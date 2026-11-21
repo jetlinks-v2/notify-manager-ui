@@ -3,7 +3,7 @@
     <div class="wechat-members-summary__bar" :aria-busy="model.autoMatching">
       <div class="wechat-members-summary__stats" role="status">
         <a-spin v-if="model.state === 'loading'" size="small" />
-        <i18n-t v-else-if="['ready', 'empty'].includes(model.state)" keypath="messageNotification.members.summary" scope="global" tag="span">
+        <i18n-t v-else-if="['ready', 'empty'].includes(model.state)" :keypath="summaryKey" scope="global" tag="span">
           <template #bound>{{ model.stats.bound }}</template>
           <template #total>{{ model.stats.total }}</template>
           <template #unbound>{{ model.stats.unbound }}</template>
@@ -25,7 +25,7 @@
 </template>
 <script setup lang="ts">
 import { useWechatMembersFeedback, type WechatMembersSummaryModel } from './useWechatMembersDrawer'
-const props = defineProps<{ model: WechatMembersSummaryModel }>()
+const props = withDefaults(defineProps<{ model: WechatMembersSummaryModel; summaryKey?: string }>(), { summaryKey: 'messageNotification.members.summary' })
 const emit = defineEmits<{ (event: 'match' | 'reload'): void }>()
 const { t, failure, canReload } = useWechatMembersFeedback(() => props.model)
 </script>

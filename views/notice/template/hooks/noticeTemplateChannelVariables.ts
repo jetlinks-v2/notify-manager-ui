@@ -28,8 +28,8 @@ export const subscriberRelationVariable = {
   },
 }
 
-const getVariableBusinessType = (variable: NoticeTemplateVariable) =>
-  String(variable.expands?.businessType || variable.type || '')
+export const isReceiverVariable = (variable: NoticeTemplateVariable) =>
+  receiverBusinessTypes.has(String(variable.expands?.businessType || variable.type || ''))
 
 export const buildNoticeTemplateChannelVariables = ({
   channelProvider,
@@ -46,7 +46,7 @@ export const buildNoticeTemplateChannelVariables = ({
   }
 
   variableDefinitions.forEach((variable) => {
-    if (variable?.id && receiverBusinessTypes.has(getVariableBusinessType(variable))) {
+    if (variable?.id && isReceiverVariable(variable)) {
       variableIds.add(variable.id)
     }
   })

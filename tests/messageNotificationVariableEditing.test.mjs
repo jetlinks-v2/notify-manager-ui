@@ -145,6 +145,17 @@ test('insert, whole-node delete, undo/redo and clipboard preserve same-name vari
   assert.equal(view.state.value, '前后\n下一段')
 })
 
+test('Backspace on a backward selection between variable right guards deletes the selected ID', async t => {
+  const view = await mount('前${one}${two}后'); t.after(view.destroy)
+  const [first, second] = view.instance.root.querySelectorAll('[data-template-variable]')
+  view.instance.focus()
+  window.getSelection().setBaseAndExtent(second.lastChild, 0, first.lastChild, 0)
+  view.instance.root.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true }))
+  await settle()
+  assert.equal(view.state.value, '前${one}后')
+  assert.equal(view.instance.getSelection().index, 2)
+})
+
 test('single-line input counts raw key length and rejects excess without losing undo history', async t => {
   const view = await mount('a${one}', { multiline: false, maxlength: 9 }); t.after(view.destroy)
   view.instance.setSelection(2, 0, 'user')

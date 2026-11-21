@@ -1,3 +1,4 @@
+import { queryDingTalkCorpUsers_api } from '../notice-center'
 import { request } from '@jetlinks-web/core'
 import { checked } from './messageNotification'
 import { normalizeNotificationPage, NotificationRequestError } from './messageNotificationState'
@@ -44,6 +45,15 @@ export const wechatMemberApi = {
     return checked(request.post(`/user/third-party/${segment(bindingId)}/_unbind`))
   },
 }
+// Both providers use the same configurable third-party user binding API.
+export const dingTalkMemberApi: typeof wechatMemberApi = {
+  ...wechatMemberApi,
+  departments: configId => checked(request.get(`/notifier/dingtalk/corp/${segment(configId)}/departments/tree`, undefined, { hiddenError: true })),
+  members: configId => checked(queryDingTalkCorpUsers_api(configId)),
+  bindings: configId => checked(request.get(`/user/third-party/dingTalk_dingTalkMessage/${segment(configId)}`)),
+  bind: (configId, changes) => checked(request.post(`/user/third-party/dingTalk_dingTalkMessage/${segment(configId)}/_bind`, changes)),
+}
+
 export type WechatMemberApi = typeof wechatMemberApi
 
 /** No fixed first-page limit: abort stale loads and reject incomplete/repeating pages. */

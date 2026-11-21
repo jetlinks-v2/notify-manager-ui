@@ -4,7 +4,7 @@ import type { Delta, Range } from 'quill'
 import type { TemplateDraft } from '../model'
 import type { TemplateEditorController } from '../channelViewTypes'
 import { isEmailImageSource, normalizeEmailImageSource, toEmailBodyHtml } from '../definition/emailTemplateContent'
-import { bindTemplateVariableClipboard, copyTemplateEditorHistory as copyHistory, createTemplateVariableBlot,
+import { bindTemplateVariableEvents, copyTemplateEditorHistory as copyHistory, createTemplateVariableBlot,
   promoteTemplateVariables, refreshTemplateVariableLabels, templateVariableDisplayText, tokenizeTemplateDelta } from '../variables/quillVariables'
 
 interface EmailRichTextProps { draft: TemplateDraft; editor: TemplateEditorController; disabled?: boolean }
@@ -31,7 +31,7 @@ export function useEmailRichTextEditor(props: EmailRichTextProps) {
   let loadedDelta: Delta, loadedText = props.draft.text, publishedText = props.draft.text
   let imageSelection: EmailImageSelection | undefined
   let uploadHandler: ((files: File[], selection: EmailImageSelection) => void) | undefined
-  let unbindClipboard: (() => void) | undefined
+  let unbindVariableEvents: (() => void) | undefined
   const enabled = () => !props.disabled && !disposed && !!richEditor.value
   const html = () => richEditor.value?.getSemanticHTML() ?? ''
   function remember() {
@@ -140,13 +140,13 @@ export function useEmailRichTextEditor(props: EmailRichTextProps) {
     instance.clipboard.addMatcher('IMG', (node, delta) => node instanceof Element && isEmailImageSource(node.getAttribute('src') ?? '') ? delta : new QuillDelta())
     instance.clipboard.addMatcher(Node.TEXT_NODE, (_node, delta) => tokenizeTemplateDelta(delta, QuillDelta))
     loadContent()
-    unbindClipboard = bindTemplateVariableClipboard(instance, enabled)
+    unbindVariableEvents = bindTemplateVariableEvents(instance, enabled)
     instance.on('text-change', textChanged); instance.on('editor-change', editorChanged); instance.root.addEventListener('focus', focusBody)
     instance.root.addEventListener('compositionend', compositionEnd)
     captureBodySelection()
   })
   onBeforeUnmount(() => {
-    disposed = true; invalidateImages(); unbindClipboard?.()
+    disposed = true; invalidateImages(); unbindVariableEvents?.()
     const instance = richEditor.value
     if (instance) {
       instance.off('text-change', textChanged); instance.off('editor-change', editorChanged); instance.root.removeEventListener('focus', focusBody)

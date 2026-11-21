@@ -4,7 +4,7 @@ import { classifyNotificationFailure, type NotificationLoadState } from '../../s
 import { bindingSignature, matchWechatMembers, memberBindingChanges } from './wechatMemberMatching'
 import { filterWechatMemberRows, memberStatusFilter, withMemberStatus, withoutMemberStatus, type MemberFilterTerm, type MemberStatusFilter } from './wechatMemberFilters'
 
-interface MemberContext { configId: string; permitted: () => boolean; clean: () => boolean }
+interface MemberContext { configId: string; api?: WechatMemberApi; permitted: () => boolean; clean: () => boolean }
 export type { MemberFilterTerm, MemberStatusFilter } from './wechatMemberFilters'
 
 /** Own member snapshots, drawer previews and the channel's explicit match-and-save operation. */
@@ -28,6 +28,7 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
   const matchCount = ref<number | undefined>()
   let context: MemberContext | undefined
   let version = 0
+  const memberApi = () => context?.api ?? api
   const allowed = () => !!context?.permitted() && !!context.clean()
   const matches = computed(() => matchWechatMembers(members.value, users.value, bindings.value))
   const changes = computed(() => memberBindingChanges(members.value, bindings.value, assignments))
@@ -77,9 +78,9 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
   }
   function applyMatches() {
     let count = 0
-    matches.value.forEach((match, id) => {
-      if (match.userId && !assignments.has(match.userId) && !manual.has(match.userId) && !memberUnavailable(id, match.userId)) {
-        assignments.set(match.userId, id)
+    matches.value.forEach((userId, id) => {
+      if (!assignments.has(userId) && !manual.has(userId) && !memberUnavailable(id, userId)) {
+        assignments.set(userId, id)
         count++
       }
     })
@@ -113,6 +114,7 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
     error.value = ''
     saved.value = false
     try {
+      const api = memberApi()
       const [nextDepartments, nextMembers, nextUsers, nextBindings] = await Promise.all([
         api.departments(id), api.members(id), loadMemberPlatformUsers(api, active), api.bindings(id),
       ])
@@ -148,7 +150,7 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
   }
 
   async function unchanged(ticket: number): Promise<boolean> {
-    const latest = await api.bindings(configId.value)
+    const latest = await memberApi().bindings(configId.value)
     if (ticket !== version || !allowed()) return false
     if (bindingSignature(latest) !== bindingSignature(bindings.value)) {
       error.value = 'conflict'
@@ -161,7 +163,7 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
   /** Re-read after mutations; a failed post-write read must never replay a successful write. */
   async function refreshBindings(ticket: number, changedIds: string[]) {
     refreshRequired.value = true
-    const latest = await api.bindings(configId.value)
+    const latest = await memberApi().bindings(configId.value)
     if (ticket !== version || !allowed()) return
     bindings.value = latest
     changedIds.forEach(id => {
@@ -199,7 +201,7 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
       if (!payload.length) return false
       if (!await unchanged(ticket)) return false
       if (payload.some(change => memberUnavailable(change.thirdPartyUserId, change.userId))) { error.value = 'duplicate'; return false }
-      await api.bind(configId.value, payload)
+      await memberApi().bind(configId.value, payload)
       if (ticket !== version || !allowed()) return false
       await refreshBindings(ticket, payload.map(change => change.userId))
       return ticket === version && saved.value
@@ -217,7 +219,7 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
     saved.value = false
     try {
       if (!await unchanged(ticket)) return false
-      await api.unbind(bindingId)
+      await memberApi().unbind(bindingId)
       if (ticket !== version || !allowed()) return false
       await refreshBindings(ticket, [binding.userId])
       return ticket === version && saved.value

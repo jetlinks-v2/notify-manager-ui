@@ -255,6 +255,7 @@ export const mergeTemplateVariableDeclarations = (
       ...fallback,
       ...variable,
       name: name && !placeholderNames.includes(name) ? variable.name : fallback.name || variable.name,
+      i18nName: variable.i18nName || fallback.i18nName,
       type: variable.type || fallback.type,
       expands: { ...fallback.expands, ...variable.expands },
     })
