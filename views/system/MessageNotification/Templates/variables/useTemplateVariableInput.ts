@@ -4,7 +4,7 @@ import type { Delta, Range } from 'quill'
 import type { TemplateCustomCaret } from '../hooks/useTemplateEditor'
 import { useTemplateVariableEditing } from './catalog'
 import {
-  bindTemplateVariableClipboard, copyTemplateEditorHistory, createTemplateVariableBlot,
+  bindTemplateVariableEvents, copyTemplateEditorHistory, createTemplateVariableBlot,
   promoteTemplateVariables, refreshTemplateVariableLabels, templateDeltaText, tokenizeTemplateDelta,
 } from './quillVariables'
 
@@ -28,7 +28,7 @@ export function useTemplateVariableInput(props: TemplateVariableInputProps, emit
   let published = props.value, accepted: Delta, acceptedValue = ''
   let loadedValue = props.value, loadedText = ''
   let history: Quill['history']['stack'], DeltaClass: typeof import('quill')['Delta']
-  let unbindClipboard: (() => void) | undefined
+  let unbindVariableEvents: (() => void) | undefined
   const editable = () => !disposed && !props.disabled && !props.readonly && !!instance.value
   const normalize = (value: string) => props.multiline ? value.replace(/\r\n?/g, '\n') : value.replace(/[\r\n]+/g, ' ')
   const read = () => {
@@ -137,7 +137,7 @@ export function useTemplateVariableInput(props: TemplateVariableInputProps, emit
     editor.root.setAttribute('data-placeholder', props.placeholder || '')
     editor.root.setAttribute('spellcheck', 'false')
     load(); syncAccess(); loading.value = false
-    unbindClipboard = bindTemplateVariableClipboard(editor, editable)
+    unbindVariableEvents = bindTemplateVariableEvents(editor, editable)
     editor.on('text-change', changed); editor.on('editor-change', editorChanged)
     editor.root.addEventListener('focus', focus)
     editor.root.addEventListener('paste', paste, true)
@@ -153,7 +153,7 @@ export function useTemplateVariableInput(props: TemplateVariableInputProps, emit
     instance.value?.root.setAttribute('data-placeholder', props.placeholder || '')
   })
   onBeforeUnmount(() => {
-    disposed = true; unbindClipboard?.()
+    disposed = true; unbindVariableEvents?.()
     const editor = instance.value
     if (editor) {
       editor.off('text-change', changed); editor.off('editor-change', editorChanged)

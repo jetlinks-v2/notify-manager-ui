@@ -85,6 +85,7 @@ function mockApi() {
     saveBusinessTemplates: async (provider, info) => ({ ...info, provider: { ...info.provider, id: `saved-${provider}` } }),
     queryTemplates: async query => { calls.push(['queryTemplates', query]); return { data: [record()] } },
     queryConfigs: async query => { calls.push(['queryConfigs', query]); return { data: [{ id: 'smtp-one', name: 'SMTP', type: 'email', provider: 'embedded', configuration: {} }] } },
+    async getConfig(id) { return (await this.queryAllConfigs()).find(config => config.id === id) },
     getTemplate: async id => { calls.push(['getTemplate', id]); return record(id) },
     updateTemplate: async payload => { calls.push(['updateTemplate', structuredClone(payload)]); return undefined },
     createTemplate: async payload => { calls.push(['createTemplate', structuredClone(payload)]); return undefined },

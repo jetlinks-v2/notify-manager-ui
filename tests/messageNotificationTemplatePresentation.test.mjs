@@ -111,7 +111,7 @@ async function renderPreview(props) {
 test('known provider forms use actual fields, keep extensions and do not dirty untouched drafts', () => {
   for (const [type, provider, field] of [
     ['dingTalk', 'dingTalkMessage', 'agentId'], ['dingTalk', 'dingTalkRobotWebHook', 'messageType'],
-    ['weixin', 'corpMessage', 'toParty'], ['voice', 'aliyun', 'templateCode'], ['sms', 'aliyunSms', 'signName'], ['webhook', 'http', 'body'],
+    ['weixin', 'corpMessage', 'message'], ['voice', 'aliyun', 'templateCode'], ['sms', 'aliyunSms', 'signName'], ['webhook', 'http', 'body'],
   ]) {
     const draft = draftFor(type, provider, { contextAsBody: false, vendorExtra: { keep: true } })
     const baseline = JSON.stringify(draft)
@@ -150,39 +150,23 @@ test('robot editing publishes the selected message shape and keeps stored extens
   item.stop()
 })
 
-test('DingTalk directory ignores late options from the previous configuration', async () => {
+test('work template editors hide channel recipients and do not read communication directories', async () => {
   requests.length = 0
-  const queryUsers = remoteApi.queryDingTalkCorpUsers_api
-  let finishPrevious
-  const previous = new Promise(resolve => { finishPrevious = resolve })
-  remoteApi.queryDingTalkCorpUsers_api = async id => {
-    requests.push(['dingTalkUsers', id])
-    return id === 'config-one' ? previous : { success: true, result: [{ id: 'current', name: 'Current member' }] }
+  for (const [type, provider, fields] of [
+    ['dingTalk', 'dingTalkMessage', ['departmentIdList', 'userIdList', 'toAllUser']],
+    ['weixin', 'corpMessage', ['toParty', 'toUser', 'toTag']],
+  ]) {
+    const draft = draftFor(type, provider, { agentId: '1', [fields[0]]: 'stored', message: 'Message' })
+    const savedJson = draft.templateJson
+    const item = editor(draft, { configs: [configFor(draft), { ...configFor(draft), id: 'config-two' }] })
+    try {
+      assert.ok(item.value.fields.value.every(field => !fields.includes(field.key)))
+      item.props.draft.configId = 'config-two'
+      await flush()
+      assert.equal(item.props.draft.templateJson, savedJson)
+    } finally { item.stop() }
   }
-  const draft = draftFor('dingTalk', 'dingTalkMessage', { agentId: '1', userIdList: 'stored' })
-  const savedJson = draft.templateJson
-  const item = editor(draft, { configs: [configFor(draft), { ...configFor(draft), id: 'config-two' }] })
-  try {
-    const users = () => item.value.fields.value.find(field => field.key === 'userIdList')
-    assert.equal(users().loading, true)
-    item.props.draft.configId = 'config-two'
-    await flush()
-    assert.deepEqual(users().options, [{ value: 'current', label: 'Current member' }])
-    finishPrevious({ success: true, result: [{ id: 'stale', name: 'Previous member' }] })
-    await flush()
-    assert.deepEqual(users().options, [{ value: 'current', label: 'Current member' }])
-    item.props.configs = [configFor(draft)]
-    await flush()
-    assert.deepEqual(users().options, [])
-    assert.equal(users().disabled, true)
-    assert.equal(users().loading, false)
-    assert.equal(item.props.draft.templateJson, savedJson)
-    assert.deepEqual(requests, [['dingTalkDepartments', 'config-one'], ['dingTalkUsers', 'config-one'],
-      ['dingTalkDepartments', 'config-two'], ['dingTalkUsers', 'config-two']])
-  } finally {
-    item.stop()
-    remoteApi.queryDingTalkCorpUsers_api = queryUsers
-  }
+  assert.deepEqual(requests, [])
 })
 
 test('SMS remote options use only an exact readable configuration and selected templates update content', async () => {
@@ -520,4 +504,77 @@ test('changed Vue components compile and remain within the repository size const
       assert.match(source, /v-html="safeBody"/)
     } else assert.doesNotMatch(source, /v-html/)
   }
+})
+
+test('all channel editors list only referenced variables in the active template fields', () => {
+  const cases = [
+    ['email', 'embedded', { subject: '${shared}', text: '<p>${shared}</p><img src="${image}">', attachments: [{ name: '${filename}', location: '${image}' }] }, ['shared', 'image', 'filename']],
+    ['dingTalk', 'dingTalkMessage', { message: '${a}\n${a}${b}', userIdList: ['${recipient}'] }, ['a', 'b']],
+    ['dingTalk', 'dingTalkRobotWebHook', { messageType: 'link', link: { title: '${a}', text: '${b}', messageUrl: '${url}' }, markdown: { text: '${inactive}' } }, ['a', 'url', 'b']],
+    ['weixin', 'corpMessage', { message: '${a}\n${b}', toParty: '${recipient}' }, ['a', 'b']],
+    ['sms', 'aliyunSms', { message: '${a} ${supplierAlias} ${a}' }, ['a', 'supplierAlias']],
+    ['voice', 'aliyun', { templateType: 'tts', ttsCode: '${code}', message: '${a} ${supplierAlias} ${a}' }, ['code', 'a', 'supplierAlias']],
+    ['voice', 'aliyun', { templateType: 'voice', message: '${inactive}' }, []],
+    ['webhook', 'http', { contextAsBody: false, body: { '${a}': ['${a}', '${b}'] } }, ['a', 'b']],
+    ['webhook', 'http', { contextAsBody: true, body: '${inactive}' }, []],
+    ['extension', 'custom', { content: { '${a}': ['${b}', '${a}'] } }, ['a', 'b']],
+  ]
+  for (const [type, provider, content, ids] of cases) {
+    const draft = draftFor(type, provider, content)
+    const before = JSON.stringify(draft)
+    const item = editor(draft)
+    assert.deepEqual(item.value.usedVariables.value.map(row => row.id), ids, provider)
+    assert.equal(JSON.stringify(draft), before)
+    item.stop()
+  }
+})
+
+test('format edits follow the selected ID and persist independently of labels, samples and recipient declarations', () => {
+  const draft = draftFor('email', 'embedded', { subject: '${one} ${two}', text: '${one} ${recipient}' })
+  draft.variables = [
+    { id: 'one', name: '同名', type: 'date', expands: { format: 'yyyy-MM-dd', keep: true }, defaultValue: 'original' },
+    { id: 'recipient', type: 'user' }, { id: 'standalone', type: 'file', required: true },
+  ]
+  const baseline = structuredClone(draft)
+  const available = [{ id: 'two', name: '同名', type: 'string', defaultValue: 'example' }]
+  const item = editor(draft, { availableVariables: available })
+  assert.deepEqual(item.value.usedVariables.value.slice(0, 2).map(({ name, format }) => [name, format]), [['同名', 'yyyy-MM-dd'], ['同名', '%s']])
+  item.value.changeVariableType('two', 'double')
+  assert.equal(item.value.usedVariables.value[1].format, '%.2f')
+  item.value.changeVariableFormat('two', '%.3f')
+  item.value.changeVariableType('one', 'string')
+  item.value.changeVariableType('one', 'date')
+  assert.equal(item.value.usedVariables.value[0].format, 'timestamp')
+  item.value.changeVariableFormat('one', 'yyyy-MM-dd HH:mm:ss')
+  item.props.draft.text = 'body'
+  assert.deepEqual(item.value.usedVariables.value.map(row => row.id), ['one', 'two'])
+  item.props.draft.subject += ' ${typed}'
+  const declarations = () => buildTemplatePayload(item.props.draft, undefined, { baseline, available }).variableDefinitions
+  const saved = declarations()
+  const date = saved.find(row => row.id === 'one')
+  assert.deepEqual(date.expands, { format: 'yyyy-MM-dd HH:mm:ss', keep: true })
+  assert.equal(date.defaultValue, 'original')
+  assert.deepEqual(saved.find(row => row.id === 'two'), { id: 'two', name: '同名', type: 'double', format: '%.3f' })
+  assert.deepEqual(saved.find(row => row.id === 'typed'), { id: 'typed', name: 'typed', type: 'string', format: '%s' })
+  assert.ok(saved.some(row => row.id === 'recipient') && saved.some(row => row.id === 'standalone'))
+  item.props.draft.subject = '${two}'
+  assert.deepEqual(item.value.usedVariables.value.map(row => row.id), ['two'])
+  assert.equal(declarations().some(row => row.id === 'one'), false)
+  item.props.disabled = true
+  item.value.changeVariableFormat('two', '%.0f')
+  assert.equal(item.value.usedVariables.value[0].format, '%.3f')
+  assert.equal(available[0].defaultValue, 'example')
+  item.stop()
+})
+
+test('legacy formats and references in provider-only fields survive unrelated content edits', () => {
+  const draft = draftFor('email', 'embedded', { subject: '${time} ${value} ${target}', text: 'Body', sendTo: ['${target}'] })
+  draft.variables = [{ id: 'time', type: 'date' }, { id: 'value', type: 'double' }, { id: 'target', defaultValue: 'existing' }]
+  const baseline = structuredClone(draft)
+  draft.subject = '${time} ${value}'
+  const item = editor(draft)
+  assert.deepEqual(item.value.usedVariables.value.map(row => row.format), ['yyyy-MM-dd HH:mm:ss', '%s'])
+  const saved = buildTemplatePayload(draft, undefined, { baseline, available: [] })
+  assert.deepEqual(saved.variableDefinitions.find(row => row.id === 'target'), { id: 'target', defaultValue: 'existing' })
+  item.stop()
 })

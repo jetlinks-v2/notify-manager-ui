@@ -1,10 +1,19 @@
 <template>
   <section v-if="showFields || showFeedback" class="channel-template-setup" :aria-label="t(showFields ? prefix + 'title' : 'messageNotification.templates.title')">
     <h3 v-if="showFields && model.fields[0]?.key !== 'agentId'" class="channel-template-setup__title">{{ t(prefix + 'title') }}</h3>
+    <p v-if="showFields && model.saveCredentialsFirst" class="channel-template-setup__hint">{{ t(prefix + 'saveCredentialsHint') }}</p>
+    <a-alert v-else-if="showFields && smsOptionsFeedback" type="warning" show-icon :message="smsOptionsFeedback">
+      <template #action><a-button size="small" :disabled="model.disabled" @click="emit('retryOptions')">{{ t('messageNotification.common.retry') }}</a-button></template>
+    </a-alert>
     <InlineEditForm v-if="showFields" :groups="groups" :messages="formMessages"
       mode="form" :disabled="model.disabled" @change="(key, value) => emit('change', key, value)" @focus="emit('focus', $event)">
       <template #editor="{ field, value, inputId, disabled, update }">
-        <a-input :id="inputId" :value="String(value ?? '')" :disabled="disabled" :maxlength="field.maxLength" inputmode="numeric"
+        <a-select v-if="field.key === 'code' || field.key === 'signName'" :id="inputId" show-search option-filter-prop="label"
+          :value="value ? String(value) : undefined" :options="field.options" :loading="model.smsOptionsState === 'loading'"
+          :disabled="disabled || model.smsOptionsState !== 'ready'" :aria-label="field.label" aria-required="true"
+          :placeholder="t(field.key === 'code' ? 'NoticeCenter.template.placeholder.smsTemplate' : 'NoticeCenter.template.placeholder.signName')"
+          :status="field.error ? 'error' : undefined" @update:value="update" />
+        <a-input v-else :id="inputId" :value="String(value ?? '')" :disabled="disabled" :maxlength="field.maxLength" inputmode="numeric"
           :aria-label="field.label" aria-required="true" :status="field.error ? 'error' : undefined" @update:value="update" />
       </template>
     </InlineEditForm>
@@ -28,24 +37,31 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { InlineEditForm, type InlineEditGroup, type InlineEditMessages } from '@jetlinks-web-core/components/InlineEditForm'
-import { templateSetupMessageTypes } from './templateDefaults'
 import type { ChannelTemplateSetupModel } from './useChannelTemplateSetup'
 
 const props = defineProps<{ model: ChannelTemplateSetupModel; mode?: 'fields' | 'feedback' }>()
-const emit = defineEmits<{ change: [key: string, value: unknown]; focus: [key: string]; fill: []; view: [] }>()
+const emit = defineEmits<{ change: [key: string, value: unknown]; focus: [key: string]; retryOptions: []; fill: []; view: [] }>()
 const prefix = 'messageNotification.channels.templateSetup.'
 const { t } = useI18n()
 const failed = computed(() => !!(props.model.result?.failed.length || props.model.result?.loadFailure))
 const canFill = computed(() => props.model.canFill && (props.mode !== 'feedback' || failed.value))
 const canView = computed(() => !!(props.model.result?.created || props.model.result?.skipped))
 const showFields = computed(() => props.mode !== 'feedback' && !!props.model.fields.length)
+const smsOptionsFeedback = computed(() => {
+  const state = props.model.smsOptionsState
+  if (state === 'empty') return t(prefix + 'smsOptionsEmpty')
+  if (state === 'error' || state === 'forbidden' || state === 'unavailable') return t(`messageNotification.state.${state}`)
+  return ''
+})
 const showFeedback = computed(() => props.mode !== 'fields' && !!(props.model.result || props.model.noPermission || canFill.value))
 const groups = computed<InlineEditGroup[]>(() => [{
   key: 'message-template',
   fields: props.model.fields.map(field => ({
     key: field.key, label: t(field.labelKey), editor: field.editor, maxLength: field.maxLength, required: true, fullWidth: true,
     value: field.value, initialValue: field.value, error: field.error ? t(field.error) : undefined,
-    options: field.key === 'messageType' ? templateSetupMessageTypes : undefined,
+    options: field.options?.map(option => ({
+      value: String(option.value), label: option.labelKey ? t(option.labelKey) : option.label || String(option.value),
+    })),
   })),
 }])
 const formMessages = computed<InlineEditMessages>(() => ({
@@ -64,6 +80,7 @@ const summary = computed(() => {
 })
 const details = computed(() => {
   const result = props.model.result
+  if (result?.loadFailure === 'smsDefaults') return t(prefix + 'smsDefaults')
   if (result?.loadFailure) return t(`messageNotification.state.${result.loadFailure}`)
   if (!result?.failed.length) return undefined
   const topics = result.failed.join(t(prefix + 'separator'))

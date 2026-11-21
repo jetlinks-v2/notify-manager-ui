@@ -7,7 +7,7 @@ import { resolveTemplateVariables } from '../variables/catalog'
 import { useTemplatePreview } from './useTemplatePreview'
 
 /** Available values are display-only; inserting a variable remains the editor's responsibility. */
-export function useTemplateVariablePanel(props: { draft: TemplateDraft; business?: NoticeChannelConfig; variables: NotificationVariable[] }) {
+export function useTemplateVariablePanel(props: { draft: TemplateDraft; business?: NoticeChannelConfig; businessTitle?: string; variables: NotificationVariable[] }) {
   const { t } = useI18n()
   const preview = useTemplatePreview(props)
   const groups = computed(() => {
@@ -18,7 +18,7 @@ export function useTemplateVariablePanel(props: { draft: TemplateDraft; business
     })
     return [
       { key: 'common', title: t('messageNotification.templates.visual.commonVariables'), rows: rows.filter(item => !item.id.startsWith('detail.')) },
-      { key: 'business', title: t('messageNotification.templates.visual.businessVariables'), rows: rows.filter(item => item.id.startsWith('detail.')) },
+      { key: 'business', title: props.businessTitle || t('messageNotification.templates.visual.businessVariables'), rows: rows.filter(item => item.id.startsWith('detail.')) },
     ].filter(group => group.rows.length)
   })
   return { t, groups }

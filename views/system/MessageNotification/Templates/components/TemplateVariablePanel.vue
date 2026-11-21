@@ -18,7 +18,7 @@ import type { NoticeChannelConfig } from '../../../../../api/notice-center'
 import type { NotificationVariable } from '../../shared'
 import type { TemplateDraft } from '../model'
 import { useTemplateVariablePanel } from '../hooks/useTemplateVariablePanel'
-const props = defineProps<{ draft: TemplateDraft; business?: NoticeChannelConfig; variables: NotificationVariable[]; disabled?: boolean }>()
+const props = defineProps<{ draft: TemplateDraft; business?: NoticeChannelConfig; businessTitle?: string; variables: NotificationVariable[]; disabled?: boolean }>()
 defineEmits<{ (event: 'insert', id: string): void }>()
 const { t, groups } = useTemplateVariablePanel(props)
 </script>

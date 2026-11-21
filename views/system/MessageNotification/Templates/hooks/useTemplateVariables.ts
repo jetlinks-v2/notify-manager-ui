@@ -1,19 +1,32 @@
-import { useI18n } from 'vue-i18n'
+import { computed, type ComputedRef } from 'vue'
 import type { NotificationVariable } from '../../shared'
-
-type VariableField = 'id' | 'name' | 'defaultValue' | 'required'
+import type { TemplateDraft } from '../model'
+import { usedTemplateVariables, variableTypeFormats, type TemplateVariableType } from '../variables/definitions'
 
 export function useTemplateVariables(
-  props: { variables: NotificationVariable[] },
-  emit: (event: 'update:variables', value: NotificationVariable[]) => void,
+  props: { draft: TemplateDraft; availableVariables?: NotificationVariable[]; disabled?: boolean },
+  names: ComputedRef<ReadonlyMap<string, string>>,
 ) {
-  const { t } = useI18n()
-  /** Keep type, format and provider metadata when a visible field changes. */
-  function setField(index: number, field: VariableField, value: string | boolean) {
-    emit('update:variables', props.variables.map((variable, position) => position === index ? { ...variable, [field]: value } : variable))
-  }
-  function removeVariable(index: number) { emit('update:variables', props.variables.filter((_, position) => position !== index)) }
-  function addVariable() { emit('update:variables', [...props.variables, { id: '', name: '', type: 'string', required: false }]) }
+  const definitions = computed(() => usedTemplateVariables(props.draft, props.availableVariables ?? []))
+  const usedVariables = computed(() => definitions.value.map(item => ({ ...item, name: names.value.get(item.id) || item.name })))
 
-  return { t, setField, removeVariable, addVariable }
+  /** 表格的名称跟随面板语言，只有用户修改的类型和格式写入当前草稿。 */
+  function changeVariable(id: string, format: string, type?: TemplateVariableType) {
+    const variable = definitions.value.find(item => item.id === id)
+    if (props.disabled || !variable) return
+    const nextType = type ?? variable.type
+    if (variable.type === nextType && variable.format === format) return
+    const updated = { ...variable, type: nextType, format }
+    if (updated.expands && Object.hasOwn(updated.expands, 'format')) updated.expands = { ...updated.expands, format }
+    const index = props.draft.variables.findIndex(item => item.id === id)
+    if (index < 0) props.draft.variables.push(updated)
+    else props.draft.variables.splice(index, 1, updated)
+  }
+  function changeVariableType(id: string, type: TemplateVariableType) {
+    changeVariable(id, variableTypeFormats[type], type)
+  }
+  function changeVariableFormat(id: string, format: string) {
+    changeVariable(id, format)
+  }
+  return { usedVariables, changeVariableType, changeVariableFormat }
 }

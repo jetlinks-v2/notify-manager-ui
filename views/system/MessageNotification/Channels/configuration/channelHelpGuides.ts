@@ -406,6 +406,12 @@ export const channelHelpGuides: Record<string, ChannelHelpGuide> = {
             "image": "aliyunAccessKey"
           }
         ]
+      },
+      {
+        "id": "smsTemplate",
+        "fields": ["code", "signName"],
+        "titleKey": "messageNotification.channels.guidance.sms.steps.2.title",
+        "blocks": [{ "type": "text", "key": "messageNotification.channels.guidance.sms.steps.2.description" }]
       }
     ],
     "link": {
@@ -462,6 +468,12 @@ export const channelHelpGuides: Record<string, ChannelHelpGuide> = {
             "image": "aliyunAccessKey"
           }
         ]
+      },
+      {
+        "id": "voiceTemplate",
+        "fields": ["templateType", "templateCode"],
+        "titleKey": "messageNotification.channels.guidance.voice.steps.2.title",
+        "blocks": [{ "type": "text", "key": "messageNotification.channels.guidance.voice.steps.2.description" }]
       }
     ],
     "link": {

@@ -10,14 +10,6 @@
       </div>
       <p v-if="field.key === 'ttsmessage'" class="voice-editor__hint">{{ t('messageNotification.templates.visual.voiceContentHint') }}</p>
     </a-form-item>
-    <section v-if="mappings.length" class="voice-editor__mapping" :aria-label="t('messageNotification.templates.visual.variableMapping')">
-      <h3>{{ t('messageNotification.templates.visual.variableMapping') }}</h3>
-      <table>
-        <thead><tr><th>{{ t('messageNotification.templates.visual.supplierVariable') }}</th><th>{{ t('messageNotification.templates.visual.platformVariable') }}</th></tr></thead>
-        <tbody><tr v-for="row in mappings" :key="row.id"><td><TemplateVariableText :value="'${' + row.id + '}'" /></td><td><TemplateVariableText v-if="row.available" :value="'${' + row.id + '}'" /><template v-else>{{ t('messageNotification.templates.visual.providedAtSendTime') }}</template></td></tr></tbody>
-      </table>
-      <p class="voice-editor__hint">{{ t('messageNotification.templates.visual.smsMappingHint') }}</p>
-    </section>
     <a-form-item v-if="playTimesField" :label="t('messageNotification.templates.visual.playTimes')">
       <a-radio-group :value="playTimes" :disabled="disabled" @update:value="changePlayTimes">
         <a-radio-button v-for="count in [1, 2, 3]" :key="count" :value="count">{{ t('messageNotification.templates.visual.playCount', { count }) }}</a-radio-button>
@@ -30,12 +22,11 @@
 import type { TemplateDraft } from '../../model'
 import type { TemplateEditorController } from '../../channelViewTypes'
 import { useVoiceTemplateEditorVisual } from '../../hooks/useVoiceTemplateVisual'
-import TemplateVariableText from '../../variables/TemplateVariableText.vue'
 import TemplateProviderField from '../../variables/TemplateProviderField.vue'
 
 const props = defineProps<{ draft: TemplateDraft; editor: TemplateEditorController; disabled?: boolean }>()
 const { t, captureProviderCaret } = props.editor
-const { mainFields, playTimesField, advancedFields, playTimes, mappings, changePlayTimes } = useVoiceTemplateEditorVisual(props.editor)
+const { mainFields, playTimesField, advancedFields, playTimes, changePlayTimes } = useVoiceTemplateEditorVisual(props.editor)
 </script>
 
 <style scoped>
@@ -45,9 +36,4 @@ const { mainFields, playTimesField, advancedFields, playTimes, mappings, changeP
 .voice-editor :deep(.ant-form-item-label > label) { color: var(--text-color-secondary); }
 .voice-editor :deep(textarea) { line-height: 1.75; }
 .voice-editor__hint { margin: var(--space-1) 0 0; color: var(--text-color-secondary); line-height: 1.6; }
-.voice-editor__mapping { margin-bottom: var(--space-4); }
-.voice-editor__mapping h3 { margin: 0 0 var(--space-2); color: var(--text-color-secondary); font-weight: 400; }
-.voice-editor__mapping table { width: 100%; table-layout: fixed; border-collapse: collapse; }
-.voice-editor__mapping th { padding: var(--space-2); text-align: left; font-weight: 400; background: var(--bg-sunken); color: var(--text-color-secondary); }
-.voice-editor__mapping td { padding: var(--space-3) var(--space-2); border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 </style>

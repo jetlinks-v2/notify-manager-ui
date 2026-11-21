@@ -1,5 +1,5 @@
 import type { NoticeChannelConfig } from '../../../../../api/notice-center'
-import { extractVariableIds, robotMessageTypeOptions } from '../../../../notice/template/hooks/noticeTemplateFormModel'
+import { extractVariableIds, robotMessageTypeOptions, voiceTemplateTypeOptions, type NoticeTemplateFieldOption } from '../../../../notice/template/hooks/noticeTemplateFormModel'
 import { createPrototypeTemplate, prototypeAvailableVariables, type PrototypeTranslate } from '../../Templates/definition/templateDefaults'
 import { buildTemplatePayload, createTemplateDraft } from '../../Templates/model'
 import type { NotificationChannel, NotificationObject, NotificationVariable } from '../../shared'
@@ -9,26 +9,28 @@ export const emailChannel = 'email:embedded'
 export const dingTalkWorkChannel = 'dingTalk:dingTalkMessage'
 export const dingTalkRobotChannel = 'dingTalk:dingTalkRobotWebHook'
 export const webhookChannel = 'webhook:http'
+export const smsChannel = 'sms:aliyunSms'
+export const voiceChannel = 'voice:aliyun'
 export const channelTemplateDefaultsKey = 'messageTemplateDefaults'
 
 export function supportsTemplateSetup(channel?: string): boolean {
-  return !!channel && [wechatCorpChannel, emailChannel, dingTalkWorkChannel, dingTalkRobotChannel, webhookChannel].includes(channel)
+  return !!channel && [wechatCorpChannel, emailChannel, dingTalkWorkChannel, dingTalkRobotChannel, webhookChannel, smsChannel, voiceChannel].includes(channel)
 }
 
 const initialValues = {
   agentId: '', message: '${message}', messageType: 'markdown', title: '${topic}', messageUrl: '',
+  templateType: 'tts', templateCode: '', code: '', signName: '',
 }
 export type TemplateSetupValues = typeof initialValues
-export type TemplateSetupKey = 'agentId' | 'messageType' | 'messageUrl'
+export type TemplateSetupKey = Exclude<keyof TemplateSetupValues, 'title' | 'message'>
 
 export interface TemplateSetupField {
   key: TemplateSetupKey
   labelKey: string
   editor?: 'select' | 'custom'
   maxLength?: number
+  options?: NoticeTemplateFieldOption[]
 }
-
-export const templateSetupMessageTypes = robotMessageTypeOptions.map(option => ({ value: String(option.value), label: option.label || String(option.value) }))
 
 /** 返回渠道表单需要用户填写的模板参数。 */
 export function templateSetupFields(channel: string, values: TemplateSetupValues): TemplateSetupField[] {
@@ -36,10 +38,20 @@ export function templateSetupFields(channel: string, values: TemplateSetupValues
     case wechatCorpChannel:
       return [{ key: 'agentId', labelKey: 'NoticeCenter.template.field.agentId', editor: 'custom', maxLength: 19 }]
     case dingTalkRobotChannel: {
-      const fields: TemplateSetupField[] = [{ key: 'messageType', labelKey: 'NoticeCenter.template.field.messageType', editor: 'select' }]
+      const fields: TemplateSetupField[] = [{ key: 'messageType', labelKey: 'NoticeCenter.template.field.messageType', editor: 'select', options: robotMessageTypeOptions }]
       if (values.messageType === 'link') fields.push({ key: 'messageUrl', labelKey: 'NoticeCenter.template.field.messageUrl' })
       return fields
     }
+    case smsChannel:
+      return [
+        { key: 'code', labelKey: 'messageNotification.channelTest.fields.code', editor: 'custom' },
+        { key: 'signName', labelKey: 'NoticeCenter.template.field.signName', editor: 'custom' },
+      ]
+    case voiceChannel:
+      return [
+        { key: 'templateType', labelKey: 'NoticeCenter.template.field.templateType', editor: 'select', options: voiceTemplateTypeOptions },
+        { key: 'templateCode', labelKey: values.templateType === 'voice' ? 'NoticeCenter.template.field.voiceCode' : 'messageNotification.channelTest.fields.templateCode' },
+      ]
     default:
       return []
   }
@@ -73,20 +85,16 @@ function isHttpLink(value: string): boolean {
 export function templateSetupIssues(channel: string, values: TemplateSetupValues): Partial<Record<TemplateSetupKey, string>> {
   const required = 'messageNotification.channels.validation.required'
   const issues: Partial<Record<TemplateSetupKey, string>> = {}
-  for (const { key } of templateSetupFields(channel, values)) {
+  for (const { key, options } of templateSetupFields(channel, values)) {
     if (!values[key].trim()) issues[key] = required
+    else if (options && !options.some(option => option.value === values[key])) issues[key] = 'messageNotification.channels.validation.invalidValue'
   }
   if (channel === wechatCorpChannel && !validWechatAgentId(values.agentId)) {
     issues.agentId = 'messageNotification.channels.templateSetup.agentRequired'
   }
   if (channel === dingTalkWorkChannel && !values.agentId) issues.agentId = required
-  if (channel === dingTalkRobotChannel) {
-    if (!templateSetupMessageTypes.some(option => option.value === values.messageType)) {
-      issues.messageType = 'messageNotification.channels.validation.invalidValue'
-    }
-    if (values.messageType === 'link' && values.messageUrl.trim() && !isHttpLink(values.messageUrl)) {
-      issues.messageUrl = 'messageNotification.channels.validation.url'
-    }
+  if (channel === dingTalkRobotChannel && values.messageType === 'link' && values.messageUrl.trim() && !isHttpLink(values.messageUrl)) {
+    issues.messageUrl = 'messageNotification.channels.validation.url'
   }
   return issues
 }
@@ -95,6 +103,13 @@ function templateContent(channel: string, values: TemplateSetupValues, prototype
   switch (channel) {
     case emailChannel:
       return prototype ?? { subject: '${topic}', text: '${message}' }
+    case smsChannel:
+      return { code: values.code.trim(), signName: values.signName.trim(), message: values.message }
+    case voiceChannel:
+      return {
+        templateType: values.templateType, templateCode: values.templateCode.trim(), playTimes: prototype?.playTimes ?? 1,
+        ...(values.templateType === 'tts' ? { message: prototype?.message ?? values.message } : {}),
+      }
     case dingTalkRobotChannel: {
       const { messageType, message, title, messageUrl } = values
       if (messageType === 'text') return { messageType, text: { content: message } }

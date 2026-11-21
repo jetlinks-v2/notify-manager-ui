@@ -82,8 +82,26 @@ export function promoteTemplateVariables(editor: Quill, DeltaClass: DeltaConstru
   return change
 }
 
-/** Quill 的默认 getText 会跳过 embed；复制 / 剪切须显式输出原始表达式。 */
-export function bindTemplateVariableClipboard(editor: Quill, editable: () => boolean) {
+/** Quill 会把偏移 0 读成变量之前，右侧零宽字符的两个位置在页面上都位于变量之后。 */
+function variableBoundaryOffset(editor: Quill, node: Node, offset: number) {
+  if (offset !== 0 || !(node instanceof Text) || node.data !== '\uFEFF') return offset
+  const blot = editor.scroll.find(node.parentNode)
+  return blot?.statics.blotName === variableBlotName && node === blot.domNode.lastChild ? 1 : offset
+}
+
+/** 在 Quill 处理按键前对齐变量边界，复制和剪切时输出原始表达式。 */
+export function bindTemplateVariableEvents(editor: Quill, editable: () => boolean) {
+  const normalizeSelection = () => {
+    if (!editable() || editor.composition.isComposing) return
+    const selection = editor.root.ownerDocument.getSelection()
+    if (!selection?.anchorNode || !selection.focusNode) return
+    const { anchorNode, anchorOffset, focusNode, focusOffset } = selection
+    const anchor = variableBoundaryOffset(editor, anchorNode, anchorOffset)
+    const focus = variableBoundaryOffset(editor, focusNode, focusOffset)
+    if (anchor !== anchorOffset || focus !== focusOffset) {
+      selection.setBaseAndExtent(anchorNode, anchor, focusNode, focus)
+    }
+  }
   const copy = (event: ClipboardEvent) => {
     const range = editor.getSelection()
     if (event.defaultPrevented || !event.clipboardData || !range?.length) return
@@ -96,9 +114,16 @@ export function bindTemplateVariableClipboard(editor: Quill, editable: () => boo
       editor.setSelection(range.index, 0, 'silent')
     }
   }
+  editor.root.addEventListener('pointerup', normalizeSelection)
+  editor.root.addEventListener('keydown', normalizeSelection, true)
   editor.root.addEventListener('copy', copy, true)
   editor.root.addEventListener('cut', copy, true)
-  return () => { editor.root.removeEventListener('copy', copy, true); editor.root.removeEventListener('cut', copy, true) }
+  return () => {
+    editor.root.removeEventListener('pointerup', normalizeSelection)
+    editor.root.removeEventListener('keydown', normalizeSelection, true)
+    editor.root.removeEventListener('copy', copy, true)
+    editor.root.removeEventListener('cut', copy, true)
+  }
 }
 
 export function copyTemplateEditorHistory(stack: Quill['history']['stack']): Quill['history']['stack'] {

@@ -123,11 +123,13 @@ export interface NoticeSmsTemplateOption {
   templateCode?: string
   templateName?: string
   templateContent?: string
+  auditStatus?: string
   [key: string]: unknown
 }
 
 export interface NoticeSmsSignOption {
   signName?: string
+  auditStatus?: string
   [key: string]: unknown
 }
 
@@ -226,10 +228,10 @@ export const queryNotifierConfigMetadata_api = (
 export const queryNotifierTypeProviders_api = (type: string): Promise<any> =>
   request.get(`/notifier/config/type/${encodeURIComponent(type)}/providers`)
 
-export const queryAliyunSmsTemplates_api = (configId: string): Promise<any> =>
+export const queryAliyunSmsTemplates_api = (configId: string): Promise<AxiosResponseRewrite<NoticeSmsTemplateOption[]>> =>
   request.get(`/notifier/sms/aliyun/${encodeURIComponent(configId)}/templates`)
 
-export const queryAliyunSmsSigns_api = (configId: string): Promise<any> =>
+export const queryAliyunSmsSigns_api = (configId: string): Promise<AxiosResponseRewrite<NoticeSmsSignOption[]>> =>
   request.get(`/notifier/sms/aliyun/${encodeURIComponent(configId)}/signs`)
 
 /** The application directory includes child departments of the bound notifier. */
