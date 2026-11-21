@@ -32,6 +32,10 @@
 - 浏览器隔离数据验证（2026-11-21）：`tests/messageNotificationBrowser/workRecipients.mjs` 覆盖企微成员、部门和标签匹配、重名、首次同步预览、部分失败重试、解绑、模板继承、部门和标签的独立入口、钉钉 390px 页面和基础权限。`wechatTemplates.mjs`、`channelTemplates.mjs` 回归模板生成、内容编辑及其他渠道。实际服务商收件范围与订阅触发仍需测试账号联调。
 - 模块目录执行 `node --test tests/messageNotification*.test.mjs`，400 项通过。AI 合规告警原型的来源字段断言在改动前也失败。四个 Vue 文件的定向样式检查、中英日 797 个消息通知键和 `git diff --check` 通过。模块生产构建通过。在 `runtime-ui/` 执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，改动前后均为相同的 195 条既有诊断，基线修复后可用同一命令复验。
 
+## 菜单资产权限
+
+`baseMenu.json` 的「通知渠道」和「消息模板」叶子均启用 `notifyConfig` 数据权限：模板正文按关联渠道保护；「通知记录」不变。SaaS 固定「所在租户」，私有化固定「全部数据」，由[共用授权编辑器](../../jetlinks-web-core/src/components/MenuAssetPermissionEditor/README.md#消息渠道与消息模板的数据范围)校验。发布后按现有菜单同步流程更新这两个叶子的资产映射；不自动改写现有角色或模板。`node --test tests/messageNotificationContracts.test.mjs` 32 项通过，真实菜单同步与租户隔离待联调。
+
 ## 消息渠道图文说明与常驻编辑
 
 企业微信渠道 `weixin:corpMessage` 的右侧说明按 `CorpID`、`Secret`、`AgentId` 排列。`Channels/configuration/channelHelpGuides.ts` 提供 AgentId 获取路径和企业微信自建应用截图。聚焦 `Channels/templateSetup/ChannelTemplateSetup.vue` 的 AgentId 输入框时，桌面滚动到对应章节，窄屏高亮该章节。渠道载荷保留已有扩展配置和未修改的已知密钥。AgentId 的填写和保存参见 [企业微信消息模板自动生成](#企业微信消息模板自动生成)。

@@ -509,3 +509,14 @@ test('personal phone and notification binding reads distinguish missing, malform
   await assert.rejects(api.getCurrentPhone(), { kind: 'forbidden' })
   await assert.rejects(api.getCurrentBindings(), { kind: 'forbidden' })
 })
+
+test('only channel and template menu leaves declare the shared notification config asset', () => {
+  const menu = JSON.parse(readFileSync(resolve(root, 'baseMenu.json'), 'utf8'))
+    .flatMap(item => item.children).find(item => item.code === 'system/MessageNotification')
+  for (const leaf of menu.children) {
+    const supportsDataAccess = ['Channels', 'Templates'].some(suffix => leaf.code.endsWith(`/${suffix}`))
+    assert.equal(leaf.supportDataAccess, supportsDataAccess)
+    assert.equal(leaf.accessSupport.value, supportsDataAccess ? 'support' : 'unsupported')
+    assert.deepEqual(leaf.assetTypes, supportsDataAccess ? ['notifyConfig'] : undefined)
+  }
+})
