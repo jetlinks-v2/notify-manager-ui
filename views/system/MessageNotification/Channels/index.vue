@@ -87,7 +87,7 @@
                 </div>
               </div>
               <StickyActionBar v-if="!multipleConfigurations && entry && canEdit" position="inline" class="notification-page__footer notification-channels__footer">
-                <j-permission-button type="primary" :has-permission="[entry.isNew ? notificationPermissions.channels.add : notificationPermissions.channels.update]" :loading="busy || fillingTemplates" :disabled="(!entry.isNew && !dirty) || !canEdit || operationBusy" @click="save">{{ t(templateSetupModel.saveCredentialsFirst ? 'messageNotification.channels.templateSetup.saveCredentials' : 'messageNotification.common.save') }}</j-permission-button>
+                <j-permission-button type="primary" :has-permission="[entry.isNew ? notificationPermissions.channels.add : notificationPermissions.channels.update]" :loading="busy || fillingTemplates" :disabled="(!entry.isNew && !dirty) || !canEdit || operationBusy || templateSetupModel.saveBlocked" @click="save">{{ t(templateSetupModel.saveCredentialsFirst ? 'messageNotification.channels.templateSetup.saveCredentials' : 'messageNotification.common.save') }}</j-permission-button>
               </StickyActionBar>
             </template>
             <CloudEmpty v-else class="notification-page__feedback" :description="t(state === 'empty' ? 'messageNotification.channels.cannotCreate' : 'messageNotification.channels.selectConfig')" />

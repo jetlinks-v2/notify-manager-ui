@@ -175,6 +175,35 @@ try {
   report.passed.push('an explicit robot link selects its configuration and the first template save uses that robot')
   await unboundRobot.close()
 
+  const noRobot = await open('records', '?fresh&directory=tree')
+  await noRobot.evaluate(async () => {
+    const { configs, templates, businessTypes, router } = window.__notificationSmoke
+    const topic = businessTypes.find(item => item.provider === 'alarm-device')
+    const configId = 'work-only'
+    configs.push({ id: configId, name: '工作通知配置', type: 'dingTalk', provider: 'dingTalkMessage', configuration: { agentId: '42' } })
+    templates.push({
+      id: 'work-template', name: topic.name, type: 'dingTalk', provider: 'dingTalkMessage', configId,
+      template: { agentId: '42', message: '工作通知的已保存正文' },
+    })
+    topic.channels.push({
+      id: 'work-binding', providerId: topic.id, channelProvider: 'notifier-dingTalk',
+      channelConfiguration: { templateId: 'work-template', notifierId: configId },
+    })
+    await router.push({ path: '/templates', query: { channel: 'dingTalk:dingTalkMessage', business: topic.id } })
+  })
+  await noRobot.locator('.template-preview').getByText('工作通知的已保存正文', { exact: true }).waitFor()
+  const beforeRobot = await noRobot.evaluate(() => window.__notificationSmoke.calls.filter(([name]) => name === 'getBusinessTemplate').length)
+  await noRobot.getByRole('tab', { name: '群机器人', exact: true }).click()
+  const missingConfig = noRobot.locator('.message-templates__detail .ant-alert-warning')
+  await missingConfig.getByText('当前渠道尚未配置，配置后即可保存模板', { exact: true }).waitFor()
+  assert.equal(await (await button(noRobot, 'messageNotification.templates.configure', missingConfig)).isVisible(), true)
+  await noRobot.locator('.ding-preview__card').waitFor()
+  assert.equal(await noRobot.locator('.template-preview').getByText('工作通知的已保存正文', { exact: true }).count(), 0)
+  assert.equal(await noRobot.evaluate(() => window.__notificationSmoke.calls.filter(([name]) => name === 'getBusinessTemplate').length), beforeRobot)
+  assert.equal(await noRobot.getByText('加载或保存失败，请重试', { exact: true }).count(), 0)
+  report.passed.push('an unconfigured robot shows the shared setup notice and default preview beside a saved work notification')
+  await noRobot.close()
+
   const missing = await open('templates?topicProvider=scene&channelProvider=notifier-email', '?directory=tree')
   await missing.locator('.template-preview').waitFor()
   assert.equal(await missing.evaluate(() => window.__notificationSmoke.calls.some(([method]) => method === 'getTemplate')), false)

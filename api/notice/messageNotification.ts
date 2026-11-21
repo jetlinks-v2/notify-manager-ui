@@ -197,21 +197,22 @@ export const messageNotificationApi = {
   getConfig(id: string): Promise<NotifierConfig> {
     return checked<NotifierConfig>(request.get(`/notifier/config/${idSegment(id)}`))
   },
-  /** 候选项绑定到已保存的通知配置，只有审核通过且有正文的模板可用于生成。 */
-  async getSmsTemplateOptions(configId: string): Promise<{ templates: NoticeSmsTemplateOption[]; signs: NoticeSmsSignOption[] }> {
-    const [templates, signs] = await Promise.all([
-      checked(queryAliyunSmsTemplates_api(configId)),
-      checked(queryAliyunSmsSigns_api(configId)),
-    ])
-    return {
-      templates: normalizeNotificationPage(templates).data.filter(item => item?.auditStatus === 'AUDIT_STATE_PASS'
-        && nonemptyString(item.templateCode) && nonemptyString(item.templateContent)),
-      signs: normalizeNotificationPage(signs).data.filter(item => item?.auditStatus === 'AUDIT_STATE_PASS' && nonemptyString(item.signName)),
-    }
+  /** 只有当前配置下审核通过且有原文的短信模板可用于生成。 */
+  async getSmsTemplates(configId: string): Promise<NoticeSmsTemplateOption[]> {
+    const templates = await checked(queryAliyunSmsTemplates_api(configId))
+    return normalizeNotificationPage(templates).data.filter(item => item?.auditStatus === 'AUDIT_STATE_PASS'
+      && nonemptyString(item.templateCode) && nonemptyString(item.templateContent))
+  },
+  async getSmsSigns(configId: string): Promise<NoticeSmsSignOption[]> {
+    const signs = await checked(queryAliyunSmsSigns_api(configId))
+    return normalizeNotificationPage(signs).data.filter(item => item?.auditStatus === 'AUDIT_STATE_PASS' && nonemptyString(item.signName))
   },
   /** 补齐前按配置重新校对选值，避免用已撤销的签名或过期的模板正文创建业务模板。 */
   async getSmsTemplateContent(configId: string, code: string, signName: string): Promise<string | undefined> {
-    const { templates, signs } = await messageNotificationApi.getSmsTemplateOptions(configId)
+    const [templates, signs] = await Promise.all([
+      messageNotificationApi.getSmsTemplates(configId),
+      messageNotificationApi.getSmsSigns(configId),
+    ])
     if (signs.some(sign => sign.signName === signName)) return templates.find(template => template.templateCode === code)?.templateContent
   },
   createConfig(payload: NotifierConfigPayload): Promise<unknown> {

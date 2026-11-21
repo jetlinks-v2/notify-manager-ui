@@ -40,13 +40,15 @@
 2. `api/notice/wechatMembers.ts` 和 `api/notice-center.ts` 复用成员、部门、标签及项目组织、用户、角色查询。成员继续使用现有第三方用户绑定接口，组织和角色对应通过现有通知配置保存接口存入 `configuration` 扩展字段，以双方稳定 ID 为准。沿用查询、绑定、渠道保存和模板保存的权限检查，回读校验通知配置 ID 及渠道类型。
 3. 保存、自动匹配或解除对应后，回读当前配置及实际绑定到该配置的工作通知模板。通过现有模板保存接口写入企业微信 `toUser`、`toParty`、`toTag` 或钉钉 `userIdList`、`departmentIdList`，钉钉保持 `toAllUser=false`。只更新收件字段和与之冲突的收件人变量，保留正文、业务变量、模板 ID 和启停状态。按目标 ID 去重，由服务商根据发送时的部门和标签成员关系投递。发送范围以已成功同步的模板数据为准。
 4. `views/system/MessageNotification/Templates/` 移除工作通知的收件人编辑入口，提示到「通知渠道」管理。`Channels/templateSetup/` 自动补齐模板时，以及模板新建、切换通知配置和保存时，统一从实际关联的通知配置继承已保存收件范围。渠道试发沿用当前测试对象选择，验证业务模板试发使用正确的收件范围。
-5. 存量配置在首次同步前保留原投递数据。首次启用渠道对应时，预览可能变更范围的历史模板和接收对象，再由管理员保存。解绑时同步清除相应字段，收件范围为空时提示重新配置，禁止恢复历史收件人或发送全员。配置与多份模板通过现有接口分别保存。部分失败要展示待同步模板，重新读取当前配置并只重试未同步项。发布验收同时核对模板权限覆盖范围和同步结果。
+5. 首次建立有效对应后，`Channels/members/useWorkRecipients.ts` 直接保存渠道收件范围并同步对应模板。首次接收范围为空时提示先建立对应关系。已启用的渠道解除全部对应后会同步清空收件字段，并提示重新配置。配置与模板通过现有接口分别保存。部分失败时列出待同步模板，重试时回读当前配置，只更新仍待同步的模板。
+
+隔离浏览器 `tests/messageNotificationBrowser/workRecipients.mjs` 验证钉钉成员和部门首次保存、企业微信首次自动匹配、空收件范围提示，以及部分失败后只重试待同步模板。模块目录执行 `node --test tests/messageNotification*.test.mjs`，429 项全部通过。模块生产构建、定向样式检查、三语文案键校验和 `git diff --check` 通过。类型检查的 197 条诊断与改动前逐项一致。
 
 ### 投递与联调
 
 - 当前按订阅者触发。多个订阅者可能让同一批收件人收到多次通知，无匹配订阅时仍按当前业务规则处理。发送次数和触发范围由现有机制决定。
 - 钉钉既有配置曾返回通讯录权限错误 `60011`，联调账号需有成员和部门读取权限。企业微信需有部门、成员和标签的读取权限，实际投递范围受企微应用可见范围约束。
-- 浏览器隔离数据验证（2026-11-21）：`tests/messageNotificationBrowser/workRecipients.mjs` 覆盖企微成员、部门和标签匹配、重名、首次同步预览、部分失败重试、解绑、模板继承、部门和标签的独立入口、钉钉 390px 页面和基础权限。`wechatTemplates.mjs`、`channelTemplates.mjs` 回归模板生成、内容编辑及其他渠道。实际服务商收件范围与订阅触发仍需测试账号联调。
+- 浏览器隔离数据验证（2026-11-21）：`tests/messageNotificationBrowser/workRecipients.mjs` 覆盖企微成员、部门和标签匹配、重名、解绑、模板继承、部门和标签的独立入口、钉钉 390px 页面和基础权限。`wechatTemplates.mjs`、`channelTemplates.mjs` 回归模板生成、内容编辑及其他渠道。实际服务商收件范围与订阅触发仍需测试账号联调。
 - 模块目录执行 `node --test tests/messageNotification*.test.mjs`，400 项通过。AI 合规告警原型的来源字段断言在改动前也失败。四个 Vue 文件的定向样式检查、中英日 797 个消息通知键和 `git diff --check` 通过。模块生产构建通过。在 `runtime-ui/` 执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，改动前后均为相同的 195 条既有诊断，基线修复后可用同一命令复验。
 
 ## 消息渠道图文说明与常驻编辑
@@ -130,9 +132,11 @@ AgentId 说明验证（2026-11-19）：模块目录执行 `node --test tests/mes
 - **语音**选择文本转语音并填写阿里云模板编号，或选择语音通知并填写录音文件 ID。文本转语音使用各业务的默认正文，自动提取变量。播放次数沿用业务默认值。
 - **短信**从「短信模板编号」和「短信签名」两个可搜索的下拉框选择。已有配置打开后即加载并回显。首次配置或更换凭据时，先点「保存凭据」，在当前页选择该账号已审核通过的模板和签名，再点「保存」。生成的业务模板使用所选模板的审核原文。
 
-`Channels/templateSetup/useSmsTemplateOptions.ts` 通过 `api/notice/messageNotification.ts` 按已保存的通知配置 ID 请求 `/notifier/sms/aliyun/{configId}/templates` 和 `/notifier/sms/aliyun/{configId}/signs`。查询失败或没有可用选项时可点「重新加载」。渠道默认值保存在 `configuration.messageTemplateDefaults`。更换凭据时，`Channels/channelSchema.ts` 在保存请求里清除原账号的选值。保存失败后改回原凭据，表单会恢复原先的模板和签名。`Channels/templateSetup/fillMessageTemplates.ts` 创建第一份缺失的短信模板前，会重新核对模板、签名及审核原文。渠道试发独立读取 `configuration.testTemplate`。
+`Channels/templateSetup/useSmsTemplateOptions.ts` 通过 `api/notice/messageNotification.ts` 按已保存的通知配置 ID 独立加载 `/notifier/sms/aliyun/{configId}/templates` 和 `/notifier/sms/aliyun/{configId}/signs`。任一列表就绪即可选择对应项，空列表和查询失败按模板或签名提示，并提供「重新加载」。保存默认配置和补齐模板需要两组已审核的选项，已选择的值在重新加载时保留。渠道默认值保存在 `configuration.messageTemplateDefaults`。更换凭据时，`Channels/channelSchema.ts` 在保存请求里清除原账号的选值。保存失败后改回原凭据，表单会恢复原先的模板和签名。`Channels/templateSetup/fillMessageTemplates.ts` 创建第一份缺失的短信模板前，会重新核对模板、签名及审核原文。渠道试发独立读取 `configuration.testTemplate`。
 
 隔离浏览器回归 `tests/messageNotificationBrowser/channelTemplates.mjs` 已覆盖新增短信渠道、已保存配置回显、查询失败重试和更换账号。更换凭据后的首次保存清空了旧选值，第二次保存使用新账号的审核原文创建了 1 份缺失模板，保留了原有 4 份。语音回归覆盖切换录音文件、窄屏保存，以及再次保存渠道后保留已单独修改的业务模板。
+
+本地 9201 已核对签名暂无可用项时仍可展开并查看已审核的短信模板。隔离浏览器验证单项查询失败、签名审核未通过、重试保留选择和两项齐全后保存。通知测试 429 项、模块构建、定向样式检查和三语文案键校验通过。类型检查的 197 条诊断与改动前逐项一致。
 
 模块目录执行 `node --test tests/messageNotification{BusinessWorkspace,Channels,Contracts,Trial,VoiceVisual}.test.mjs`，152 项定向测试全部通过。`tests/messageNotificationBrowser/trials.mjs` 的 12 组隔离试发回归通过。真实阿里云账号的查询和投递仍待联调。
 
@@ -143,6 +147,10 @@ AgentId 说明验证（2026-11-19）：模块目录执行 `node --test tests/mes
 `views/system/MessageNotification/Templates/hooks/useTemplateCatalog.ts` 复用消息模板页加载的通知配置，`Templates/components/TemplateChannelNavigation.vue` 在钉钉下按可见配置展示「群机器人·配置名称」，以配置 ID 标识页签。`Templates/hooks/useTemplatePage.ts` 使用现有 `configId` 查询参数回显选择。每个机器人页签展示自己保存的模板，未绑定时展示可编辑的默认预览。保存后重新打开页签会回读该配置的正文，详见 [Webhook 与钉钉多份配置及独立模板](#webhook-与钉钉多份配置及独立模板)。
 
 消息模板页以业务组织左侧目录。对于按配置实例管理模板的钉钉和 Webhook，`Templates/hooks/useTemplatePage.ts` 将当前配置 ID 交给 `Templates/templateDirectoryModel.ts`，每个业务显示一项，搜索及配置提示使用该配置绑定的模板。右侧页签负责切换配置和对应内容。
+
+`Templates/useTemplateWorkspace.ts` 在配置列表成功返回且没有群机器人配置时，按空配置加载默认模板预览。「当前渠道尚未配置」提示提供「去配置」入口，返回后按当前可用的群机器人配置加载模板。
+
+本地 9201 已核对仅配置工作通知时的群机器人空态和默认预览。`navigation.mjs` 通过 14 组浏览器验证，业务工作区测试覆盖失效绑定及新增配置后的刷新。通知测试 429 项、模块生产构建和定向样式检查通过。`vue-tsc` 的 197 条诊断与当前分支基线一致。
 
 本地 9201 已核对第二个群机器人与工作通知的目录一致，右侧分别显示对应正文。隔离浏览器 `navigation.mjs` 的 13 组和 `webhook.mjs` 的 9 组回归通过。通知测试通过 419/420 项，余下一项为已有的 AI 合规告警邮件原型断言。模块构建、变更 Vue 文件定向样式检查和 `git diff --check` 通过，`vue-tsc` 仍为原有 195 条诊断。
 
@@ -396,18 +404,25 @@ Commit：`79bbbea`（本地 `2.20`，未推送）。提交快照验证（2026-11
 
 ### 按凭证启停消息模板
 
-方案待确认。消息模板页按「消息类型 → 渠道及服务商 → 凭证」选择业务模板。已保存的模板在当前渠道详情区提供「启用当前模板 / 禁用当前模板」和独立状态，同一渠道有多套可用凭证时可逐套切换。默认预览在保存并绑定凭证后开放启停。「更多」中的「启用消息类型 / 禁用消息类型」管理整个类型，类型关闭时显示暂停投递，重新开启后按各模板的状态投递。
+方案待确认。管理员在左侧选消息类型，在右侧选渠道和凭证，直接控制这份模板是否参与投递。复用已有渠道和凭证页签。钉钉群机器人、Webhook 可逐个切换凭证，单配置渠道显示当前绑定的凭证名。
 
-- `views/system/MessageNotification/Templates/index.vue` 复用现有渠道导航和详情区，显示当前凭证与模板状态。`Templates/hooks/useTemplatePage.ts`、`Templates/useTemplateWorkspace.ts` 和 `api/notice/messageNotification.ts` 按业务记录、服务商及凭证隔离选择、草稿、回读和启停请求。启停只提交状态，编辑、恢复默认和收件人同步沿用保存的状态。
-- `Channels/templateSetup/fillMessageTemplates.ts` 保留自动补齐的既有触发范围。新增同类凭证的模板由管理员选中凭证并保存。已停用的绑定计为已配置，补齐时保留其状态。只读账号按查询权限查看状态，启停入口沿用模板编辑权限。服务端按 `modules/notify-manager` 的模板绑定权限与状态校验执行。
-- 同时启用多条业务绑定时，各自按原有的默认通道、个人订阅和授权条件参与投递。单独保存的普通模板在显式用作业务绑定后参与这套规则，钉钉群机器人和工作通知都适用。
-- 现有 `messageNotificationBusinessWorkspace.test.mjs` 和 `messageNotificationTemplates.test.mjs` 回归通过。实施后在模块目录执行 `node --test tests/messageNotification*.test.mjs`，复用 `tests/messageNotificationBrowser/navigation.mjs` 和 `channelTemplates.mjs` 验证桌面、窄屏、同类凭证切换与页面刷新。补充关闭「设备告警／邮件 A」后邮件 B、短信及同凭证「设备告警解除」可独立使用的场景。同步运行模块构建、`vue-tsc`、定向样式和三语资源检查。
+1. 在 `views/system/MessageNotification/Templates/index.vue` 的模板预览上方，凭证名称旁显示「模板投递」开关。只有成功读取已保存的外部业务模板及其实际绑定后才显示开关，有编辑权限时可操作。未配置凭证时显示「去配置」，已配置但未保存模板时显示「未保存」，读取失败时提示重试。
+2. 页头保留消息类型状态，把类型操作放进「更多」，明确写成「启用消息类型」或「禁用消息类型」。类型禁用时提示该类型暂停投递，仍可设置单个模板的开关。重新启用消息类型时恢复符合授权和订阅条件的已启用模板。站内信继续由消息类型控制。
+3. `Templates/hooks/useTemplatePage.ts` 和 `Templates/useTemplateWorkspace.ts` 使用已读到的绑定 ID、模板 ID 和凭证 ID 发起状态请求，保留当前 `business`、`channel`、`configId` 选择。写入期间锁定当前开关，按服务端确认结果更新，读写失败时提示并允许重新读取。迟到响应只更新原绑定。模板编辑、恢复默认、渠道补齐和收件人同步沿用当前绑定的状态，已禁用模板仍计为已配置。
+
+以「设备告警 → Webhook → 值班 A」和「值班 B」验收。关闭 A 后，B、短信和同凭证下的「设备告警解除」仍按各自的订阅与授权投递。刷新后 A 仍显示关闭，编辑正文和补齐模板后仍关闭。关闭再开启「设备告警」总开关，B 恢复其投递资格，A 按已保存的关闭状态显示。
+
+现有 6 项定向回归通过，覆盖多凭证切换、历史默认绑定、状态保留和收件人同步。实施后在模块目录执行 `node --test tests/messageNotification*.test.mjs`，扩展 `tests/messageNotificationBrowser/navigation.mjs` 验证桌面及 390px 下的操作、刷新、无编辑权限和请求失败。执行模块构建、`vue-tsc`、定向样式和三语资源检查。端到端验证使用已更新的运行时通知服务。
 
 ### 业务节点联动与模板预览
 
 交付复核（2026-11-18）：以 `origin/2.20` 的 `f5f4eb5` 为基线，使用 `codex/notification-template-variable-editing-2.20` 交付。模块根目录执行 `node --test tests/messageNotification*.test.mjs`，384/384 通过；15 个改动或新增 Vue 的 script/template/style 编译、16 个文件的定向样式门禁、中英日各 1096 个语言键一致性及 `git diff --check` 通过，相关 Vue 均少于 300 行。复用 `/tmp/notify-variable-panel-build-final.log` 的最终模块构建（9,373 个模块、42.45 秒）及 `/tmp/notify-variable-panel-types-final.log` 的类型记录，所覆盖生产源码未再修改；类型日志与变量编辑前基线归一化行列号后完全一致，仍为 195 条既有诊断。完整类型检查尚未通过，真实通知后端保存 / 发送及系统输入法联调仍待验收；重跑命令与边界见下文。
 
 变量名称显示：`Templates/variables/catalog.ts` 为变量面板与编辑器合并接口、预置及草稿变量后，优先通过声明的 `i18nName` 或 `noticeTemplateModel.ts#getRecommendedVariables` 的字段国际化键解析当前语言名称；旧模板缺少名称或名称为变量 key 时也能显示翻译，未知字段沿用已有名称或 key。`api/notice/messageNotificationTypes.ts` 补齐已有可选 `i18nName` 的类型。名称解析只用于展示，变量 ID、插入表达式、草稿元数据和保存载荷保持原值，复用已有语言资源；全渠道编辑接入见下节。
+
+合规告警与安全告警共用 `AlarmProvider#getDetailProperties` 和 `AbstractAiAlarmSubscriberProvider#getDetailProperties` 声明的 12 个详情变量。`views/notice/template/hooks/noticeTemplateModel.ts` 维护目录与词条，`views/system/MessageNotification/Templates/definition/templateDefaults.ts` 提供预览示例。空间 ID、空间名称与视频通道 ID 的悬停说明标明原生告警的投递限制。`DefaultAlarmHandler#createHistory` 将原始数据存入 `alarmInfo`，模板的同名详情字段可能没有值。示例只用于预览。
+
+AI 告警变量验证（2026-11-22）。模块目录运行 `node --test tests/messageNotification*.test.mjs`，430 项通过。`tests/messageNotificationBrowser/templateVariables.mjs` 在 9200 使用隔离数据通过 10 组检查，覆盖两类告警的样例和中文标签插入，以及各渠道的变量列表。实际企业微信页面也核对了两类面板。模块构建、三语词条校验和 `git diff --check` 通过。模块无独立 lint 脚本。在 `runtime-ui/` 运行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，仍报告基线中的 197 条诊断，修复既有错误后用同一命令复验。
 
 名称验证（2026-11-17）：真实 9201 页面确认告警类型、告警源、产品 ID、属性名称等显示中文；真实组件的 SSR 验证覆盖中英日切换、旧声明覆盖、未知字段回退及草稿 / 保存载荷不变。模板、业务工作区与默认模板回归 95/95 通过，命令为 `node --test modules/notify-manager-ui/tests/messageNotification{Templates,BusinessWorkspace,PrototypeDefaults}.test.mjs`。模块构建通过（45.90 秒，沿用本节 Vite 命令，输出 `/tmp/notify-variable-names-build`），`git diff --check` 通过。类型检查 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json` 修改前后均为 195 项既有诊断，无新增或移除，修复既有错误后需重跑；工作区无独立 lint 脚本，本次未修改 Vue 或样式。浏览器未修改正文、保存配置或发送通知；完整保存仍沿用既有接口契约验证。日志前缀 `/tmp/notify-variable-names-`。
 

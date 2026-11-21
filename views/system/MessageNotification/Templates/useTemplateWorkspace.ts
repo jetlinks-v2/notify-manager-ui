@@ -2,7 +2,7 @@ import { computed, getCurrentScope, onScopeDispose, reactive, ref, type Ref } fr
 import { messageNotificationApi, type MessageNotificationApi } from '../../../../api/notice/messageNotification'
 import type { NoticeChannelConfig, NoticeChannelTemplateItem } from '../../../../api/notice-center'
 import {
-  classifyNotificationFailure, cloneNotificationValue, findNotificationChannel, notificationEnumValue, usesBusinessChannelKey,
+  classifyNotificationFailure, cloneNotificationValue, dingTalkRobotChannelId, findNotificationChannel, notificationEnumValue, usesBusinessChannelKey,
   NotificationRequestError, withNotificationChannel,
   type NotificationLoadState, type NotificationTemplate, type NotificationVariable,
 } from '../shared'
@@ -198,13 +198,18 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
       await Promise.all([catalog.loadMetadata(channel), keyed ? listRequest : undefined])
       if (revision !== detailRevision || !access.query.value) return
       const records = templateLists.get(id) ?? []
-      const knownConfigIds = businessChannelBindings(resolved, channel)
-        .map(binding => bindingConfigId(binding, records) || businessChannelKey(binding))
-      const configId = keyed ? requestedConfigId || knownConfigIds.find(candidate => configs.value.some(config => config.id === candidate))
-        || configs.value[0]?.id || knownConfigIds.find(Boolean) || '' : undefined
-      if (keyed && requestedConfigId && !knownConfigIds.includes(requestedConfigId) && !configs.value.some(config => config.id === requestedConfigId)) {
-        detailState.value = 'unavailable'
-        return
+      // 群机器人配置确认为空时加载默认预览。工作通知也使用 notifier-dingTalk，绑定可能指向另一类配置。
+      const emptyRobot = id === dingTalkRobotChannelId && configState.value === 'empty'
+      let configId = keyed ? '' : undefined
+      if (keyed && !emptyRobot) {
+        const knownConfigIds = businessChannelBindings(resolved, channel)
+          .map(binding => bindingConfigId(binding, records) || businessChannelKey(binding))
+        if (requestedConfigId && !knownConfigIds.includes(requestedConfigId) && !configs.value.some(config => config.id === requestedConfigId)) {
+          detailState.value = 'unavailable'
+          return
+        }
+        configId = requestedConfigId || knownConfigIds.find(candidate => configs.value.some(config => config.id === candidate))
+          || configs.value[0]?.id || knownConfigIds.find(Boolean) || ''
       }
       const key = businessDraftKey(resolved, id, configId)
       activeKey.value = key

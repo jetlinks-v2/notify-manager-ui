@@ -81,29 +81,6 @@ function valuesChanged(original: NoticeChannelTemplateItem, next: NoticeChannelT
     || fields.some(key => Object.hasOwn(original.channel.channelConfiguration?.variables ?? {}, key))
 }
 
-export interface RecipientTemplatePreview {
-  id: string
-  name: string
-  previous: string
-  dynamic: boolean
-}
-
-export async function previewRecipientTemplates(api: RecipientSyncApi, configId: string, channelId: WorkChannelId, recipients: WorkRecipients) {
-  const targets = await loadRecipientTargets(api, configId, channelId)
-  const rows: RecipientTemplatePreview[] = []
-  for (const target of targets) {
-    const original = await resolveTarget(api, target, configId, channelId)
-    if (!original || !valuesChanged(original, applyWorkRecipients(original, channelId, recipients), channelId)) continue
-    const previous = fieldsFor(channelId).flatMap(key => {
-      const value = original.template?.template?.[key]
-      return typeof value === 'string' && value.trim() ? [value] : value === true ? ['@all'] : []
-    }).join(' / ')
-    const dynamic = fieldsFor(channelId).some(key => Object.hasOwn(original.channel.channelConfiguration?.variables ?? {}, key))
-    rows.push({ id: target.id, name: target.name, previous, dynamic })
-  }
-  return rows
-}
-
 /** Re-read each binding before writing. Retrying skips matching records and reports every failed template. */
 export async function syncRecipientTemplates(api: RecipientSyncApi, configId: string, channelId: WorkChannelId,
   recipients: WorkRecipients, active: () => boolean, verifySetting?: () => Promise<void>) {

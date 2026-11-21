@@ -32,9 +32,9 @@ export function useChannelTemplateSetup(
   const fields = computed(() => templateSetupFields(channelId.value, values.value))
   const issues = computed(() => {
     const result = templateSetupIssues(channelId.value, values.value)
-    if (isSms.value && sms.state.value === 'ready') {
+    if (isSms.value) {
       for (const key of ['code', 'signName'] as const) {
-        if (values.value[key] && !sms.choices.value[key].some(option => option.value === values.value[key])) {
+        if (sms.state.value[key] === 'ready' && values.value[key] && !sms.choices.value[key].some(option => option.value === values.value[key])) {
           result[key] = 'messageNotification.channels.validation.invalidValue'
         }
       }
@@ -55,9 +55,10 @@ export function useChannelTemplateSetup(
       error: submittedId.value === current.value?.draft.id ? issues.value[field.key] : undefined })),
     saveCredentialsFirst: sms.credentialsPending.value,
     smsOptionsState: isSms.value ? sms.state.value : undefined,
+    saveBlocked: isSms.value && !sms.credentialsPending.value && !sms.ready.value,
     disabled: !canEdit.value || context.blocked.value,
     generating: context.generating.value,
-    canFill: ready.value && canEdit.value && context.permitted.value && (!isSms.value || sms.state.value === 'ready'),
+    canFill: ready.value && canEdit.value && context.permitted.value && (!isSms.value || sms.ready.value),
     noPermission: ready.value && canEdit.value && !context.permitted.value,
     result: feedback.value && feedback.value.id === configId.value && !dirty.value ? feedback.value.result : undefined,
   }))
@@ -84,7 +85,7 @@ export function useChannelTemplateSetup(
       return true
     }
     submittedId.value = selected.draft.id
-    if (isSms.value && sms.state.value !== 'ready') return false
+    if (model.value.saveBlocked) return false
     // 工作通知 AgentId 由现有渠道校验标记，错误显示在原字段上。
     if (Object.keys(issues.value).some(key => key !== 'agentId' || channelId.value !== dingTalkWorkChannel)) return false
     if (channelId.value === smsChannel || channelId.value === voiceChannel) {

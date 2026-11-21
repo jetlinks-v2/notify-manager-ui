@@ -178,10 +178,22 @@ export function prototypePreviewExamples(business?: NoticeChannelConfig): Record
   if (code === 'alarm-device' || code === 'alarm-device-relieve') selected = values
   else if (code === 'aiComplianceAlarm' || code === 'aiSecurityAlarm') {
     const security = code === 'aiSecurityAlarm'
+    const alarmName = security ? '明火识别' : '收银台离岗'
     selected = {
-      message: security ? 'AI 安全告警：明火识别' : 'AI 合规告警：收银台离岗', notifyTime: values.notifyTime,
-      'detail.alarmConfigName': security ? '明火识别' : '收银台离岗', 'detail.level': 4, 'detail.alarmTime': values['detail.alarmTime'],
-      ...(!security ? { 'detail.sourceName': '收银台 · 通道 03' } : {}),
+      message: `AI ${prototypeBusinessNames[code]}：${alarmName}`,
+      notifyTime: values.notifyTime,
+      'detail.targetType': 'aiTaskMediaTarget',
+      'detail.alarmConfigName': alarmName,
+      'detail.targetName': security ? '仓库入口' : '收银台',
+      'detail.level': values['detail.level'],
+      'detail.alarmTime': values['detail.alarmTime'],
+      'detail.sourceType': 'mediaChannel',
+      'detail.sourceName': security ? '仓库入口 · 通道 01' : '收银台 · 通道 03',
+      'detail.targetId': security ? 'target-001' : 'target-003',
+      'detail.sourceId': security ? 'media-channel-001' : 'media-channel-003',
+      'detail.spaceId': security ? 'space-001' : 'space-003',
+      'detail.spaceName': security ? '仓储区' : '收银区',
+      'detail.mediaChannelId': security ? '01' : '03',
     }
   } else if (code === 'scene') selected = {
     message: '场景 闭店后有人进入 已执行', notifyTime: values.notifyTime,
@@ -220,6 +232,17 @@ const variableNames: Record<string, string> = {
   'detail.title': '公告标题', 'detail.summary': '公告摘要', 'detail.type': '公告类型',
 }
 
+const aiAlarmVariableNames: Record<string, string> = {
+  ...variableNames,
+  'detail.targetName': '告警目标名称',
+  'detail.targetId': '告警目标 ID',
+  'detail.sourceName': '告警源名称',
+  'detail.sourceId': '告警源 ID',
+  'detail.spaceId': '空间 ID',
+  'detail.spaceName': '空间名称',
+  'detail.mediaChannelId': '视频通道 ID',
+}
+
 function businessCode(business: NoticeChannelConfig): PrototypeBusiness | undefined {
   const code = business.provider || ''
   return Object.hasOwn(prototypeBusinessNames, code) ? code as PrototypeBusiness : undefined
@@ -233,11 +256,12 @@ export function hasPrototypeTemplate(business: NoticeChannelConfig, channel: Not
 function availableVariables(code: PrototypeBusiness, variables: NotificationVariable[], translate?: PrototypeTranslate): Map<string, NotificationVariable> {
   const recommended = getRecommendedVariables(code, key => translate?.(key) || key)
   const entries = new Map<string, NotificationVariable>()
+  const names = code === 'aiComplianceAlarm' || code === 'aiSecurityAlarm' ? aiAlarmVariableNames : variableNames
   // 未持久化的主题无法调用变量接口，沿用已核实的推荐字段，不依赖先启用业务。
   for (const variable of recommended) {
     entries.set(variable.id, {
       ...variable,
-      name: variable.name && variable.name !== variable.i18nName ? variable.name : variableNames[variable.id] || variable.id,
+      name: variable.name && variable.name !== variable.i18nName ? variable.name : names[variable.id] || variable.id,
     })
   }
   if (code === 'SystemBulletin') {
