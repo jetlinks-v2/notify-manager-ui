@@ -3,6 +3,7 @@ import type { MessageNotificationApi } from '../../../../../api/notice/messageNo
 import { NotificationRequestError } from '../../../../../api/notice/messageNotificationState'
 import type { NotificationTemplate } from '../../../../../api/notice/messageNotificationTypes'
 import { applyWorkRecipients, workChannelRecipients, type WorkChannelId, type WorkRecipients } from '../../shared/workRecipients'
+import { businessChannelKey } from '../../Templates/workspace/businessTemplates'
 
 export type RecipientSyncApi = Pick<MessageNotificationApi, 'queryTemplateDirectory' | 'queryTemplates' |
   'getTemplate' | 'getBusinessTemplate' | 'saveBusinessTemplate' | 'updateTemplate'>
@@ -11,6 +12,7 @@ interface TemplateTarget {
   id: string
   name: string
   businessId?: string
+  channelKey?: string
 }
 
 const channelType = (channelId: WorkChannelId) => channelId.split(':')[0]
@@ -23,20 +25,25 @@ export async function loadRecipientTargets(api: RecipientSyncApi, configId: stri
     api.queryTemplateDirectory(),
     api.queryTemplates({ paging: false, terms: [{ column: 'configId', termType: 'eq', value: configId }, { column: 'type', termType: 'eq', value: type }, { column: 'provider', termType: 'eq', value: provider }] }),
   ])
-  const businessTemplates = new Map<string, TemplateTarget>()
+  const matchingTemplates = templates.data.filter(template => template.configId === configId && matchesWorkTemplate(template, channelId))
+  const templateIds = new Set(matchingTemplates.map(template => template.id))
+  const targets = new Map<string, TemplateTarget>()
   for (const business of directory) {
     if (!business.id) continue
-    const channel = business.channels?.find(item => item.channelProvider === providerFor(channelId))
-    const id = channel?.channelConfiguration?.templateId
-    if (!id) continue
-    const notifierId = channel.channelConfiguration?.notifierId
-    if (!notifierId || notifierId === configId) {
-      businessTemplates.set(id, { id, name: business.name || id, businessId: business.id })
+    for (const channel of business.channels ?? []) {
+      if (channel.channelProvider !== providerFor(channelId)) continue
+      const id = channel.channelConfiguration?.templateId
+      if (!id) continue
+      const channelKey = businessChannelKey(channel)
+      const notifierId = channel.channelConfiguration?.notifierId
+      // 具名实例按模板引用或实际凭证匹配，旧通道没有 notifierId 时由详情确认。
+      if (templateIds.has(id) || (notifierId || channelKey || configId) === configId) {
+        targets.set(id, { id, name: business.name || id, businessId: business.id, channelKey })
+      }
     }
   }
-  const targets = new Map(businessTemplates)
-  for (const template of templates.data) {
-    if (template.configId === configId && matchesWorkTemplate(template, channelId) && !targets.has(template.id)) {
+  for (const template of matchingTemplates) {
+    if (!targets.has(template.id)) {
       targets.set(template.id, { id: template.id, name: template.name || template.id })
     }
   }
@@ -51,10 +58,11 @@ function matchesWorkTemplate(template: NotificationTemplate | NonNullable<Notice
 
 async function resolveTarget(api: RecipientSyncApi, target: TemplateTarget, configId: string, channelId: WorkChannelId) {
   if (target.businessId) {
-    const original = await api.getBusinessTemplate(target.businessId, providerFor(channelId))
+    const original = await api.getBusinessTemplate(target.businessId, providerFor(channelId), target.channelKey)
     if (!original?.template || original.template.id !== target.id) throw new NotificationRequestError('error')
     if (original.template.configId !== configId || !matchesWorkTemplate(original.template, channelId)) return
     if (original.channel.providerId !== target.businessId || original.channel.channelProvider !== providerFor(channelId)
+      || businessChannelKey(original.channel) !== target.channelKey
       || original.channel.channelConfiguration?.templateId !== target.id) throw new NotificationRequestError('error')
     return original
   }

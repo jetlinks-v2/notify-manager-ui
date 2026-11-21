@@ -1,32 +1,32 @@
 export const editButton = (scope, text) => scope.getByRole('button', { name: new RegExp(`^${text.split('').join('\\s*')}$`) })
 const translate = (page, key) => page.evaluate(key => window.__notificationSmoke.i18n.global.t(key), key)
 
-export async function beginChannelEdit(page) {
+export async function beginChannelEdit(page, configId) {
   if (await page.locator('.ant-dropdown:visible').count()) {
     await page.locator('.notification-channels__heading h2').click()
     await page.locator('.ant-dropdown:visible').waitFor({ state: 'hidden' })
   }
-  const robotRows = page.locator('.robot-configurations__row')
-  if (!await robotRows.count()) { await page.locator('.channel-configuration input:not([type=radio])').first().waitFor(); return }
-  const id = await page.evaluate(() => window.__notificationSmoke.router.currentRoute.value.query.configId)
-  const scope = await robotRows.count() ? page.locator(`.robot-configurations__row[data-config-id="${id}"]`) : page
+  const rows = page.locator('.channel-configurations__row')
+  if (!await rows.count()) { await page.locator('.channel-configuration input:not([type=radio])').first().waitFor(); return }
+  const id = configId ?? await page.evaluate(() => window.__notificationSmoke.router.currentRoute.value.query.configId)
+  const scope = id ? page.locator(`.channel-configurations__row[data-config-id="${id}"]`) : rows.first()
   await editButton(scope, await translate(page, 'messageNotification.channels.more')).click()
   await page.locator('.ant-dropdown:visible').waitFor()
   await editButton(page.getByRole('menuitem'), await translate(page, 'messageNotification.common.edit')).click()
-  await page.locator('.notification-channels__footer, .robot-configuration-modal').waitFor()
+  await page.locator('.channel-configuration-modal').waitFor()
 }
 
 export async function saveChannelDraft(page) {
-  const robotModal = page.locator('.robot-configuration-modal:visible')
-  if (await robotModal.count()) { await robotModal.locator('.ant-modal-footer .ant-btn-primary').click(); return }
+  const modal = page.locator('.channel-configuration-modal:visible')
+  if (await modal.count()) { await modal.locator('.ant-modal-footer .ant-btn-primary').click(); return }
   await editButton(page.locator('.notification-channels__footer'), await translate(page, 'messageNotification.common.save')).click()
 }
 
 export async function cancelChannelEdit(page) {
-  const robotModal = page.locator('.robot-configuration-modal:visible')
-  if (await robotModal.count()) {
-    await editButton(robotModal, await translate(page, 'messageNotification.common.cancel')).click()
-    await robotModal.waitFor({ state: 'hidden' })
+  const modal = page.locator('.channel-configuration-modal:visible')
+  if (await modal.count()) {
+    await editButton(modal, await translate(page, 'messageNotification.common.cancel')).click()
+    await modal.waitFor({ state: 'hidden' })
     return
   }
   const save = editButton(page.locator('.notification-channels__footer'), await translate(page, 'messageNotification.common.save'))

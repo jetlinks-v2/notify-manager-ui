@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import { channelField, editButton, cancelChannelEdit } from './channelEditing.mjs'
+import { beginChannelEdit, channelField, editButton, cancelChannelEdit } from './channelEditing.mjs'
 const { chromium } = createRequire(import.meta.url)(process.env.SMOKE_PLAYWRIGHT_MODULE || 'playwright')
 const base = process.env.SMOKE_BASE_URL || 'http://127.0.0.1:9200'
 const output = process.env.SMOKE_OUTPUT || '/tmp/jetlinks-channel-help/browser'
@@ -62,7 +62,9 @@ try {
     assert.equal(await page.locator('.channel-help img').count(), imageCount)
     await settle(async () => assert.ok(await page.locator('.channel-help img').evaluateAll(images => images.every(image => image.complete && image.naturalWidth > 0))))
     const doc = page.locator('.channel-help')
+    const webhook = id === 'webhook:http'
     if (fields.length) {
+      if (webhook) await beginChannelEdit(page)
       assert.equal(await page.locator('.channel-configuration .inline-edit-field__hint').count(), 0)
       assert.equal(await page.locator('.inline-edit-field__trigger').count(), 0)
       for (const [key, section] of fields) {
@@ -82,7 +84,8 @@ try {
       await doc.evaluate(element => { element.scrollTop = 0 })
       await page.waitForTimeout(120)
       assert.equal(await doc.evaluate(element => element.scrollTop), 0)
-      await page.locator('.notification-channels__heading h2').click()
+      if (webhook) await page.getByRole('textbox', { name: '配置名称', exact: true }).focus()
+      else await page.locator('.notification-channels__heading h2').click()
       await (await field(page, key)).focus()
       await settle(async () => assert.equal(await doc.locator('.channel-help__section--active').getAttribute('data-help-section'), section))
       if (id === 'weixin:corpMessage') {
@@ -106,6 +109,7 @@ try {
         await page.locator('.ant-image-preview:visible').waitFor({ state: 'hidden' })
       }
     }
+    if (webhook) await cancelChannelEdit(page)
     for (const lang of ['en', 'ja', 'zh']) {
       await page.evaluate(lang => { window.__notificationSmoke.i18n.global.locale.value = lang }, lang)
       await settle(async () => assert.equal((await doc.innerText()).includes('messageNotification.'), false))
@@ -126,6 +130,7 @@ try {
     assert.equal(await editButton(page, await t(page, 'messageNotification.channels.helpTitle')).count(), 0)
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
     if (fields.length) {
+      if (webhook) await beginChannelEdit(page)
       const input = await field(page, id === 'weixin:corpMessage' ? 'weixinAgentId' : fields[0][0])
       await input.focus()
       await page.waitForTimeout(120)

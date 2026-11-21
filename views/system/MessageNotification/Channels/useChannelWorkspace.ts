@@ -67,8 +67,8 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
   const dirty = computed(() => !!entry.value && JSON.stringify(entry.value.draft) !== entry.value.snapshot)
   const hasUnsavedChanges = computed(() => [...drafts.values()].some(item => JSON.stringify(item.draft) !== item.snapshot))
   const canEdit = computed(() => !!options.permissions.query.value && !!entry.value && (entry.value.isNew ? options.permissions.add.value : options.permissions.update.value))
-  // Main-page configurations stay in form mode; robot dialogs retain their explicit edit lifecycle.
-  const editing = computed(() => !!entry.value && (channelId.value !== 'dingTalk:dingTalkRobotWebHook' || entry.value.isNew || !!entry.value.editing))
+  // 单配置渠道直接显示表单，多配置渠道通过弹窗显式编辑。
+  const editing = computed(() => !!entry.value && (!multipleConfigurations.value || entry.value.isNew || !!entry.value.editing))
 
   /** Editing belongs to the cached configuration, so channel switches preserve its draft and mode. */
   function startEditing() {
@@ -167,7 +167,6 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
         return
       }
       const candidate = requestedId ?? (rememberedId && 'id' in rememberedId ? rememberedId.id : undefined)
-      // Multi-configuration channels start at an explicit Add entry; single configurations open their first form.
       if (!multipleConfigurations.value && !configs.value.length && !requestedId && options.permissions.add.value) { createConfig(); return }
       // Open existing data on entry; an explicit link must never fall back to a different record.
       const selected = selectNotificationConfig(configs.value, candidate) ?? (!requestedId ? configs.value[0] : undefined)
@@ -180,7 +179,7 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
   /** Generate identity once per draft; automatic values form its clean snapshot and survive retries. */
   function createConfig() {
     if (busy.value || options.blocked?.value || !channel.value || !options.permissions.add.value || !['ready', 'empty'].includes(state.value)) return
-    // Legacy duplicates remain addressable by ID; this page may only add another configuration for robots.
+    // 只在明确支持多配置的渠道开放新增，历史记录仍可按 ID 打开。
     if (!multipleConfigurations.value && configs.value.length) return
     ++detailVersion
     const key = `${channelId.value}\0new`

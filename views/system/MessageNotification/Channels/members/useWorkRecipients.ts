@@ -8,6 +8,7 @@ import {
   type DirectoryItem, type GroupRecipientKind, type RecipientPair, type WorkChannelId, type WorkRecipients,
 } from '../../shared/workRecipients'
 import type { WechatMembersSummaryModel } from './useWechatMembersDrawer'
+import type { MemberStatusFilter } from './wechatMemberFilters'
 import { previewRecipientTemplates, syncRecipientTemplates, type RecipientTemplatePreview } from './syncWorkRecipients'
 
 interface RecipientEditorOptions {
@@ -29,7 +30,6 @@ const emptyDirectory: GroupDirectory = { platform: [], external: [] }
 export function useWorkRecipients(options: RecipientEditorOptions) {
   const open = ref(false)
   const kind = ref<GroupRecipientKind>('department')
-  const keyword = ref('')
   const loading = ref(false)
   const loaded = ref(false)
   const error = ref('')
@@ -70,7 +70,8 @@ export function useWorkRecipients(options: RecipientEditorOptions) {
   })
   const summaries = computed(() => Object.fromEntries(groupKinds.map(next => {
     const directory = directories[next]
-    const bindings = storedGroups.value?.[groupField[next]] ?? []
+    const recipients = open.value && loaded.value && next === kind.value ? original.value : storedGroups.value
+    const bindings = recipients?.[groupField[next]] ?? []
     const platformIds = new Set(directory?.platform.map(item => item.id))
     const externalIds = new Set(directory?.external.map(item => item.id))
     const total = new Set([...platformIds, ...bindings.map(pair => pair.platformId)]).size
@@ -85,28 +86,37 @@ export function useWorkRecipients(options: RecipientEditorOptions) {
     }
     return [next, summary]
   })) as Record<GroupRecipientKind, WechatMembersSummaryModel>)
-  const groupDirty = computed(() => JSON.stringify(draft.value.departments) !== JSON.stringify(original.value?.departments ?? [])
-    || JSON.stringify(draft.value.tags) !== JSON.stringify(original.value?.tags ?? []))
   const activePairs = computed(() => draft.value[groupField[kind.value]])
+  const savedPairs = computed(() => new Map(original.value?.[groupField[kind.value]].map(pair => [pair.platformId, pair.externalId])))
+  const groupDirty = computed(() => savedPairs.value.size !== activePairs.value.length
+    || activePairs.value.some(pair => savedPairs.value.get(pair.platformId) !== pair.externalId))
   const rows = computed(() => {
     const selected = new Map(activePairs.value.map(pair => [pair.platformId, pair.externalId]))
-    const seen = new Set(platform.value.map(item => item.id))
-    const items = [...platform.value, ...activePairs.value.filter(pair => !seen.has(pair.platformId)).map(pair => ({ id: pair.platformId, path: pair.platformId }))]
-    const term = keyword.value.trim().toLocaleLowerCase()
-    return items.flatMap(item => {
+    const byId = new Map(external.value.map(item => [item.id, item]))
+    const items = new Map(platform.value.map(item => [item.id, item]))
+    const seen = new Set(items.keys())
+    // 保留历史对应，目录不可见或暂存解除时仍可在「已失效」中查看原行。
+    for (const id of savedPairs.value.keys()) {
+      if (!seen.has(id)) items.set(id, { id })
+    }
+    return [...items.values()].map(item => {
       const externalId = selected.get(item.id)
-      const target = external.value.find(candidate => candidate.id === externalId)
-      const name = displayName(item)
-      if (term && ![name, target ? displayName(target) : externalId].some(value => value?.toLocaleLowerCase().includes(term))) return []
-      return [{ id: item.id, name, externalId, externalName: target ? displayName(target) : externalId,
-        invalid: Boolean(externalId && (!target || !seen.has(item.id))), available: seen.has(item.id) }]
+      const target = externalId ? byId.get(externalId) : undefined
+      const savedId = savedPairs.value.get(item.id)
+      const available = seen.has(item.id)
+      const mappingStatus: Exclude<MemberStatusFilter, 'all'> = !savedId ? 'unbound' : available && byId.has(savedId) ? 'bound' : 'invalid'
+      return { id: item.id, label: item.name || item.id, parentId: item.parentId, externalId, externalName: target ? displayName(target) : externalId,
+        externalLabel: target?.name, available, mappingStatus, pending: savedId !== externalId }
     })
   })
-  const externalOptions = computed(() => external.value.map(item => ({
-    value: item.id,
-    label: `${displayName(item)} · ${item.id}`,
-    assignedTo: activePairs.value.find(pair => pair.externalId === item.id)?.platformId,
-  })))
+  const externalOptions = computed(() => {
+    const assigned = new Map(activePairs.value.map(pair => [pair.externalId, pair.platformId]))
+    return external.value.map(item => ({
+      value: item.id, parentId: item.parentId, title: item.name || item.id, label: `${displayName(item)} · ${item.id}`, assignedTo: assigned.get(item.id),
+    }))
+  })
+  const canAutoMatchDraft = computed(() => loaded.value && options.canWrite.value && !busy.value && error.value !== 'conflict'
+    && rows.value.some(row => row.available && !row.externalId) && externalOptions.value.some(option => !option.assignedTo))
   const canSave = computed(() => options.canWrite.value && !busy.value && loaded.value && (groupDirty.value || !enabled.value))
 
   function target() {
@@ -150,7 +160,6 @@ export function useWorkRecipients(options: RecipientEditorOptions) {
     const current = target()
     if (!current || busy.value || !kinds.value.includes(next)) return
     kind.value = next
-    keyword.value = ''
     error.value = ''
     delete matchCounts[next]
     const ticket = ++request
@@ -182,7 +191,6 @@ export function useWorkRecipients(options: RecipientEditorOptions) {
     open.value = false
     loading.value = false
     loaded.value = false
-    keyword.value = ''
     error.value = ''
     firstSync.value = undefined
     original.value = undefined
@@ -201,6 +209,7 @@ export function useWorkRecipients(options: RecipientEditorOptions) {
   }
   function assign(platformId: string, externalId?: string) {
     if (!options.canWrite.value || busy.value || loading.value) return
+    if (activePairs.value.find(pair => pair.platformId === platformId)?.externalId === externalId) return
     if (externalId && (!platform.value.some(item => item.id === platformId)
       || !external.value.some(item => item.id === externalId)
       || activePairs.value.some(pair => pair.externalId === externalId && pair.platformId !== platformId))) return
@@ -321,7 +330,9 @@ export function useWorkRecipients(options: RecipientEditorOptions) {
       await saveOrPreview(current, active, { ...(latest ?? emptyWorkRecipients()), memberIds }, latest, config)
     })
   }
-  return { open, kind, keyword, loading, loaded, busy, error, failed, saved, matchCount, rows, externalOptions, recipientNames,
-    canSave, enabled, empty, groupDirty, kinds, summaries, firstSync, prepare, show, close, reload: () => load(kind.value, true),
+  return { open, kind, loading, loaded, busy, error, failed, saved, matchCount, rows, externalOptions, recipientNames,
+    canSave, canAutoMatchDraft, enabled, empty, groupDirty, kinds, summaries, firstSync, prepare, show, close, reload: () => load(kind.value, true),
     refreshGroup: (next: GroupRecipientKind) => readDirectory(next, true), assign, autoMatch, autoMatchAndSave, requestSave, confirmFirstSync, retry }
 }
+
+export type WorkRecipientsWorkspace = ReturnType<typeof useWorkRecipients>

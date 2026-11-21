@@ -14,19 +14,21 @@ export interface NotificationChannel {
   typeName?: string
   providerName?: string
   description?: string
-  /** Only robot channels expose multiple independent configuration entries. */
+  /** 当前提供商允许新增和切换多份独立配置。 */
   multipleConfigurations?: boolean
 }
+
+export const dingTalkRobotChannelId = 'dingTalk:dingTalkRobotWebHook'
 
 /** Narrow catalog verified against existing UI choices and notify-component provider metadata. */
 export const notificationChannels: readonly NotificationChannel[] = [
   { id: 'email:embedded', type: 'email', provider: 'embedded', labelKey: 'messageNotification.channel.email', group: 'instant', secretFields: ['password'] },
   { id: 'dingTalk:dingTalkMessage', type: 'dingTalk', provider: 'dingTalkMessage', labelKey: 'messageNotification.channel.dingTalkCorp', group: 'instant', secretFields: ['appSecret'] },
-  { id: 'dingTalk:dingTalkRobotWebHook', type: 'dingTalk', provider: 'dingTalkRobotWebHook', labelKey: 'messageNotification.channel.dingTalkRobot', group: 'instant', secretFields: ['url', 'secret'], optionalSecretFields: ['secret'], multipleConfigurations: true },
+  { id: dingTalkRobotChannelId, type: 'dingTalk', provider: 'dingTalkRobotWebHook', labelKey: 'messageNotification.channel.dingTalkRobot', group: 'instant', secretFields: ['url', 'secret'], optionalSecretFields: ['secret'], multipleConfigurations: true },
   { id: 'weixin:corpMessage', type: 'weixin', provider: 'corpMessage', labelKey: 'messageNotification.channel.wechatCorp', group: 'instant', secretFields: ['corpSecret'] },
   { id: 'voice:aliyun', type: 'voice', provider: 'aliyun', labelKey: 'messageNotification.channel.voice', group: 'telephone', secretFields: ['secret'] },
   { id: 'sms:aliyunSms', type: 'sms', provider: 'aliyunSms', labelKey: 'messageNotification.channel.sms', group: 'telephone', secretFields: ['secret'] },
-  { id: 'webhook:http', type: 'webhook', provider: 'http', labelKey: 'messageNotification.channel.webhook', group: 'integration', secretFields: [] },
+  { id: 'webhook:http', type: 'webhook', provider: 'http', labelKey: 'messageNotification.channel.webhook', group: 'integration', secretFields: [], multipleConfigurations: true },
 ]
 
 /** 通知渠道与消息模板共用类型和提供商的导航文案。 */
@@ -45,7 +47,7 @@ export function notificationChannelLabels(t: Composer['t']) {
 
   function providerTitle(channel: NotificationChannel): string {
     switch (channel.id) {
-      case 'dingTalk:dingTalkRobotWebHook': return t('messageNotification.channels.groupRobot')
+      case dingTalkRobotChannelId: return t('messageNotification.channels.groupRobot')
       case 'dingTalk:dingTalkMessage':
       case 'weixin:corpMessage': return t('messageNotification.channels.workNotification')
       default: return channel.providerName || channelTitle(channel)
@@ -103,6 +105,11 @@ export function notificationEnumText(value: NotificationEnum | null | undefined)
 /** Resolve entries in the supplied catalog; never substitute another provider's editor. */
 export function findNotificationChannel(id: string | undefined, channels: readonly NotificationChannel[] = notificationChannels): NotificationChannel | undefined {
   return channels.find(channel => channel.id === id)
+}
+
+/** 钉钉工作通知也使用实例模板，避免与同类型的群机器人共享默认通道。 */
+export function usesBusinessChannelKey(channelId: string): boolean {
+  return channelId === 'dingTalk:dingTalkMessage' || !!findNotificationChannel(channelId)?.multipleConfigurations
 }
 
 /** Shared mapping for configuration/template DTOs and historical notifyType/provider pairs. */

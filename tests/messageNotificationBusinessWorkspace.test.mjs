@@ -41,6 +41,7 @@ function load(filename) {
 
 const { useTemplateWorkspace } = load(resolve(root, 'views/system/MessageNotification/Templates/useTemplateWorkspace.ts'))
 const { fillMessageTemplates } = load(resolve(root, 'views/system/MessageNotification/Channels/templateSetup/fillMessageTemplates.ts'))
+const { syncRecipientTemplates } = load(resolve(root, 'views/system/MessageNotification/Channels/members/syncWorkRecipients.ts'))
 const { useSmsTemplateOptions } = load(resolve(root, 'views/system/MessageNotification/Channels/templateSetup/useSmsTemplateOptions.ts'))
 const { readTemplateSetup, templateSetupIssues } = load(resolve(root, 'views/system/MessageNotification/Channels/templateSetup/templateDefaults.ts'))
 const { notificationChannels } = load(resolve(root, 'views/system/MessageNotification/shared/catalog.ts'))
@@ -62,6 +63,7 @@ const item = (providerId = 'actual-topic', record = template(), overrides = {}) 
     channelConfiguration: { templateId: record.id, variables: { message: { source: 'fixed', value: 'keep' } }, extra: 'kept' }, ...overrides },
   template: record,
 })
+const bindingKey = (id, channel, key) => [id, channel, ...(key ? [key] : [])].join('/')
 
 function mockApi(initialConfigs = [config()]) {
   const calls = []
@@ -70,17 +72,23 @@ function mockApi(initialConfigs = [config()]) {
     async queryTypes() { calls.push(['queryTypes']); return clone(channelTypes) },
     async queryProviders(type) { calls.push(['queryProviders', type]); return clone(channelProviders[type] || []) },
     async queryAllConfigs() { calls.push(['queryAllConfigs']); return clone(initialConfigs) },
+    async getConfig(id) { const found = initialConfigs.find(config => config.id === id); return found && clone(found) },
     async getTemplateMetadata(type, provider) { calls.push(['getTemplateMetadata', type, provider]); return { properties: [] } },
     async queryBusinessVariables(id) { calls.push(['queryBusinessVariables', id]); return [{ id: 'message', name: '消息' }] },
     async queryInsideMailChannel() { return undefined },
-    async getBusinessTemplate(id, channel) { calls.push(['getBusinessTemplate', id, channel]); return records.get(`${id}/${channel}`) },
+    async getBusinessTemplate(id, channel, key) {
+      calls.push(['getBusinessTemplate', id, channel, ...(key ? [key] : [])])
+      return records.get(bindingKey(id, channel, key))
+    },
     async saveBusinessTemplate(id, channel, value) {
       calls.push(['saveBusinessTemplate', id, channel, clone(value)])
       const saved = clone(value)
-      saved.channel.id = 'channel-saved'; saved.channel.providerId = id
-      saved.template.id = 'stored-template'
+      const key = saved.channel.channelKey
+      saved.channel.id ||= key ? `channel-${key}` : 'channel-saved'
+      saved.channel.providerId = id
+      saved.template.id ||= key ? `stpl_channel-${key}` : 'stored-template'
       saved.channel.channelConfiguration.templateId = saved.template.id
-      records.set(`${id}/${channel}`, saved)
+      records.set(bindingKey(id, channel, key), saved)
       return saved
     },
     async saveBusinessTemplates(provider, value) {
@@ -95,7 +103,7 @@ function mockApi(initialConfigs = [config()]) {
           channel.channelConfiguration.templateId = template.id
         }
       }
-      for (const item of saved.channels) records.set(`${saved.provider.id}/${item.channel.channelProvider}`, item)
+      for (const item of saved.channels) records.set(bindingKey(saved.provider.id, item.channel.channelProvider, item.channel.channelKey), item)
       return saved
     },
     async queryTemplates() { calls.push(['queryTemplates']); return { data: [] } },
@@ -627,12 +635,14 @@ test('business config deep links preserve persisted and previously selected draf
   assert.equal(workspace.dirty.value, true)
 })
 
-test('another provider binding never supplies content to the selected provider and its one channel is replaced on save', async () => {
-  const io = mockApi([config('robot', 'dingTalk', 'dingTalkRobotWebHook')])
+test('a robot and a legacy work notification keep independent templates, states and identifiers', async () => {
+  const io = mockApi([config('robot', 'dingTalk', 'dingTalkRobotWebHook'), config('corp', 'dingTalk', 'dingTalkMessage')])
   const existing = template({ type: 'dingTalk', provider: 'dingTalkMessage', configId: 'corp', template: { message: '公司私有正文', agentId: 'old-agent' } })
-  io.records.set('actual-topic/notifier-dingTalk', item('actual-topic', existing))
+  const work = item('actual-topic', existing)
+  const topic = { ...business(), channels: [work.channel] }
+  io.records.set('actual-topic/notifier-dingTalk', work)
   const workspace = useTemplateWorkspace(permissions(), io.api)
-  await workspace.loadBusiness(business(), 'dingTalk:dingTalkRobotWebHook')
+  await workspace.loadBusiness(topic, 'dingTalk:dingTalkRobotWebHook')
   assert.equal(workspace.entry.value.existing, false)
   assert.equal(workspace.isDefault.value, true)
   assert.equal(workspace.draft.value.id, '')
@@ -643,7 +653,112 @@ test('another provider binding never supplies content to the selected provider a
   assert.equal(call[2], 'notifier-dingTalk')
   assert.equal(call[3].template.provider, 'dingTalkRobotWebHook')
   assert.equal(call[3].template.configId, 'robot')
-  assert.equal(call[3].channel.state, 'disabled')
+  assert.equal(call[3].channel.channelKey, 'robot')
+  assert.equal(call[3].channel.state, 'enabled')
+  assert.equal(call[3].channel.grant, undefined)
+  assert.equal(call[3].channel.channelConfiguration.variables.userIdList, undefined)
+  assert.deepEqual(io.records.get('actual-topic/notifier-dingTalk'), work)
+  const newRobot = clone(io.records.get('actual-topic/notifier-dingTalk/robot'))
+
+  // A fresh workspace gets the same template identities from the directory and can update the old default.
+  const refreshed = { ...topic, channels: [work.channel, newRobot.channel] }
+  const reloaded = useTemplateWorkspace(permissions(), io.api)
+  await reloaded.loadBusiness(refreshed, 'dingTalk:dingTalkMessage', 'corp')
+  assert.equal(reloaded.draft.value.id, existing.id)
+  assert.match(reloaded.draft.value.templateJson, /公司私有正文/)
+  reloaded.draft.value.templateJson = '{"message":"只改工作通知","agentId":"old-agent"}'
+  assert.equal(await reloaded.saveTemplate(), true)
+  const savedWork = io.records.get('actual-topic/notifier-dingTalk')
+  assert.equal(savedWork.channel.id, work.channel.id)
+  assert.equal(savedWork.channel.channelKey, undefined)
+  assert.equal(savedWork.channel.state, 'disabled')
+  assert.equal(savedWork.template.id, existing.id)
+  assert.equal(savedWork.template.template.message, '只改工作通知')
+  assert.deepEqual(io.records.get('actual-topic/notifier-dingTalk/robot'), newRobot)
+})
+
+test('robot tabs keep independent drafts, then save and reload both managed templates', async () => {
+  const robot = 'dingTalk:dingTalkRobotWebHook'
+  const io = mockApi(['robot-a', 'robot-b'].map(id => config(id, 'dingTalk', 'dingTalkRobotWebHook')))
+  const workspace = useTemplateWorkspace(permissions(), io.api)
+  const topic = business()
+  await workspace.loadBusiness(topic, robot)
+  assert.equal(workspace.draft.value.configId, 'robot-a')
+  await workspace.loadBusiness(topic, robot, 'robot-b')
+  assert.equal(workspace.draft.value.configId, 'robot-b')
+  assert.equal(workspace.dirty.value, false)
+  workspace.draft.value.templateJson = '{"messageType":"text","text":{"content":"正在编辑"}}'
+  await workspace.loadBusiness(topic, robot, 'robot-a')
+  assert.equal(workspace.draft.value.configId, 'robot-a')
+  assert.doesNotMatch(workspace.draft.value.templateJson, /正在编辑/)
+  assert.equal(workspace.dirty.value, false)
+  workspace.draft.value.templateJson = '{"messageType":"text","text":{"content":"A 群模板"}}'
+  assert.equal(await workspace.saveTemplate(), true)
+  await workspace.loadBusiness(topic, robot, 'robot-b')
+  assert.match(workspace.draft.value.templateJson, /正在编辑/)
+  assert.equal(await workspace.saveTemplate(), true)
+  const saved = [io.records.get('actual-topic/notifier-dingTalk/robot-a'), io.records.get('actual-topic/notifier-dingTalk/robot-b')]
+  assert.notEqual(saved[0].template.id, saved[1].template.id)
+  const reloaded = useTemplateWorkspace(permissions(), io.api)
+  await reloaded.loadBusiness({ ...topic, channels: saved.map(item => item.channel) }, robot, 'robot-a')
+  assert.match(reloaded.draft.value.templateJson, /A 群模板/)
+  await reloaded.loadBusiness({ ...topic, channels: saved.map(item => item.channel) }, robot, 'robot-b')
+  assert.match(reloaded.draft.value.templateJson, /正在编辑/)
+})
+
+test('Webhook saves a second credential without changing a binding with an existing custom key', async () => {
+  const io = mockApi(['hook-a', 'hook-b'].map(id => config(id, 'webhook', 'http')))
+  const previous = item('actual-topic', template({
+    id: 'stpl_existing', type: 'webhook', provider: 'http', configId: 'hook-a', template: { body: '{"route":"A"}' },
+  }), { channelKey: 'custom-a' })
+  io.records.set('actual-topic/notifier-webhook/custom-a', previous)
+  io.api.queryTemplates = async () => ({ data: [previous.template] })
+  const topic = { ...business(), channels: [previous.channel] }
+  const workspace = useTemplateWorkspace(permissions(), io.api)
+  await workspace.loadBusiness(topic, 'webhook:http', 'hook-a')
+  assert.equal(workspace.draft.value.id, previous.template.id)
+  assert.ok(io.calls.some(call => call[0] === 'getBusinessTemplate' && call[3] === 'custom-a'))
+  await workspace.loadBusiness(topic, 'webhook:http', 'hook-b')
+  workspace.draft.value.templateJson = '{"body":"{\\"route\\":\\"B\\"}"}'
+  assert.equal(await workspace.saveTemplate(), true)
+  assert.equal(io.records.get('actual-topic/notifier-webhook/hook-b').template.configId, 'hook-b')
+  assert.deepEqual(io.records.get('actual-topic/notifier-webhook/custom-a'), previous)
+})
+
+test('a failed instance read or an old backend returning the default never enables a template write', async () => {
+  for (const failure of ['forbidden', 'error']) {
+    const io = mockApi([config('hook', 'webhook', 'http')])
+    io.api.getBusinessTemplate = async () => {
+      if (failure === 'forbidden') throw new NotificationRequestError('forbidden')
+      return item('actual-topic', template({ type: 'webhook', provider: 'http', configId: 'other-hook' }))
+    }
+    const workspace = useTemplateWorkspace(permissions(), io.api)
+    await workspace.loadBusiness(business(), 'webhook:http', 'hook')
+    assert.equal(workspace.detailState.value, failure)
+    assert.equal(await workspace.saveTemplate(), false)
+    assert.equal(io.calls.some(call => call[0].startsWith('saveBusiness')), false)
+  }
+})
+
+test('work recipient sync updates its exact DingTalk instance and leaves the robot alone', async () => {
+  const io = mockApi()
+  const work = item('actual-topic', template({
+    id: 'work-template', type: 'dingTalk', provider: 'dingTalkMessage', configId: 'corp',
+    template: { message: '工作通知', agentId: '16', userIdList: 'previous-user' },
+  }), { id: 'work-channel', channelKey: 'work-key' })
+  const robot = item('actual-topic', template({
+    id: 'robot-template', type: 'dingTalk', provider: 'dingTalkRobotWebHook', configId: 'ops',
+    template: { messageType: 'text', text: { content: '机器人正文' } },
+  }), { id: 'robot-channel', channelKey: 'ops' })
+  io.records.set('actual-topic/notifier-dingTalk/work-key', work)
+  io.records.set('actual-topic/notifier-dingTalk/ops', robot)
+  io.api.queryTemplateDirectory = async () => [{ ...business(), channels: [robot.channel, work.channel] }]
+  io.api.queryTemplates = async () => ({ data: [work.template] })
+  const failed = await syncRecipientTemplates(io.api, 'corp', 'dingTalk:dingTalkMessage',
+    { memberIds: ['new-user'], departments: [], tags: [] }, () => true)
+  assert.deepEqual(failed, [])
+  assert.equal(io.records.get('actual-topic/notifier-dingTalk/work-key').template.template.userIdList, 'new-user')
+  assert.deepEqual(io.records.get('actual-topic/notifier-dingTalk/ops'), robot)
 })
 
 test('forbidden queries and broken template references stay errors instead of prototype defaults', async () => {
@@ -964,6 +1079,8 @@ test('template HTTP metadata accepts absence and empty properties while failures
   assert.equal(httpCalls[0][1], '/notifier/template/extension%2Ftype/custom%3Fprovider/config/metadata')
   httpResult = null
   assert.equal(await messageNotificationApi.getTemplateMetadata('webhook', 'http'), undefined)
+  assert.equal(await messageNotificationApi.getBusinessTemplate('actual/id', 'notifier-webhook', 'my/key & hook'), undefined)
+  assert.equal(httpCalls.at(-1)[1], '/notify/channel/actual%2Fid/notifier-webhook/_query-with-template?channelKey=my%2Fkey%20%26%20hook')
   httpFailure = { response: { status: 403 } }
   await assert.rejects(messageNotificationApi.getBusinessTemplate('actual/id', 'notifier-email'), error => error.kind === 'forbidden')
   httpFailure = undefined; httpResult = { channel: {}, template: null }

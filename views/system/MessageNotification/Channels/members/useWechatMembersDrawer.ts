@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n'
 import type { WechatMembersWorkspace } from './useWechatMembers'
 import type { ConditionFilterField } from '@jetlinks-web-core/components/ConditionFilter'
 import { buildWechatMemberTree, wechatTreeExpandedKeys, type WechatMemberTreeNode } from './wechatMemberTree'
+import { mappingStatusField } from './wechatMemberFilters'
 interface DepartmentOption { value: string; label: string; children: DepartmentOption[] }
 
 export type WechatMemberRow = WechatMembersWorkspace['rows']['value'][number]
@@ -83,7 +84,6 @@ export function useWechatMembersDrawer(model: () => WechatMembersDrawerModel, as
   watch(() => model().rows.length, count => { page.value = Math.min(page.value, Math.max(1, Math.ceil(count / pageSize.value))) })
   watch(() => [model().state, model().busy, model().refreshRequired], stopEditing)
   const pagination = computed(() => ({ current: page.value, pageSize: pageSize.value, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'], onChange: paginate }))
-  const statusOptions = computed(() => (['all', 'bound', 'unbound', 'invalid'] as const).map(value => ({ value, label: `${t(`messageNotification.members.filter.${value}`)} ${model().filterCounts[value]}` })))
   const columns = computed(() => [
     { title: t('messageNotification.members.platformUser'), key: 'user', width: 200 },
     { title: t('messageNotification.members.member'), key: 'member', width: 240 },
@@ -98,8 +98,7 @@ export function useWechatMembersDrawer(model: () => WechatMembersDrawerModel, as
   const filterFields = computed<ConditionFilterField[]>(() => [
     ...(['member', 'platformUser', 'contact'] as const).map(dataIndex => ({ dataIndex, title: t(`messageNotification.members.${dataIndex}`), search: { type: 'string', termTypeOptions: ['like', 'nlike', 'eq', 'not'] } })),
     { dataIndex: 'department', title: t('messageNotification.members.department'), search: { type: 'tree', termTypeOptions: ['in', 'nin'], options: departmentOptions.value } },
-    { dataIndex: 'mappingStatus', title: t('messageNotification.members.status'), search: { type: 'select', termTypeOptions: ['eq'], options: statusOptions.value.filter(option => option.value !== 'all').map(option => ({ value: option.value, label: t(`messageNotification.members.filter.${option.value}`) })), optionPanel: { multiple: false } } },
+    mappingStatusField(t),
   ])
-  const statusTones = { all: 'default', bound: 'success', unbound: 'default', invalid: 'error' } as const
-  return { t, columns, filterFields, statusOptions, statusTones, editingUser, edit, setEditing, selectMember, selectNode, stopEditing, pagination, memberTree, memberKeyword, expandedKeys, selectedKeys, expand, searchInput }
+  return { t, columns, filterFields, editingUser, edit, setEditing, selectMember, selectNode, stopEditing, pagination, memberTree, memberKeyword, expandedKeys, selectedKeys, expand, searchInput }
 }

@@ -9,7 +9,7 @@ export const workChannelRecipients = {
 } as const
 export type WorkChannelId = keyof typeof workChannelRecipients
 export type GroupRecipientKind = 'department' | 'tag'
-export interface DirectoryItem { id: string; name?: string; path?: string }
+export interface DirectoryItem { id: string; name?: string; path?: string; parentId?: string }
 export interface RecipientPair { platformId: string; externalId: string }
 export interface WorkRecipients {
   departments: RecipientPair[]

@@ -44,6 +44,7 @@ import { useTemplateDirectory } from '../hooks/useTemplateDirectory'
 const props = defineProps({
   templates: { type: Array as PropType<NotificationTemplate[]>, default: () => [] },
   businessTypes: { type: Array as PropType<NoticeChannelConfig[]>, default: () => [] },
+  configId: String,
   directoryState: { type: String as PropType<NotificationLoadState>, default: 'idle' },
   selectedId: { type: String, default: '' },
   state: { type: String as PropType<NotificationLoadState>, required: true },

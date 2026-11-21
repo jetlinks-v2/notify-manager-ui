@@ -15,7 +15,8 @@
     <p class="template-editor__intro">{{ t(workChannel ? 'messageNotification.recipients.templateHint' : 'messageNotification.templates.visual.contentOnlyHint') }}</p>
     <a-form-item v-if="needsConfiguration" required>
       <template #label>{{ t('messageNotification.templates.configuration') }} <DocumentHelp code="system/MessageNotification/Templates" help-key="template.configuration" /></template>
-      <a-select v-model:value="draft.configId" :options="configOptions" :placeholder="t('messageNotification.templates.configPlaceholder')" />
+      <a-select :value="draft.configId" :options="configOptions"
+        :placeholder="t('messageNotification.templates.configPlaceholder')" @change="emit('configuration', String($event))" />
       <a-alert v-if="configFailure" type="warning" show-icon :message="t(`messageNotification.templates.${configState}`)" />
       <div v-else-if="configState === 'empty'" class="template-editor__hint">{{ t('messageNotification.templates.noConfig') }}</div>
     </a-form-item>
@@ -82,7 +83,7 @@ const props = defineProps({
   metadataState: { type: String as PropType<NotificationLoadState>, default: 'idle' },
   availableVariables: { type: Array as PropType<NotificationVariable[]>, default: () => [] },
 })
-const emit = defineEmits<{ (event: 'uploading', value: boolean): void }>()
+const emit = defineEmits<{ (event: 'uploading', value: boolean): void; (event: 'configuration', configId: string): void }>()
 const workChannel = computed(() => isWorkChannel(`${props.draft.type}:${props.draft.provider}`))
 const editor = useTemplateEditor(props, emit)
 provideTemplateVariableEditing({ names: editor.variableNames, identity: computed(() => props.draft), captureCaret: editor.captureCustomCaret })

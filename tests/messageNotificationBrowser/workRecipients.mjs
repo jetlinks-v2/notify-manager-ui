@@ -53,7 +53,152 @@ const openGroup = async (page, type, waitFor) => {
   return currentDrawer
 }
 
+async function searchMapping(page, group, field, value) {
+  const filter = group.locator('.condition-filter')
+  await filter.locator('.condition-filter__text-input--tail').click()
+  await page.locator('.condition-field-panel:visible').getByText(field, { exact: true }).click()
+  const input = filter.locator('input.condition-filter__text-input:not(.condition-filter__text-input--tail)')
+  await input.fill(value)
+  await input.press('Enter')
+}
+
+async function verifyDepartmentTree(channel, width, configId, topDepartment, otherDepartment) {
+  const page = await open(channel, width, '&departmentTree')
+  page.setDefaultTimeout(10000)
+  try {
+    let group = await openGroup(page, '部门', '总公司')
+    const table = () => group.locator('.recipient-mapping__table')
+    const row = id => table().locator(`tr[data-row-key="${id}"]`)
+    const shortcut = name => button(group.getByRole('group', { name: '对应状态', exact: true }), name)
+    const dropdown = () => page.locator('.ant-select-dropdown:visible').filter({ has: page.getByRole('tree') })
+    const search = (field, value) => searchMapping(page, group, field, value)
+    await row('org-east').waitFor()
+    assert.equal(await table().locator('.ant-pagination').count(), 0)
+    const statuses = group.getByRole('group', { name: '对应状态', exact: true })
+    assert.ok(await statuses.evaluate(element => element.scrollWidth <= element.clientWidth + 1))
+    await row('org-east').getByRole('button', { expanded: false }).click()
+    await row('org-east-ops').getByText('同名科', { exact: true }).waitFor()
+    await row('org-east').getByRole('button', { expanded: true }).click()
+    await row('org-east-ops').waitFor({ state: 'hidden' })
+
+    await search('项目组织', '同名科')
+    await shortcut('全部 2').waitFor()
+    await shortcut('已失效 1').click()
+    await row('org-west-ops').waitFor()
+    await row('org-east-ops').waitFor({ state: 'hidden' })
+    assert.equal(await row('org-west').getByRole('button', { name: '选择部门' }).count(), 0)
+    await group.locator('.condition-filter__action--clear').click()
+    await shortcut('全部 7').waitFor()
+    await search('通讯录部门', '研发组')
+    await shortcut('全部 1').waitFor()
+    await row('org-team').waitFor()
+    await group.locator('.condition-filter__action--clear').click()
+    await search('项目组织', '不存在的组织')
+    await shortcut('全部 0').waitFor()
+    await button(group, '清除筛选').click()
+    await shortcut('全部 7').waitFor()
+
+    await shortcut('已对应 1').click()
+    await row('org-team').getByRole('button', { name: /更\s*换/ }).click()
+    await dropdown().getByText(topDepartment, { exact: true }).click()
+    await row('org-team').getByText('未保存', { exact: true }).waitFor()
+    await shortcut('未对应 4').click()
+    await button(row('org-east-ops'), '选择部门').click()
+    await dropdown().locator('.ant-select-tree-treenode-disabled').getByText(topDepartment, { exact: true }).waitFor()
+    await row('org-east-ops').getByRole('combobox').fill('运营组')
+    await dropdown().getByText(/^研发组 · /).waitFor({ state: 'hidden' })
+    await dropdown().getByText(otherDepartment, { exact: true }).click()
+    await row('org-east-ops').getByText('未保存', { exact: true }).waitFor()
+    await shortcut('已失效 2').click()
+    await button(row('old-org'), '解除对应').click()
+    await button(page.locator('.ant-popover:visible'), '解除对应').click()
+    await row('old-org').getByText('未保存', { exact: true }).waitFor()
+    assert.equal((await snapshot(page)).calls.some(([method]) => method === 'updateConfig'), false)
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
+    await button(group, '保存对应关系').click()
+    await status(page).waitFor()
+    const pairs = (await snapshot(page)).configs.find(item => item.id === configId).configuration.workNotificationRecipients.departments
+    assert.deepEqual(Object.fromEntries(pairs.map(pair => [pair.platformId, pair.externalId])), {
+      'org-team': topDepartment.split(' · ').at(-1), 'org-east-ops': otherDepartment.split(' · ').at(-1), 'org-west-ops': 'old-department',
+    })
+    group = await openGroup(page, '部门', '总公司')
+    await shortcut('已对应 2').click()
+    await row('org-east-ops').getByText(new RegExp(otherDepartment.split(' · ').at(-1))).waitFor()
+    assert.equal(await shortcut('已对应 2').getAttribute('aria-pressed'), 'true')
+    await shortcut('已失效 1').waitFor()
+    await page.screenshot({ path: join(output, configId + '-department-tree.png'), animations: 'disabled' })
+  } catch (error) {
+    await page.screenshot({ path: join(output, configId + '-department-error.png') }).catch(() => {})
+    throw error
+  } finally { await page.close() }
+}
+
+async function verifyTagMapping(width) {
+  const page = await open('weixin:corpMessage', width, '&tagMapping')
+  page.setDefaultTimeout(12000)
+  try {
+    let group = await openGroup(page, '标签', '值班员')
+    const row = id => group.locator(`tr[data-row-key="${id}"]`)
+    const shortcut = name => button(group.getByRole('group', { name: '对应状态' }), name)
+    const clear = () => group.locator('.condition-filter__action--clear').click()
+    const popup = page.locator('.ant-select-dropdown:visible').filter({ has: page.locator('.ant-select-item-option') })
+    const option = label => popup.locator('.ant-select-item-option').getByText(label, { exact: true })
+    await shortcut('全部 18').waitFor()
+    await group.locator('.ant-pagination-item-2').click()
+    await row('role-inspector').waitFor()
+    await button(group, '自动匹配').click()
+    await row('role-inspector').getByText('未保存').waitFor()
+
+    await searchMapping(page, group, '项目角色', '管理员')
+    await shortcut('未对应 2').click()
+    await row('admin-east').getByText('admin-east', { exact: true }).waitFor()
+    await row('admin-west').getByText('admin-west', { exact: true }).waitFor()
+    await button(row('admin-east'), '选择标签').click()
+    await popup.locator('.ant-select-item-option-disabled').getByText('值班员 · tag-duty', { exact: true }).waitFor()
+    await row('admin-east').getByRole('combobox').fill('管理')
+    await option('替班组 · tag-standby').waitFor({ state: 'hidden' })
+    await option('管理员 · tag-admin').click()
+    await row('admin-east').getByText('未保存').waitFor()
+    await clear()
+    await shortcut('已对应 1').click()
+    await row('role-duty').getByRole('button', { name: /更\s*换/ }).click()
+    await option('替班组 · tag-standby').click()
+    await clear()
+    await searchMapping(page, group, '企业微信标签', '替班')
+    await shortcut('全部 1').waitFor()
+    await row('role-duty').getByText('未保存').waitFor()
+    await clear()
+
+    await shortcut('已失效 2').click()
+    await button(row('removed-role'), '解除对应').click()
+    const confirm = page.locator('.ant-popover:visible')
+    await confirm.getByText('确认解除此角色与企业微信标签的对应关系？').waitFor()
+    await button(confirm, '解除对应').click()
+    await row('removed-role').getByText('未保存').waitFor()
+    assert.equal((await snapshot(page)).calls.some(([method]) => method === 'updateConfig'), false)
+    await button(group, '保存对应关系').click()
+    await status(page).waitFor()
+    const config = (await snapshot(page)).configs.find(item => item.id === 'corp-fixture')
+    const recipients = config.configuration.workNotificationRecipients
+    assert.deepEqual(Object.fromEntries(recipients.tags.map(pair => [pair.platformId, pair.externalId])), {
+      'role-duty': 'tag-standby', 'admin-east': 'tag-admin', 'role-inspector': 'tag-inspector', 'role-expired': 'removed-tag',
+    })
+    assert.deepEqual(recipients.departments, [{ platformId: 'org-team', externalId: 'team' }])
+    group = await openGroup(page, '标签', '值班员')
+    await shortcut('全部 17').waitFor()
+    await shortcut('已失效 1').waitFor()
+    await shortcut('已对应 3').click()
+    await row('admin-east').getByText('管理员 · tag-admin', { exact: true }).waitFor()
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
+    await page.screenshot({ path: join(output, `wechat-tag-mapping-${width}.png`), animations: 'disabled' })
+  } finally { await page.close() }
+}
+
 try {
+  await verifyTagMapping(1440)
+  await verifyTagMapping(390)
+  await verifyDepartmentTree('weixin:corpMessage', 1440, 'corp-fixture', '全部测试部门 · all', '运营组 · other')
+  await verifyDepartmentTree('dingTalk:dingTalkMessage', 390, 'ding-work-fixture', '钉钉通讯录 · ding-root', '运营组 · ding-other')
   const page = await open('weixin:corpMessage')
   const memberRegion = groupRegion(page, '成员对应')
   const departmentRegion = groupRegion(page, '部门对应')
@@ -165,6 +310,7 @@ try {
 
   const readonly = await open('weixin:corpMessage', 1440, '&permission=no-bind')
   assert.equal(await manage(readonly, '部门').isDisabled(), true)
+  assert.equal(await manage(readonly, '标签').isDisabled(), true)
   assert.deepEqual((await snapshot(readonly)).calls.filter(([method]) => ['updateConfig', 'saveBusinessTemplate', 'recipientDirectory'].includes(method)), [])
   assert.deepEqual(errors, [])
   process.stdout.write('Work recipient browser checks passed.\n')
