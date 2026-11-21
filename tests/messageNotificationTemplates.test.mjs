@@ -433,13 +433,14 @@ async function mountTemplatePage(query = {}, permission = () => true, options = 
   const api = mockApi()
   const businessTypes = clone(options.businessTypes ?? directoryFixture.businessTypes)
   const records = new Map()
+  const bindingKey = (topic, type, key) => [topic, type, ...(key ? [key] : [])].join('/')
   const independent = [record('first'), record('second')]
   for (const business of businessTypes) {
     business.channels = (business.channels || []).map(binding => {
       const template = record(binding.channelConfiguration.templateId)
       const channel = { ...binding, providerId: business.id,
         channelConfiguration: { ...binding.channelConfiguration, notifierId: template.configId } }
-      records.set(`${business.id}/${channel.channelProvider}`, { channel, template })
+      records.set(bindingKey(business.id, channel.channelProvider, channel.channelKey), { channel, template })
       return channel
     })
   }
@@ -453,19 +454,21 @@ async function mountTemplatePage(query = {}, permission = () => true, options = 
     return { data: [...independent, ...[...records.values()].map(item => clone(item.template))] }
   }
   api.queryBusinessVariables = async id => { api.calls.push(['queryBusinessVariables', id]); return [{ id: 'targetName', name: '设备名称', type: 'string' }] }
-  api.getBusinessTemplate = async (id, channelProvider) => {
-    api.calls.push(['getBusinessTemplate', id, channelProvider])
-    return clone(records.get(`${id}/${channelProvider}`))
+  api.getBusinessTemplate = async (id, channelProvider, key) => {
+    api.calls.push(['getBusinessTemplate', id, channelProvider, ...(key ? [key] : [])])
+    return clone(records.get(bindingKey(id, channelProvider, key)))
   }
   // The server assigns topic, channel and template IDs; the page must use the returned binding.
   function persistItem(providerId, value) {
     const saved = clone(value)
-    saved.channel.id ||= `channel-${providerId}-${saved.channel.channelProvider}`
+    const { channelProvider, channelKey } = saved.channel
+    const suffix = channelKey ? `-${channelKey}` : ''
+    saved.channel.id ||= `channel-${providerId}-${channelProvider}${suffix}`
     saved.channel.providerId = providerId
-    saved.template.id ||= `template-${providerId}-${saved.channel.channelProvider}`
+    saved.template.id ||= `template-${providerId}-${channelProvider}${suffix}`
     saved.channel.channelConfiguration.templateId = saved.template.id
     saved.channel.channelConfiguration.notifierId = saved.template.configId
-    records.set(`${providerId}/${saved.channel.channelProvider}`, clone(saved))
+    records.set(bindingKey(providerId, channelProvider, channelKey), clone(saved))
     return saved
   }
   api.saveBusinessTemplate = async (id, channelProvider, value) => {
@@ -965,7 +968,8 @@ test('first save adopts actual topic and template IDs, preserves the sibling dra
     await settlePage()
     const updated = current.api.calls.find(([name]) => name === 'saveBusinessTemplate')
     assert.deepEqual(updated.slice(1, 3), ['saved-aiComplianceAlarm', 'notifier-webhook'])
-    assert.equal(page.draft.value.id, 'template-saved-aiComplianceAlarm-notifier-webhook')
+    assert.equal(updated[3].channel.channelKey, 'hook-one')
+    assert.equal(page.draft.value.id, 'template-saved-aiComplianceAlarm-notifier-webhook-hook-one')
     assert.equal(page.workspace.hasDirtyDrafts.value, false)
     const other = current.businessTypes.find(item => item.provider === 'aiSecurityAlarm')
     await page.selectTemplate(businessKey(other))
@@ -1198,6 +1202,30 @@ test('multiple bound templates remain selectable at level two with stable keys a
     const tree = buildTemplateDirectory(templates, [business], { other: '其他' }, key => key)
     assert.equal(filterTemplateDirectory(tree, 'unbound').length, 0)
   } finally { scope.stop() }
+})
+
+test('an instance-scoped directory keeps one leaf per business and searches its bound templates', () => {
+  const { buildTemplateDirectory, filterTemplateDirectory } = load(resolve(templatesRoot, 'templateDirectoryModel.ts'))
+  const [alarm, recovery] = structuredClone(directoryFixture.businessTypes)
+  alarm.channels = ['robot-template-a', 'robot-template-b'].map(templateId => ({
+    channelProvider: 'notifier-dingTalk', channelConfiguration: { templateId },
+  }))
+  const robotTemplate = (id, configId) => record(id, { type: 'dingTalk', provider: 'dingTalkRobotWebHook', configId })
+  const templates = [robotTemplate('robot-template-a', 'robot-a'), robotTemplate('robot-template-b', 'robot-b')]
+  for (const [configId, expected, other] of [
+    ['robot-a', 'robot-template-a', 'robot-template-b'], ['robot-b', 'robot-template-b', 'robot-template-a'],
+  ]) {
+    const tree = buildTemplateDirectory(templates, [alarm, recovery], { other: '其他' }, key => key, configId)
+    const leaves = tree[0].children
+    assert.deepEqual(leaves.map(node => node.title), ['设备告警', '告警解除'])
+    assert.equal(leaves[0].templateId, expected)
+    assert.equal(leaves[0].hasTemplate, true)
+    assert.equal(leaves[1].hasTemplate, false)
+    assert.equal(filterTemplateDirectory(tree, expected)[0].children[0].key, leaves[0].key)
+    assert.deepEqual(filterTemplateDirectory(tree, other), [])
+  }
+  const noConfig = buildTemplateDirectory(templates, [alarm, recovery], { other: '其他' }, key => key, '')
+  assert.deepEqual(noConfig[0].children.map(node => node.hasTemplate), [false, false])
 })
 
 test('business directory ignores late responses after refresh, permission loss and unmount', async () => {
@@ -1519,14 +1547,17 @@ test('channel link opens the first alarm Webhook and fixes its exact record befo
   const directory = [business('scene'), { ...business('alarm-device', ''), id: 'first-alarm' }, { ...business('alarm-device', ''), id: 'second-alarm' }]
   const current = await mountTemplatePage({ channel: 'webhook:http', businessSelection: 'first-alarm' }, () => true, {
     queryTemplateDirectory: async () => directory,
-    getBusinessTemplate: async (owner, provider) => { reads.push({ owner, provider }); return undefined },
+    getBusinessTemplate: async (owner, provider, channelKey) => { reads.push({ owner, provider, channelKey }); return undefined },
     queryTemplates: async () => ({ data: [] }),
   })
   try {
     assert.equal((current.page.business.value?.id || current.page.business.value?.provider || ''), 'first-alarm')
     assert.equal(current.page.channelId.value, 'webhook:http')
     assert.deepEqual(current.route.query, { channel: 'webhook:http', topicProvider: 'first-alarm' })
-    assert.deepEqual(reads, [{ owner: 'first-alarm', provider: 'notifier-webhook' }])
+    assert.deepEqual(reads, [
+      { owner: 'first-alarm', provider: 'notifier-webhook', channelKey: 'hook-one' },
+      { owner: 'first-alarm', provider: 'notifier-webhook', channelKey: undefined },
+    ])
     directory.reverse()
     current.page.reload()
     await settlePage()

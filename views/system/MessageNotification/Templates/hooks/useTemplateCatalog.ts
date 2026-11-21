@@ -21,11 +21,15 @@ export function useTemplateCatalog(permitted: Ref<boolean>, channelId: Ref<strin
   let catalogAttempted = false
   let configsAttempted = false
 
-  const configs = computed(() => {
-    const channel = findNotificationChannel(channelId.value, channels.value)
+  function configsForChannel(channel?: NotificationChannel): NotifierConfig[] {
     return channel ? allConfigs.value.filter(item => notificationEnumValue(item.type) === channel.type
       && notificationEnumValue(item.provider) === channel.provider) : []
-  })
+  }
+  const configs = computed(() => configsForChannel(findNotificationChannel(channelId.value, channels.value)))
+  // 同组下切换工作通知时仍须显示各机器人页签，始终读取完整配置快照。
+  const configurationsByChannel = computed(() => Object.fromEntries(channels.value
+    .filter(channel => channel.multipleConfigurations)
+    .map(channel => [channel.id, configsForChannel(channel).map(({ id, name }) => ({ id, name }))])))
   const configState = computed<NotificationLoadState>(() => snapshotState.value === 'ready' || snapshotState.value === 'empty'
     ? configs.value.length ? 'ready' : 'empty' : snapshotState.value)
   /** Navigation reflects every visible channel config, independently of the selected business template. */
@@ -61,6 +65,7 @@ export function useTemplateCatalog(permitted: Ref<boolean>, channelId: Ref<strin
           return {
             id, type: type.id, provider: provider.id, labelKey: known?.labelKey ?? '',
             group: known?.group ?? 'integration', secretFields: known?.secretFields ?? [],
+            multipleConfigurations: known?.multipleConfigurations,
             name: type.name === provider.name ? type.name || type.id : `${type.name || type.id} · ${provider.name || provider.id}`,
             typeName: type.name || type.id, providerName: provider.name || provider.id,
             description: provider.description || type.description,
@@ -133,6 +138,6 @@ export function useTemplateCatalog(permitted: Ref<boolean>, channelId: Ref<strin
     return channel
   }
 
-  return { channels, catalogState, configs, configState, channelConfigurationStates, metadata, metadataState,
+  return { channels, catalogState, configs, configurationsByChannel, configState, channelConfigurationStates, metadata, metadataState,
     loadCatalog, loadConfigs, loadMetadata, clear, requireChannel }
 }

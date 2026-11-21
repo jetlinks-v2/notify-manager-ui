@@ -2,7 +2,6 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import type { TreeProps } from 'ant-design-vue'
-import { usePermission } from '@jetlinks-web/hooks'
 import { useWindowSize } from '@vueuse/core'
 import { onlyMessage } from '@jetlinks-web/utils'
 import { useAuthStore } from '@jetlinks-web-core/store/auth'
@@ -19,8 +18,8 @@ import type { WechatMembersDrawerModel } from './members/useWechatMembersDrawer'
 import { useChannelLeaveGuard } from './useChannelLeaveGuard'
 import { channelHelp, channelHelpSection } from './configuration/channelHelp'
 import { classifyNotificationFailure, notificationFailureMessage } from '../../../../api/notice/messageNotificationState'
-import { useRobotConfigurations } from './robot/useRobotConfigurations'
-import { dingTalkRobotChannel, dingTalkWorkChannel } from './templateSetup/templateDefaults'
+import { useChannelConfigurations } from './configuration/useChannelConfigurations'
+import { dingTalkWorkChannel } from './templateSetup/templateDefaults'
 import { useChannelTemplateSetup } from './templateSetup/useChannelTemplateSetup'
 import { wechatCorpChannel } from './wechat/templateDefaults'
 import { useWorkRecipients } from './members/useWorkRecipients'
@@ -43,7 +42,7 @@ export function useChannelsPage() {
     // Always-visible editors must react when authorization changes after the page was opened.
     add: computed(() => auth.hasPermission(notificationPermissions.channels.add)),
     update: computed(() => auth.hasPermission(notificationPermissions.channels.update)),
-    delete: usePermission(notificationPermissions.channels.delete).hasPerm,
+    delete: computed(() => auth.hasPermission(notificationPermissions.channels.delete)),
     action: computed(() => auth.hasPermission(notificationPermissions.channels.action)),
     bind: computed(() => auth.hasPermission(notificationPermissions.channels.bind)),
   }
@@ -90,8 +89,8 @@ export function useChannelsPage() {
     onMutationError: error => onlyMessage(notificationFailureMessage(error) || t(`messageNotification.state.${classifyNotificationFailure(error)}`), 'error'),
   })
   const { channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId, busy, dirty, hasUnsavedChanges, canEdit, editing } = workspace
-  const robotPending = ref(false)
-  const operationBusy = computed(() => busy.value || externalBusy.value || robotPending.value)
+  const configurationPending = ref(false)
+  const operationBusy = computed(() => busy.value || externalBusy.value || configurationPending.value)
   const canFillTemplates = computed(() => canQuery.value
     && auth.hasPermission(notificationPermissions.templates.query)
     && (auth.hasPermission(notificationPermissions.templates.add) || auth.hasPermission(notificationPermissions.templates.update)))
@@ -106,13 +105,13 @@ export function useChannelsPage() {
   const templateSetup = useChannelTemplateSetup(workspace, {
     channel, permitted: canFillTemplates, blocked: operationBusy, generating: fillingTemplates, translate: t,
   })
-  const robot = useRobotConfigurations({
-    workspace, permissions, blocked: operationBusy, pending: robotPending, test: showSend,
+  const configurationList = useChannelConfigurations({
+    workspace, permissions, blocked: operationBusy, pending: configurationPending, test: showSend,
     prepareTemplates: templateSetup.prepareForSave,
-    saved: (id, created) => fillSavedTemplates(dingTalkRobotChannel, id, created),
+    saved: fillSavedTemplates,
     fillTemplates: id => templateSetup.fill(id),
   })
-  const canFillRobotTemplates = computed(() => canFillTemplates.value && permissions.update.value)
+  const canFillConfigurationTemplates = computed(() => canFillTemplates.value && permissions.update.value)
   const selectChannel: TreeProps['onSelect'] = (_keys, { node }) => {
     if (operationBusy.value) return
     const key = String(node.key)
@@ -128,7 +127,6 @@ export function useChannelsPage() {
   const trialSupported = computed(() => !!channelTestAdapters[channelId.value])
   const canTrial = computed(() => trialSupported.value && canQuery.value && permissions.action.value && !!entry.value?.baseline?.id && !entry.value?.isNew && !dirty.value && configurationVisible.value)
   const canSyncMembers = computed(() => canQuery.value && permissions.bind.value && workChannel.value && (!workRecipients.enabled.value || canManageWork.value) && !!entry.value?.baseline?.id && !entry.value?.isNew && !dirty.value)
-  const configurationOptions = computed(() => configs.value.map(item => ({ value: item.id, label: `${item.name} · ${item.id}` })))
   const memberDrawer = computed<WechatMembersDrawerModel>(() => ({
     open: members.open.value, state: members.state.value, busy: members.busy.value, autoMatching: members.autoMatching.value, error: members.error.value,
     saved: members.saved.value, refreshRequired: members.refreshRequired.value, dirty: members.dirty.value, canSave: members.canSave.value,
@@ -278,7 +276,7 @@ export function useChannelsPage() {
     const target = pendingTestField.value
     pendingTestField.value = undefined
     if (!target || target.configId !== selectedConfigId.value || !canEdit.value || operationBusy.value) return
-    if (robot.isRobot.value) { robot.editSelected(); return }
+    if (multipleConfigurations.value) { configurationList.editSelected(); return }
     focusField(target.key)
   }
   // External navigation can change the target while the workspace is locked by a pending send.
@@ -306,9 +304,10 @@ export function useChannelsPage() {
   })
 
   return {
-    templateSetup, templateSetupModel: templateSetup.model, fillingTemplates, viewMessageTemplates, canFillRobotTemplates,
-    robot, isRobot: robot.isRobot, robotRows: robot.rows, robotModal: robot.modal, robotCanAdd: robot.canAdd,
-    t, notificationPermissions, isNarrow, channelOptions, channelSearch, filteredChannelTree, openChannelKeys, selectChannel, configurationOptions,
+    templateSetup, templateSetupModel: templateSetup.model, fillingTemplates, viewMessageTemplates, canFillConfigurationTemplates,
+    configurationList, isRobot: configurationList.isRobot, configurationRows: configurationList.rows, configurationModal: configurationList.modal,
+    configurationCanAdd: configurationList.canAdd, configurationCanDelete: permissions.delete, configurationDeleteTarget: configurationList.deleteTarget,
+    t, notificationPermissions, isNarrow, channelOptions, channelSearch, filteredChannelTree, openChannelKeys, selectChannel,
     canQuery, channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId,
     busy, dirty, canEdit, editing, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave,
     sending, workspace, trial, testModel: trial.model, fixTestConfiguration, afterTestClosed, refresh, save, showSend, configurationVisible,

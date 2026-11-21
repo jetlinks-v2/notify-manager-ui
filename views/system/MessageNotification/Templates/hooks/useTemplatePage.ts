@@ -10,7 +10,7 @@ import { messageNotificationApi } from '../../../../../api/notice/messageNotific
 import type { NoticeChannelConfig } from '../../../../../api/notice-center'
 import {
   notificationConfigurationChange, notificationPermissions, notificationQuery,
-  classifyNotificationFailure, normalizeNotificationNavigation,
+  classifyNotificationFailure, normalizeNotificationNavigation, usesBusinessChannelKey,
 } from '../../shared'
 import { TemplateValidationError } from '../model'
 import { buildTemplateDirectory, flattenTemplateDirectory, templateBusinessKey } from '../templateDirectoryModel'
@@ -54,8 +54,11 @@ export function useTemplatePage() {
   const busy = computed(() => saving.value || uploading.value || changingBusiness.value || fillingInsideMail.value)
   const pendingChannelRefresh = ref('')
   const navigation = computed(() => normalizeNotificationNavigation(route.query, channels.value))
+  const activeConfigId = computed(() => draft.value?.configId || navigation.value.configId
+    || workspace.configurationsByChannel.value[channelId.value]?.[0]?.id)
+  const directoryConfigId = computed(() => usesBusinessChannelKey(channelId.value) ? activeConfigId.value || '' : undefined)
   const directoryNodes = computed(() => flattenTemplateDirectory(buildTemplateDirectory(templates.value, directory.businessTypes.value,
-    { other: t('messageNotification.templates.otherGroup') }, t)))
+    { other: t('messageNotification.templates.otherGroup') }, t, directoryConfigId.value)))
   const channelOptions = computed(() => channels.value.map(channel => ({ value: channel.id, label: channel.labelKey ? t(channel.labelKey) : channel.name || channel.id })))
   const templateOptions = computed(() => directoryNodes.value.filter(node => node.kind === 'business').map(node => ({ value: node.key, label: node.title })))
   const importOptions = computed(() => templates.value.map(item => ({ value: item.id, label: `${item.name} (${item.id})` })))
@@ -64,12 +67,18 @@ export function useTemplatePage() {
   const title = computed(() => business.value?.name || draft.value?.name || t('messageNotification.templates.title'))
   const description = computed(() => String(business.value?.description || draft.value?.description || ''))
   const activeConfig = computed(() => workspace.configs.value.find(config => config.id === draft.value?.configId))
+  const templateStatus = computed(() => {
+    if (!draft.value) return
+    if (workspace.dirty.value) return 'unsaved'
+    if (workspace.isDefault.value) return 'defaultContent'
+    return workspace.entry.value?.existing ? 'configured' : 'unconfigured'
+  })
   const listFailure = computed(() => ['unavailable', 'forbidden', 'error'].includes(workspace.catalogState.value))
   const feedbackState = computed(() => businessNavigation.requested.value && !['ready', 'idle', 'loading', 'empty'].includes(businessNavigation.state.value)
     ? businessNavigation.state.value : selectionUnavailable.value ? 'unavailable' : detailState.value)
   const detailFailure = computed(() => ['unavailable', 'forbidden', 'error'].includes(feedbackState.value))
   const saveFailure = computed(() => ['unavailable', 'forbidden', 'error'].includes(workspace.saveState.value))
-  const canEdit = computed(() => canQuery.value && !!draft.value && detailState.value === 'ready'
+  const canEdit = computed(() => canQuery.value && !!draft.value && detailState.value === 'ready' && workspace.entry.value?.businessConfigId !== ''
     && (workspace.entry.value?.existing ? canUpdate.value : canAdd.value))
   const missingConfiguration = computed(() => !!draft.value && workspace.configState.value === 'empty')
   let confirmationResult: ((value: boolean) => void) | undefined
@@ -102,7 +111,7 @@ export function useTemplatePage() {
       : bound || (!requestedTemplate ? first : undefined)
     // 首个告警仅用于落地，立即固定具体记录，目录刷新或重排不会改变当前业务。
     if (target && navigation.value.businessSelection === 'first-alarm') {
-      await router.replace({ query: selectionQuery(channel, target) })
+      await router.replace({ query: selectionQuery(channel, target, undefined, requestedConfig) })
       return
     }
     const standaloneId = requested || bindings.length > 1 ? '' : requestedTemplate
@@ -139,8 +148,10 @@ export function useTemplatePage() {
     void directory.reloadDirectory()
   })
 
-  function selectionQuery(channel: string, selectedBusiness?: NoticeChannelConfig, templateId?: string): LocationQueryRaw {
-    const query = notificationQuery({ channel, templateId }, route.query, channels.value)
+  /** 业务切换和保存记住所选凭证，切换服务商时由新页面选择可用配置。 */
+  function selectionQuery(channel: string, selectedBusiness?: NoticeChannelConfig, templateId?: string,
+    configId = channel === channelId.value && usesBusinessChannelKey(channel) ? activeConfigId.value : undefined): LocationQueryRaw {
+    const query = notificationQuery({ channel, templateId, configId }, route.query, channels.value)
     for (const key of ['business', 'topicProvider', 'channelProvider']) delete query[key]
     if (selectedBusiness) {
       if (route.query.topicProvider || route.query.aiAlarmType || route.query.businessSelection) query.topicProvider = identity(selectedBusiness)
@@ -170,9 +181,15 @@ export function useTemplatePage() {
     if (busy.value || !canEdit.value) return
     editing.value = true
   }
-  function changeChannel(value: string | number) {
+  function changeChannel(value: string | number, configId?: string) {
     const next = String(value)
-    if (!busy.value && next !== channelId.value) void router.replace({ query: selectionQuery(next, business.value) })
+    if (!busy.value && (next !== channelId.value || configId !== undefined && configId !== activeConfigId.value)) {
+      void router.replace({ query: selectionQuery(next, business.value, undefined, configId || '') })
+    }
+  }
+  function selectConfiguration(configId: string) {
+    if (business.value && usesBusinessChannelKey(channelId.value)) changeChannel(channelId.value, configId)
+    else if (draft.value) draft.value.configId = configId
   }
   async function selectTemplate(value: unknown) {
     if (busy.value) return
@@ -189,7 +206,7 @@ export function useTemplatePage() {
   }
   function createTemplate() {
     if (busy.value || !canAdd.value || !canQuery.value) return
-    workspace.createTemplate(navigation.value.configId)
+    workspace.createTemplate(activeConfigId.value)
     editing.value = true
   }
 
@@ -206,8 +223,9 @@ export function useTemplatePage() {
         const index = directory.businessTypes.value.findIndex(item => item.id ? item.id === selected.id : item.provider === selected.provider)
         if (index >= 0) directory.businessTypes.value[index] = selected
       }
-      loadedSelection = JSON.stringify([channelId.value, identity(selected), selected ? '' : draft.value?.id || '', ''])
-      await router.replace({ query: selectionQuery(channelId.value, selected, draft.value?.id || undefined) })
+      const query = selectionQuery(channelId.value, selected, draft.value?.id || undefined)
+      loadedSelection = JSON.stringify([channelId.value, identity(selected), selected ? '' : draft.value?.id || '', query.configId || ''])
+      await router.replace({ query })
       acceptedQuery = { ...route.query }
       onlyMessage(t('messageNotification.templates.saved'), 'success')
       editing.value = false
@@ -307,9 +325,9 @@ export function useTemplatePage() {
     businessLinkPending: businessNavigation.requested, businessLinkState: businessNavigation.state, importOptions,
     t, compact, workspace, ...workspace, ...directory, canQuery, canAdd, canEdit, canConfigure, busy, uploading,
     canFillInsideMail, fillingInsideMail, fillInsideMail,
-    editing, title, description, activeConfig, selectedDirectoryKey, selectedTemplateId, templateOptions,
+    editing, title, description, activeConfig, activeConfigId, directoryConfigId, templateStatus, selectedDirectoryKey, selectedTemplateId, templateOptions,
     validationMessage, channelOptions, listFailure, detailFailure, feedbackState, saveFailure,
-    missingConfiguration, confirmation, setUploading, reload, changeChannel, selectTemplate, createTemplate,
+    missingConfiguration, confirmation, setUploading, reload, changeChannel, selectConfiguration, selectTemplate, createTemplate,
     startEditing, save, restoreDefault, requestDiscard, goConfigure, resolveConfirmation, importTemplate,
   }
 }

@@ -91,12 +91,6 @@ async function reachableByWheel(page, button, name) {
 function field(page, key, control = 'input') {
   return translation(page, key).then(label => page.locator('.template-editor > .ant-form-item').filter({ has: page.locator('.ant-form-item-label').filter({ hasText: label }) }).locator(control).first())
 }
-async function selectConfig(page, id) {
-  await page.locator('.notification-channels__selector').click()
-  await page.locator('.ant-select-item-option').filter({ hasText: id }).click()
-  await page.locator('.channel-configuration').waitFor()
-  await eventually(async () => assert.equal(await page.evaluate(() => window.__notificationSmoke.router.currentRoute.value.query.configId), id))
-}
 async function selectTemplate(page, name) {
   await page.locator('.template-directory .ant-tree-node-content-wrapper').filter({ hasText: name }).click()
   await page.locator('.cloud-detail-header__title').filter({ hasText: name }).waitFor()
@@ -170,7 +164,7 @@ try {
   const channels = await open('channels', '?writeDelay=300')
   await channels.locator('.channel-configuration').waitFor()
   assert.equal(await channels.evaluate(() => window.__notificationSmoke.router.currentRoute.value.query.configId), 'smtp-primary')
-  assert.equal(await channels.locator('.notification-channels__selector').count(), 0)
+  assert.equal(await channels.locator('.channel-configurations').count(), 0)
   const hostLabel = await translation(channels, 'messageNotification.channels.fields.host')
   const passwordLabel = await translation(channels, 'messageNotification.channels.fields.password')
   const hostInput = channelField(channels, hostLabel).getByRole('combobox')
@@ -298,9 +292,8 @@ try {
   await robotUrl.fill('https://fixture.example.test/new-robot')
   await saveChannelDraft(fresh)
   await fresh.locator('.notification-channels__footer').waitFor({ state: 'hidden' })
-  await fresh.locator('.robot-configuration-modal').waitFor({ state: 'hidden' })
-  assert.equal(await fresh.locator('.robot-configurations__row').count(), 1)
-  assert.equal(await fresh.locator('.notification-channels__selector').count(), 0)
+  await fresh.locator('.channel-configuration-modal').waitFor({ state: 'hidden' })
+  assert.equal(await fresh.locator('.channel-configurations__row').count(), 1)
   const newConfiguration = editButton(fresh, await translation(fresh, 'messageNotification.channels.robot.add'))
   assert.equal(await newConfiguration.isEnabled(), true)
   await editButton(fresh, await translation(fresh, 'messageNotification.channels.more')).click()
@@ -313,10 +306,15 @@ try {
     assert.ok(Math.abs(widths.button - widths.item) < 2, JSON.stringify(widths))
   })
   await screenshot(fresh, 'robot-full-width-menu-mobile')
-  assert.equal(await editButton(fresh.getByRole('menuitem'), await translation(fresh, 'messageNotification.common.delete')).count(), 0)
-  assert.equal(await fresh.locator('.robot-configurations__row').count(), 1)
   assert.equal(await fresh.locator('.channel-configuration').count(), 0)
   assert.equal(await fresh.evaluate(() => window.__notificationSmoke.calls.filter(([method]) => method === 'createConfig').length), 1)
+  const freshRobotId = await fresh.locator('.channel-configurations__row').getAttribute('data-config-id')
+  const deleteLabel = await translation(fresh, 'messageNotification.common.delete')
+  await editButton(fresh.getByRole('menuitem'), deleteLabel).click()
+  await editButton(fresh.locator('.jlc-modal:visible'), deleteLabel).click()
+  await fresh.getByText(await translation(fresh, 'messageNotification.channels.empty'), { exact: true }).waitFor()
+  assert.equal(await fresh.locator('.channel-configurations__row').count(), 0)
+  assert.deepEqual(await fresh.evaluate(() => window.__notificationSmoke.calls.filter(([method]) => method === 'deleteConfig')), [['deleteConfig', freshRobotId]])
   await fresh.close()
   const noAdd = await open('channels', '?fresh&permission=read')
   await noAdd.evaluate(() => window.__notificationSmoke.router.push({ path: '/channels', query: { channel: 'dingTalk:dingTalkRobotWebHook' } }))
@@ -325,7 +323,7 @@ try {
   assert.equal(await forbiddenAdd.isDisabled(), true)
   assert.equal(await noAdd.locator('.channel-configuration').count(), 0)
   await noAdd.close()
-  pass('channels: fresh SMS/email omit removed fields; group bots use Add and row editing without deletion')
+  pass('channels: fresh SMS/email omit removed fields; adding then deleting the last group robot restores the empty state')
 
   if (!process.env.SMOKE_CHANNELS_ONLY) {
   const templates = await open('templates')

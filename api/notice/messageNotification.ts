@@ -127,9 +127,10 @@ export const messageNotificationApi = {
     if (typeof result !== 'object' || Array.isArray(result)) throw new NotificationRequestError('error', result)
     return normalizeNotificationConfigMetadata({ ...result, properties: 'properties' in result ? result.properties : [] })
   },
-  /** Business channels use persisted provider IDs; HTTP failures never mean an unconfigured channel. */
-  async getBusinessTemplate(providerId: string, channelProvider: string): Promise<NoticeChannelTemplateItem | undefined> {
-    return businessTemplate(await checked<unknown>(request.get(`/notify/channel/${idSegment(providerId)}/${idSegment(channelProvider)}/_query-with-template`)))
+  /** 实例按实际业务记录和 channelKey 查询，未传 key 时只读取旧版默认通道。 */
+  async getBusinessTemplate(providerId: string, channelProvider: string, channelKey?: string): Promise<NoticeChannelTemplateItem | undefined> {
+    const query = channelKey ? `?channelKey=${encodeURIComponent(channelKey)}` : ''
+    return businessTemplate(await checked<unknown>(request.get(`/notify/channel/${idSegment(providerId)}/${idSegment(channelProvider)}/_query-with-template${query}`)))
   },
   async saveBusinessTemplate(providerId: string, channelProvider: string, payload: NoticeChannelTemplateItem): Promise<NoticeChannelTemplateItem> {
     const result = businessTemplate(await checked<unknown>(request.put(`/notify/channel/${idSegment(providerId)}/${idSegment(channelProvider)}/_save-with-template`, payload)))

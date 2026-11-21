@@ -22,8 +22,8 @@ async function open(route, flags = '') {
     }
     return request.continue()
   })
-  await page.goto(`${entry.href}${flags}#/${route}`)
-  await page.waitForFunction(() => document.documentElement.dataset.notificationSmoke === 'ready')
+  await page.goto(`${entry.href}${flags}#/${route}`, { waitUntil: 'domcontentloaded', timeout: 30000 })
+  await page.waitForFunction(() => document.documentElement.dataset.notificationSmoke === 'ready', undefined, { timeout: 30000 })
   return page
 }
 const translate = (page, key) => page.evaluate(key => window.__notificationSmoke.i18n.global.t(key), key)
@@ -51,7 +51,7 @@ try {
   report.passed.push('business link selects the exact bound template in the two-level directory')
   await linked.close()
 
-  const wechat = await open('templates?channel=email:embedded&business=wechat-device-topic', '?unifiedTests&wechatTemplates&existingWechatTemplates')
+  const wechat = await open('templates?channel=email:embedded&business=wechat-device-topic', '?unifiedTests&wechatTemplates&existingWechatTemplates&robotSigning')
   const channelNav = wechat.locator('.template-channel-navigation')
   const wechatButton = channelNav.getByRole('button', { name: /^微信 ·/ })
   await wechatButton.click()
@@ -66,18 +66,70 @@ try {
   assert.equal(await channelNav.getByRole('tab').count(), 0)
   assert.ok(await wechat.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
   await wechat.setViewportSize({ width: 1440, height: 1000 })
+  const businessRows = wechat.locator('.template-directory__name')
+  await businessRows.first().waitFor()
+  const directoryLabels = await labels(businessRows)
+  await wechat.evaluate(() => {
+    const { businessTypes, templates } = window.__notificationSmoke
+    const business = businessTypes.find(item => item.id === 'wechat-device-topic')
+    const template = {
+      id: 'saved-robot-template', name: '设备告警', type: 'dingTalk', provider: 'dingTalkRobotWebHook',
+      configId: 'robot-one', template: { messageType: 'text', text: { content: '已绑定机器人的正文' } },
+    }
+    templates.push(template)
+    business.channels.push({
+      id: 'saved-robot-channel', providerId: business.id, channelProvider: 'notifier-dingTalk',
+      channelConfiguration: { notifierId: template.configId, templateId: template.id },
+    })
+  })
   await channelNav.getByRole('button', { name: /^钉钉 ·/ }).click()
   await channelNav.getByRole('tab', { name: '工作通知', exact: true }).waitFor()
-  await channelNav.getByRole('tab', { name: '群机器人', exact: true }).click()
-  await wechat.waitForFunction(() => window.__notificationSmoke.router.currentRoute.value.query.channel === 'dingTalk:dingTalkRobotWebHook')
-  report.passed.push('WeChat opens work notifications directly with both WeChat providers in the backend catalog; DingTalk tabs remain selectable')
+  const expectedRobotLabels = await wechat.evaluate(() => window.__notificationSmoke.configs
+    .filter(config => config.provider === 'dingTalkRobotWebHook').map(config => `群机器人·${config.name}`))
+  assert.deepEqual((await labels(channelNav.getByRole('tab'))).filter(label => label.startsWith('群机器人·')).sort(), expectedRobotLabels.sort())
+  const boundRobot = channelNav.getByRole('tab', { name: '群机器人·robot-one', exact: true })
+  const otherRobot = channelNav.getByRole('tab', { name: '群机器人·robot-two', exact: true })
+  await boundRobot.click()
+  await wechat.locator('.template-preview').getByText('已绑定机器人的正文', { exact: true }).waitFor()
+  assert.equal(await boundRobot.getAttribute('aria-selected'), 'true')
+  await otherRobot.click()
+  await wechat.waitForFunction(() => window.__notificationSmoke.router.currentRoute.value.query.configId === 'robot-two')
+  await wechat.getByText('默认模板 · 未保存', { exact: true }).waitFor()
+  await wechat.locator('.ding-preview__card').waitFor()
+  assert.equal(await otherRobot.getAttribute('aria-selected'), 'true')
+  assert.equal(await wechat.getByText('已绑定机器人的正文', { exact: true }).count(), 0)
+  await (await button(wechat, 'messageNotification.templates.edit')).click()
+  await wechat.getByRole('button', { name: '保存模板', exact: true }).click()
+  await wechat.waitForFunction(() => window.__notificationSmoke.templates.some(item => item.configId === 'robot-two'
+    && item.provider === 'dingTalkRobotWebHook'))
+  await wechat.getByText('已保存', { exact: true }).waitFor()
+  assert.deepEqual(await labels(businessRows), directoryLabels)
+  await boundRobot.click()
+  await wechat.locator('.template-preview').getByText('已绑定机器人的正文', { exact: true }).waitFor()
+  assert.deepEqual(await labels(businessRows), directoryLabels)
+  await wechat.setViewportSize({ width: 390, height: 844 })
+  assert.ok(await wechat.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
+  await wechat.setViewportSize({ width: 1440, height: 1000 })
+  await otherRobot.click()
+  await wechat.getByText('已保存', { exact: true }).waitFor()
+  assert.equal(await wechat.locator('.template-preview').getByText('已绑定机器人的正文', { exact: true }).count(), 0)
+  const workTab = channelNav.getByRole('tab', { name: '工作通知', exact: true })
+  await workTab.click()
+  await channelNav.getByRole('tab', { name: '工作通知', exact: true, selected: true }).waitFor()
+  await wechat.locator('.template-preview').getByText('工作通知', { exact: true }).waitFor()
+  assert.deepEqual(await labels(businessRows), directoryLabels)
+  await boundRobot.click()
+  await wechat.locator('.template-preview').getByText('已绑定机器人的正文', { exact: true }).waitFor()
+  report.passed.push('WeChat opens work notifications; DingTalk saves and reopens the second robot without replacing the first one')
+  report.passed.push('both robot configurations and work notifications share the same business directory')
 
   for (const language of ['zh', 'en', 'ja']) {
     await Promise.all([channels, wechat].map(page => page.evaluate(language => {
       window.__notificationSmoke.i18n.global.locale.value = language
     }, language)))
     const primary = await labels(channelNav.getByRole('button'))
-    const providers = await labels(channelNav.getByRole('tab'))
+    const groupRobot = await translate(wechat, 'messageNotification.channels.groupRobot')
+    const providers = [...new Set((await labels(channelNav.getByRole('tab'))).map(label => label.startsWith(`${groupRobot}·`) ? groupRobot : label))]
     const tree = await labels(channels.locator('.notification-channels__tree .notification-channels__node-label'))
     assert.deepEqual(tree.sort(), [...primary, ...providers].sort(), language)
 
@@ -97,15 +149,31 @@ try {
   await channels.close()
   report.passed.push('channel tree, mobile select and template navigation share the same labels in Chinese, English and Japanese')
   await wechat.evaluate(() => { window.__notificationSmoke.i18n.global.locale.value = 'zh' })
+  const callsBeforeOfficial = await wechat.evaluate(() => window.__notificationSmoke.calls.length)
   await wechat.evaluate(() => window.__notificationSmoke.router.push({ path: '/templates', query: {
     channel: 'weixin:officialMessage', business: 'wechat-device-topic', configId: 'trial-officialMessage',
   } }))
   await wechat.locator('.message-templates__detail').getByText('当前模板能力不可用', { exact: true }).waitFor()
-  assert.equal(await wechat.evaluate(() => window.__notificationSmoke.calls.some(([method, input]) =>
+  assert.equal(await wechat.evaluate(start => window.__notificationSmoke.calls.slice(start).some(([method, input]) =>
     method.startsWith('saveBusiness') || method === 'getTemplateMetadata' && input.provider === 'officialMessage'
-    || method === 'queryTemplates' && input.terms.some(term => term.column === 'provider' && term.value === 'officialMessage'))), false)
+    || method === 'queryTemplates' && input.terms.some(term => term.column === 'provider' && term.value === 'officialMessage')), callsBeforeOfficial), false)
   report.passed.push('an explicit official-account link reports that the provider is unavailable without querying or editing its template')
   await wechat.close()
+
+  const unboundRobot = await open('templates?channel=dingTalk:dingTalkRobotWebHook&business=alarm-device&configId=robot-two', '?directory=tree&robotSigning')
+  await unboundRobot.locator('.ding-preview__card').waitFor()
+  assert.equal(await unboundRobot.getByRole('tab', { name: '群机器人·robot-two', exact: true }).getAttribute('aria-selected'), 'true')
+  await (await button(unboundRobot, 'messageNotification.templates.edit')).click()
+  await unboundRobot.locator('.template-editor').waitFor()
+  await (await button(unboundRobot, 'messageNotification.templates.save')).click()
+  await unboundRobot.getByText('已保存', { exact: true }).waitFor()
+  assert.equal(await unboundRobot.evaluate(() => {
+    const { calls, router } = window.__notificationSmoke
+    const request = calls.find(([method]) => method === 'saveBusinessTemplate')
+    return request?.[1]?.item?.template?.configId === 'robot-two' && router.currentRoute.value.query.configId === 'robot-two'
+  }), true)
+  report.passed.push('an explicit robot link selects its configuration and the first template save uses that robot')
+  await unboundRobot.close()
 
   const missing = await open('templates?topicProvider=scene&channelProvider=notifier-email', '?directory=tree')
   await missing.locator('.template-preview').waitFor()

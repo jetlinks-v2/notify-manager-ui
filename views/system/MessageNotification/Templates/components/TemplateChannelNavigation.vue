@@ -6,18 +6,17 @@
         <span>{{ group.label }}</span>
       </a-button>
     </a-button-group>
-    <a-tabs v-if="subChannels.length" :active-key="value" size="small" @change="selectChannel">
-      <a-tab-pane v-for="channel in subChannels" :key="channel.id" :tab="channel.label" :disabled="disabled" />
+    <a-tabs v-if="subChannels.length" :active-key="activeTabKey" size="small" @change="selectChannel">
+      <a-tab-pane v-for="tab in subChannels" :key="tab.key" :tab="tab.label" :disabled="disabled" />
     </a-tabs>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { NotificationChannel, NotificationLoadState } from '../../shared'
-import { useTemplateChannelNavigation } from '../hooks/useTemplateChannelNavigation'
-const props = defineProps<{ channels: NotificationChannel[]; value: string; configurationStates: Readonly<Record<string, NotificationLoadState>>; disabled?: boolean }>()
-const emit = defineEmits<{ (event: 'change', id: string): void }>()
-const { t, groups, activeGroup, subChannels, selectGroup, selectChannel } = useTemplateChannelNavigation(props, emit)
+import { useTemplateChannelNavigation, type TemplateChannelNavigationProps } from '../hooks/useTemplateChannelNavigation'
+const props = defineProps<TemplateChannelNavigationProps & { disabled?: boolean }>()
+const emit = defineEmits<{ (event: 'change', id: string, configId?: string): void }>()
+const { t, groups, activeGroup, subChannels, activeTabKey, selectGroup, selectChannel } = useTemplateChannelNavigation(props, emit)
 </script>
 
 <style scoped>

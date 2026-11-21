@@ -155,6 +155,21 @@ if (flags.has('workRecipients')) {
   corporateMembers.find(member => member.id === 'corp-phone').name = '张三'
   configs.push({ id: 'ding-work-fixture', name: '钉钉隔离配置', type: 'dingTalk', provider: 'dingTalkMessage',
     configuration: { appKey: 'fixture-key', appSecret: 'fixture-secret', agentId: '42' } })
+  if (flags.has('departmentTree')) {
+    for (const [configId, departmentId] of [['corp-fixture', 'team'], ['ding-work-fixture', 'ding-team']]) {
+      configs.find(item => item.id === configId).configuration.workNotificationRecipients = {
+        departments: [{ platformId: 'org-team', externalId: departmentId }, { platformId: 'org-west-ops', externalId: 'old-department' },
+          { platformId: 'old-org', externalId: 'missing-department' }], tags: [], memberIds: [],
+      }
+    }
+  }
+  if (flags.has('tagMapping')) {
+    configs.find(item => item.id === 'corp-fixture').configuration.workNotificationRecipients = {
+      departments: [{ platformId: 'org-team', externalId: 'team' }], memberIds: [],
+      tags: [{ platformId: 'role-duty', externalId: 'tag-duty' }, { platformId: 'role-expired', externalId: 'removed-tag' },
+        { platformId: 'removed-role', externalId: 'old-tag' }],
+    }
+  }
   for (const [topic, name] of [['work-1', '设备告警'], ['work-2', '设备告警解除'], ['work-3', '场景联动']]) {
     const provider = { 'work-1': 'alarm-device', 'work-2': 'alarm-device-relieve', 'work-3': 'scene' }[topic]
     businessTypes.push({ id: topic, provider, name, channels: [], state: 'enabled' })
@@ -206,7 +221,10 @@ notificationRequest.get = async (path, params) => {
     const item = smsRoute[2] === 'templates' ? template : { signName: rotated ? '新账号签名' : '测试签名' }
     return { success: true, result: [{ ...item, auditStatus: 'AUDIT_STATE_PASS' }] }
   }
-  if (flags.has('workRecipients') && path.endsWith('/tags')) return { success: true, result: [{ id: 'tag-duty', name: '值班员' }] }
+  if (flags.has('workRecipients') && path.endsWith('/tags')) return { success: true, result: [
+    { id: 'tag-duty', name: '值班员' },
+    ...(flags.has('tagMapping') ? [{ id: 'tag-admin', name: '管理员' }, { id: 'tag-standby', name: '替班组' }, { id: 'tag-inspector', name: '巡检员' }] : []),
+  ] }
   if (flags.has('workRecipients') && path.startsWith('/notifier/dingtalk/corp/') && path.endsWith('/departments')) {
     return { success: true, result: [{ id: 'ding-team', name: '研发组' }, { id: 'ding-other', name: '运营组' }] }
   }
@@ -225,10 +243,23 @@ notificationRequest.get = async (path, params) => {
 for (const method of ['post', 'put', 'patch', 'remove']) notificationRequest[method] = async path => { throw new Error(`Unexpected ${method} in isolated fixture: ${path}`) }
 if (flags.has('workRecipients')) notificationRequest.post = async path => {
   record('recipientDirectory', path)
+  if (path === '/organization/_all/tree' && flags.has('departmentTree')) return { success: true, result: [
+    { id: 'org-root', name: '总公司', children: [
+      { id: 'org-east', name: '东区', children: [{ id: 'org-team', name: '研发组' }, { id: 'org-east-ops', name: '同名科' }] },
+      { id: 'org-west', name: '西区', children: [{ id: 'org-west-ops', name: '同名科' }] },
+    ] },
+  ] }
   if (path === '/organization/_all/tree') return { success: true, result: [
     { id: 'org-team', name: '研发组' }, { id: 'org-dup-one', name: '运营组' }, { id: 'org-dup-two', name: '运营组' },
   ] }
-  if (path === '/role/_query/no-paging') return { success: true, result: [{ id: 'role-duty', name: '值班员' }] }
+  if (path === '/role/_query/no-paging') return { success: true, result: [
+    { id: 'role-duty', name: '值班员' },
+    ...(flags.has('tagMapping') ? [
+      { id: 'admin-east', name: '管理员' }, { id: 'admin-west', name: '管理员' },
+      ...Array.from({ length: 12 }, (_, index) => ({ id: `role-${index}`, name: `班组 ${index + 1}` })),
+      { id: 'role-inspector', name: '巡检员' }, { id: 'role-expired', name: '维修' },
+    ] : []),
+  ] }
   throw new Error(`Unexpected post in recipient fixture: ${path}`)
 }
 if (flags.has('emailImages')) notificationRequest.post = async (path, data) => {
@@ -240,12 +271,17 @@ if (flags.has('emailImages')) notificationRequest.post = async (path, data) => {
 }
 
 
+function matchesBusinessChannel(row, channelProvider, key) {
+  return row.channelProvider === channelProvider && (row.channelKey || undefined) === (key || undefined)
+}
+
 function persistBusinessChannel(providerId, value) {
   const business = businessTypes.find(row => row.id === providerId)
   if (!business) throw new Error('Business fixture not found')
   business.channels ??= []
-  const index = business.channels.findIndex(row => row.channelProvider === value.channelProvider)
-  const id = business.channels[index]?.id || `fixture-channel-${providerId}-${value.channelProvider}`
+  const index = business.channels.findIndex(row => matchesBusinessChannel(row, value.channelProvider, value.channelKey))
+  const suffix = value.channelKey ? `-${value.channelKey}` : ''
+  const id = business.channels[index]?.id || `fixture-channel-${providerId}-${value.channelProvider}${suffix}`
   const channel = { ...clone(value), providerId, id }
   if (index >= 0) business.channels[index] = channel
   else business.channels.push(channel)
@@ -256,8 +292,10 @@ function persistBusinessTemplate(providerId, item) {
   if (!item.template) return { channel: clone(persistBusinessChannel(providerId, item.channel)), template: null }
   const business = businessTypes.find(row => row.id === providerId)
   if (!business) throw new Error('Business fixture not found')
-  const previous = business.channels?.find(row => row.channelProvider === item.channel.channelProvider)
-  const id = previous?.channelConfiguration?.templateId || `fixture-template-${providerId}-${item.channel.channelProvider}`
+  const { channelProvider, channelKey } = item.channel
+  const previous = business.channels?.find(row => matchesBusinessChannel(row, channelProvider, channelKey))
+  const suffix = channelKey ? `-${channelKey}` : ''
+  const id = previous?.channelConfiguration?.templateId || `fixture-template-${providerId}-${channelProvider}${suffix}`
   const template = { ...clone(item.template), id }
   const channel = persistBusinessChannel(providerId, { ...item.channel,
     channelConfiguration: { ...item.channel.channelConfiguration, templateId: id, notifierId: template.configId } })
@@ -309,9 +347,9 @@ Object.assign(messageNotificationApi, {
     { id: 'detail.level', name: '告警级别', type: 'int' }, { id: 'detail.sceneName', name: '场景名称', type: 'string' },
     ...(flags.has('emailImages') ? [{ id: 'imageUrl', name: '图片地址', type: 'string' }] : []),
   ] },
-  getBusinessTemplate: async (providerId, channelProvider) => { record('getBusinessTemplate', { providerId, channelProvider });
+  getBusinessTemplate: async (providerId, channelProvider, channelKey) => { record('getBusinessTemplate', { providerId, channelProvider, channelKey });
     const business = businessTypes.find(row => row.id === providerId)
-    const channel = business?.channels?.find(row => row.channelProvider === channelProvider)
+    const channel = business?.channels?.find(row => matchesBusinessChannel(row, channelProvider, channelKey))
     return channel ? { channel: { ...clone(channel), providerId }, template: clone(templates.find(row => row.id === channel.channelConfiguration?.templateId) || null) } : undefined
   },
   saveBusinessTemplate: async (providerId, channelProvider, item) => { record('saveBusinessTemplate', { providerId, channelProvider, item }); return persistBusinessTemplate(providerId, item) },
@@ -356,7 +394,10 @@ Object.assign(wechatMemberApi, {
 })
 
 if (flags.has('workRecipients')) Object.assign(dingTalkMemberApi, {
-  departments: async () => [{ id: 'ding-team', name: '研发组' }, { id: 'ding-other', name: '运营组' }],
+  departments: async () => {
+    const children = [{ id: 'ding-team', name: '研发组' }, { id: 'ding-other', name: '运营组' }]
+    return flags.has('departmentTree') ? [{ id: 'ding-root', name: '钉钉通讯录', children }] : children
+  },
   members: async () => [{ id: 'ding-zhang', name: '张三' }],
   users: wechatMemberApi.users,
   bindings: async () => [],

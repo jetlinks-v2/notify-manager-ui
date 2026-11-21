@@ -1,6 +1,16 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { notificationChannelLabels, type NotificationChannel, type NotificationLoadState } from '../../shared'
+import { dingTalkRobotChannelId, notificationChannelLabels, type NotificationChannel, type NotificationLoadState, type NotifierConfig } from '../../shared'
+
+export interface TemplateChannelNavigationProps {
+  channels: NotificationChannel[]
+  value: string
+  configurationStates: Readonly<Record<string, NotificationLoadState>>
+  configurationsByChannel: Readonly<Record<string, readonly Pick<NotifierConfig, 'id' | 'name'>[]>>
+  activeConfigId?: string
+}
+
+type ChannelTab = { key: string; id: string; label: string; configId?: string }
 
 interface ChannelGroup {
   key: string
@@ -11,7 +21,7 @@ interface ChannelGroup {
 }
 
 /** Visual channel families keep the actual provider ID as the selection and route identity. */
-export function useTemplateChannelNavigation(props: { channels: NotificationChannel[]; value: string; configurationStates: Readonly<Record<string, NotificationLoadState>> }, emit: (event: 'change', id: string) => void) {
+export function useTemplateChannelNavigation(props: TemplateChannelNavigationProps, emit: (event: 'change', id: string, configId?: string) => void) {
   const { t } = useI18n()
   const { typeTitle, providerTitle } = notificationChannelLabels(t)
   /** Only a successful empty snapshot means unconfigured; unreadable configuration remains unknown. */
@@ -48,13 +58,33 @@ export function useTemplateChannelNavigation(props: { channels: NotificationChan
     })
   })
   const activeGroup = computed(() => groups.value.find(item => item.channels.some(channel => channel.id === props.value)))
-  const subChannels = computed(() => activeGroup.value && activeGroup.value.channels.length > 1 ? activeGroup.value.channels.map(channel => ({
-    id: channel.id, label: providerTitle(channel),
-  })) : [])
+  // 配置名称允许重复，页签和路由以配置 ID 区分实例。
+  const subChannels = computed(() => {
+    const channels = activeGroup.value?.channels ?? []
+    const tabs = channels.flatMap<ChannelTab>(channel => {
+      const label = providerTitle(channel)
+      const configs = props.configurationsByChannel[channel.id] ?? []
+      if (!configs.length) {
+        return [{ key: channel.id, id: channel.id, label }]
+      }
+      return configs.map(config => {
+        const name = config.name.trim() || config.id
+        return { key: `${channel.id}:${config.id}`, id: channel.id, configId: config.id,
+          label: channel.id === dingTalkRobotChannelId ? `${label}·${name}` : name }
+      })
+    })
+    return channels.length > 1 || tabs.some(tab => tab.configId) ? tabs : []
+  })
+  const activeTabKey = computed(() => subChannels.value.find(tab =>
+    tab.id === props.value && (!tab.configId || tab.configId === props.activeConfigId))?.key ?? '')
   function selectGroup(key: string) {
     const group = groups.value.find(item => item.key === key)
     if (group && group !== activeGroup.value) emit('change', group.channels.find(item => item.provider === 'dingTalkMessage' || item.provider === 'corpMessage')?.id || group.channels[0].id)
   }
-  function selectChannel(key: string | number) { emit('change', String(key)) }
-  return { t, groups, activeGroup, subChannels, selectGroup, selectChannel }
+  function selectChannel(key: string | number) {
+    const tab = subChannels.value.find(tab => tab.key === key)
+    if (tab?.configId) emit('change', tab.id, tab.configId)
+    else if (tab) emit('change', tab.id)
+  }
+  return { t, groups, activeGroup, subChannels, activeTabKey, selectGroup, selectChannel }
 }

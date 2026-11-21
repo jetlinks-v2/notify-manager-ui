@@ -47,7 +47,8 @@ async function savedTemplates(page, type, provider) {
   assert.equal(generated.length, 4)
   assert.equal(new Set(generated.map(item => item.id)).size, 4)
   for (const business of businessTypes) {
-    const channel = business.channels.find(item => item.channelProvider === `notifier-${type}`)
+    const channel = business.channels.find(item => item.channelProvider === `notifier-${type}`
+      && generated.some(template => template.id === item.channelConfiguration?.templateId))
     assert.equal(channel.state, 'enabled')
     assert.equal(channel.channelConfiguration.notifierId, config.id)
     assert.ok(generated.some(item => item.id === channel.channelConfiguration.templateId && item.provider === provider))
@@ -228,13 +229,14 @@ try {
   const occupied = await addRobot(work)
   await saveChannelDraft(work)
   await occupied.waitFor({ state: 'hidden' })
-  await summary(work, 0, 4)
+  await summary(work, 4, 0)
   const robotConfig = (await snapshot(work)).configs.find(item => item.provider === 'dingTalkRobotWebHook')
   assert.deepEqual(robotConfig.configuration.messageTemplateDefaults, { messageType: 'markdown', title: '${topic}', message: '${message}' })
+  assert.equal((await savedTemplates(work, 'dingTalk', 'dingTalkRobotWebHook')).generated.length, 4)
   assert.deepEqual((await savedTemplates(work, 'dingTalk', 'dingTalkMessage')).generated, workSaved.generated)
 
   const [business] = (await snapshot(work)).businessTypes
-  const templateId = business.channels.find(item => item.channelProvider === 'notifier-dingTalk').channelConfiguration.templateId
+  const templateId = business.channels.find(item => item.channelKey === workSaved.config.id).channelConfiguration.templateId
   await work.evaluate(({ businessId, templateId }) => {
     const { router, templates } = window.__notificationSmoke
     const template = templates.find(item => item.id === templateId).template
@@ -277,17 +279,20 @@ try {
   })
   assert.ok(robotSaved.generated.every(item => item.template.messageType === 'link' && item.template.link.messageUrl === 'https://fixture.example.test/details'
     && item.template.link.title === '${topic}' && item.template.link.text === '${message}'))
-  await editButton(robot.locator('.robot-configurations__row'), await t(robot, 'messageNotification.channels.more')).click()
+  await editButton(robot.locator('.channel-configurations__row'), await t(robot, 'messageNotification.channels.more')).click()
   await editButton(robot.locator('.ant-dropdown:visible'), '补齐消息模板').click()
   await summary(robot, 0, 4)
   assert.deepEqual((await savedTemplates(robot, 'dingTalk', 'dingTalkRobotWebHook')).generated, robotSaved.generated)
   await robot.close()
 
   const webhook = await open('webhook:http', 1440, 'fail=saveBusinessTemplate')
-  await text(webhook, await t(webhook, 'messageNotification.channels.webhook.address')).fill('https://fixture.example.test/webhook')
+  await editButton(webhook, await t(webhook, 'messageNotification.channels.add')).click()
+  const webhookModal = webhook.locator('.channel-configuration-modal')
+  await text(webhookModal, await t(webhook, 'messageNotification.channels.webhook.address')).fill('https://fixture.example.test/webhook')
   assert.equal(await webhook.locator('.webhook-preview').count(), 0)
   assert.equal(await webhook.getByText('请求示例', { exact: true }).count(), 0)
   await saveChannelDraft(webhook)
+  await webhookModal.waitFor({ state: 'hidden' })
   await summary(webhook, 0, 0, 1)
   await editButton(feedback(webhook), '重试补齐').click()
   await summary(webhook, 4, 0)

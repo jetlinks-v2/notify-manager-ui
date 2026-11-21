@@ -2,9 +2,12 @@ import type { NoticeChannelConfig, NoticeChannelTemplateItem } from '../../../..
 import type { MessageNotificationApi } from '../../../../../api/notice/messageNotification'
 import { buildNoticeTemplateChannelVariables } from '../../../../notice/template/hooks/noticeTemplateChannelVariables'
 import type { PrototypeTranslate } from '../../Templates/definition/templateDefaults'
-import { channelProviderFor, hasDefiniteSaveRejection, readBusinessTemplate } from '../../Templates/workspace/businessTemplates'
 import {
-  classifyNotificationFailure, NotificationRequestError, resolveNotificationChannel,
+  bindingConfigId, businessChannelBindings, businessChannelKey, channelProviderFor,
+  hasDefiniteSaveRejection, loadBusinessTemplateForConfig, readSavedBusinessTemplate,
+} from '../../Templates/workspace/businessTemplates'
+import {
+  classifyNotificationFailure, NotificationRequestError, resolveNotificationChannel, usesBusinessChannelKey, withNotificationChannel,
   type NotificationChannel, type NotificationFailureKind, type NotifierConfig,
 } from '../../shared'
 import { applyWorkRecipients, isWorkChannel, readWorkRecipients } from '../../shared/workRecipients'
@@ -12,7 +15,7 @@ import { wechatCorpChannel } from '../wechat/templateDefaults'
 import { createChannelMessageTemplate, dingTalkRobotChannel, readTemplateSetup, smsChannel, supportsTemplateSetup, templateSetupIssues } from './templateDefaults'
 
 type TemplateFillApi = Pick<MessageNotificationApi, 'getConfig' | 'getSmsTemplateContent' | 'queryTemplateDirectory' |
-  'getBusinessTemplate' | 'queryInsideMailChannel' | 'saveBusinessTemplate' | 'saveBusinessTemplates'>
+  'getBusinessTemplate' | 'queryInsideMailChannel' | 'queryTemplates' | 'saveBusinessTemplate' | 'saveBusinessTemplates'>
 
 export interface TemplateFillResult {
   created: number
@@ -51,6 +54,7 @@ export async function fillMessageTemplates(
   const values = readTemplateSetup(channel.id, config.configuration)
   if (!supportsTemplateSetup(channel.id) || Object.keys(templateSetupIssues(channel.id, values)).length || !active()) return result
   const channelProvider = channelProviderFor(channel)
+  const keyed = usesBusinessChannelKey(channel.id)
   let directory: NoticeChannelConfig[]
   let recipients: ReturnType<typeof readWorkRecipients>
   try {
@@ -72,6 +76,7 @@ export async function fillMessageTemplates(
   const channelName = channel.name || translate(channel.labelKey)
   let smsContent: string | undefined
   let insideMailRequest: Promise<NoticeChannelConfig | undefined> | undefined
+  let templateDirectory: ReturnType<TemplateFillApi['queryTemplates']> | undefined
   // The same directory powers the template page and already applies the current business permissions.
   for (const code of new Set(directory.map(item => item.provider))) {
     if (!active()) break
@@ -84,8 +89,20 @@ export async function fillMessageTemplates(
       // A placeholder may have become a persisted topic since the batch started.
       if (!business.id) business = readBusiness(await api.queryTemplateDirectory(), code)
       if (!business || !active()) continue
-      if (hasBinding(business, channelProvider)
-        || (business.id && await api.getBusinessTemplate(business.id, channelProvider))) {
+      let configured: boolean
+      if (keyed) {
+        // 自定义 key 可能不同于凭证 ID。仅在目录缺少归属时补读该服务商的模板列表。
+        const needsTemplates = businessChannelBindings(business, channel)
+          .some(binding => businessChannelKey(binding) && !bindingConfigId(binding, []))
+        const records = needsTemplates
+          ? (await (templateDirectory ??= api.queryTemplates(withNotificationChannel({ paging: false }, channel)))).data
+          : undefined
+        configured = Boolean((await loadBusinessTemplateForConfig(api, business, channel, config.id, records)).template)
+      } else {
+        configured = hasBinding(business, channelProvider)
+          || Boolean(business.id && await api.getBusinessTemplate(business.id, channelProvider))
+      }
+      if (configured) {
         result.skipped += 1
         continue
       }
@@ -111,6 +128,7 @@ export async function fillMessageTemplates(
           providerId: business.id,
           name: channelName,
           channelProvider,
+          ...(keyed ? { channelKey: config.id } : {}),
           state: 'enabled',
           channelConfiguration: {
             notifierId: config.id,
@@ -140,10 +158,11 @@ export async function fillMessageTemplates(
           throw new NotificationRequestError('error', response)
         }
         business = response.provider
-        written = response.channels.find(row => row.channel.channelProvider === channelProvider)
+        written = response.channels.find(row => row.channel.channelProvider === channelProvider
+          && businessChannelKey(row.channel) === businessChannelKey(item.channel))
       }
-      const stored = readBusinessTemplate(business, channel, written).template
-      if (!written || !isEnabled(written.channel) || stored?.configId !== config.id) {
+      readSavedBusinessTemplate(business, channel, item, written)
+      if (!written || !isEnabled(written.channel)) {
         throw new NotificationRequestError('error', written)
       }
       result.created += 1

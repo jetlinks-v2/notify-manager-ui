@@ -20,6 +20,20 @@
 | 钉钉工作通知、企业微信工作通知 | 通讯录部门 ↔ 项目组织 | 部门名与组织名相同 |
 | 企业微信工作通知 | 企业微信标签 ↔ 项目角色 | 标签名与角色名相同 |
 
+### 管理部门和标签对应
+
+在「系统管理 → 通知渠道」选择企业微信或钉钉工作通知，进入「部门对应 → 管理对应」。抽屉默认显示全部项目组织，可逐级展开或收起。两个分支即使有同名组织，也可按层级分别选择。
+
+企业微信的「标签对应 → 管理对应」按项目角色平铺，每页 15 项。同名角色在名称下显示角色 ID。可按角色名或已选择的企微标签名搜索，通过「全部」「已对应」「未对应」「已失效」筛选。选择或更换标签时可搜索标签名或 ID，已分配给其他角色的标签会禁选。失效对应可解除，切换条件或翻页会保留草稿。
+
+- 顶部可按项目组织名或已选择的通讯录部门名搜索，并切换「全部」「已对应」「未对应」「已失效」。命中下级组织时会展开上级，状态按钮只统计符合搜索条件的组织。清除筛选后会恢复原来的展开位置。
+- 在组织行点击「选择部门」或「更换」，可浏览或搜索通讯录部门树。已分配给其他组织的部门会禁选。项目组织或通讯录部门消失后，原对应仍可在「已失效」中找到并解除。
+- 两个抽屉内的自动匹配、手动选择和解除都会先标记为「未保存」。点击「保存对应关系」统一提交后，状态和数量才更新。
+
+`api/notice/workRecipients.ts` 读取项目与企业通讯录。`views/system/MessageNotification/Channels/members/RecipientMappingTable.vue` 和同目录的 `useRecipientMappingTable.ts` 通过 `j-pro-table` 展示组织树或角色列表，`MappingFilterBar.vue` 与成员抽屉共用筛选操作。`useWorkRecipients.ts` 管理草稿并沿用渠道现有的对应关系保存和模板同步流程。
+
+模块目录下的 `node --test tests/messageNotificationWechat.test.mjs` 通过 28 项。`tests/messageNotificationBrowser/workRecipients.mjs` 用隔离通讯录验证企业微信桌面与 390px 窄屏的标签操作，覆盖跨页搜索、同名角色、状态计数、占用标签、草稿、解除和保存回显，同时回归企业微信与钉钉的部门树、权限和模板同步。两份变更 Vue 文件的样式检查、三语文案检查和模块生产构建均通过。模块未提供独立 lint 脚本。`node --test tests/messageNotification*.test.mjs` 通过 413/414 项，既有失败为 AI 合规告警邮件原型的来源字段断言。从 `runtime-ui/` 运行 `vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json` 仍有 195 项既有诊断，与改动前逐项一致。
+
 ### 对应与同步
 
 1. `views/system/MessageNotification/Channels/members/` 分别展示「成员对应」「部门对应」「标签对应」。每个区块沿用同一摘要样式，并分别提供「自动匹配」「管理对应」与独立管理抽屉。钉钉工作通知展示成员和部门两个区块。读取当前项目和当前渠道可访问的候选对象，去除名称首尾空白后精确比较。双方同名对象均唯一时自动绑定，重名交由人工处理，保留已有对应。已有企微成员绑定继续有效，后续自动匹配使用姓名。管理支持查看、手动选择、更换和解除。
@@ -109,9 +123,9 @@ AgentId 说明验证（2026-11-19）：模块目录执行 `node --test tests/mes
 | 钉钉群机器人 | 在机器人配置弹窗选择消息类型，默认 Markdown。链接消息需填写跳转地址。保存时自动写入标题 `${topic}` 和正文 `${message}`。 |
 | Webhook | 配置接收地址和请求头。系统填入默认 JSON 请求体，请求示例和编辑入口统一到消息模板页。 |
 
-`Channels/useChannelsPage.ts` 和 `Channels/robot/useRobotConfigurations.ts` 将保存后的当前渠道交给 `Channels/templateSetup/useChannelTemplateSetup.ts`。`Channels/templateSetup/templateDefaults.ts` 按消息类型组装邮件、钉钉工作通知和 Webhook 模板，扩展类型使用通用通知变量。钉钉工作通知从 `configuration.agentId` 取值，群机器人在 `configuration.messageTemplateDefaults` 中保存消息类型、默认标题与正文以及链接消息的跳转地址。自动补齐群机器人模板时使用通用通知变量，纯文本消息只带正文。企业微信沿用 `configuration.alarmTemplateDefaults.agentId` 和历史 AgentId 读取规则。
+`Channels/useChannelsPage.ts` 和 `Channels/configuration/useChannelConfigurations.ts` 将保存后的当前渠道交给 `Channels/templateSetup/useChannelTemplateSetup.ts`。`Channels/templateSetup/templateDefaults.ts` 按消息类型组装邮件、钉钉工作通知和 Webhook 模板，扩展类型使用通用通知变量。钉钉工作通知从 `configuration.agentId` 取值，群机器人在 `configuration.messageTemplateDefaults` 中保存消息类型、默认标题与正文以及链接消息的跳转地址。自动补齐群机器人模板时使用通用通知变量，纯文本消息只带正文。企业微信沿用 `configuration.alarmTemplateDefaults.agentId` 和历史 AgentId 读取规则。
 
-`Channels/templateSetup/fillMessageTemplates.ts` 回读当前渠道和消息类型目录，通过现有单渠道和聚合接口创建缺失的模板。新绑定默认启用，首次创建类型时处理内置站内信，个人订阅由用户勾选。工作通知与群机器人共用每个类型的一条 `notifier-dingTalk` 绑定。已有绑定优先，模板页可显式调整绑定的钉钉配置。渠道和模板分别保存，遇到部分成功可在渠道页或机器人行菜单用「补齐消息模板」重试缺失项。
+`Channels/templateSetup/fillMessageTemplates.ts` 回读当前渠道和消息类型目录，通过现有单渠道和聚合接口创建缺失的模板。新绑定默认启用，首次创建类型时处理内置站内信，个人订阅由用户勾选。工作通知、群机器人和 Webhook 按各自的配置实例读取绑定。已有绑定优先，消息模板页按配置 ID 打开对应内容。渠道和模板分别保存，遇到部分成功可在渠道页或机器人行菜单用「补齐消息模板」重试缺失项。
 
 ### 阿里云语音和短信随渠道创建消息模板
 
@@ -128,16 +142,30 @@ AgentId 说明验证（2026-11-19）：模块目录执行 `node --test tests/mes
 
 模块全量执行 `node --test tests/messageNotification*.test.mjs`，409 项中 408 项通过，既有失败为 AI 合规告警邮件原型缺少来源字段。模块生产构建、两处 Vue 定向样式检查、三语 796 个消息通知键校验和 `git diff --check` 通过。模块无独立 lint 脚本。在 `runtime-ui/` 复跑 `node --max_old_space_size=8192 node_modules/vue-tsc/bin/vue-tsc.js --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，改动前后均为相同的 195 条既有诊断。
 
-### 钉钉群机器人按配置补齐模板（待确认）
+### 消息模板的群机器人页签
 
-- 归属 `runtime-ui/modules/notify-manager-ui`，调整 `Channels/templateSetup/fillMessageTemplates.ts` 的群机器人补齐流程。以业务标识和当前机器人 `configId` 判断模板是否已存在。Webhook 地址用于投递，机器人改名或更换地址后仍按配置 ID 识别。
-- 业务已绑定当前机器人且模板存在时直接跳过。业务已有其他钉钉配置的绑定时，复用 `api/notice/messageNotification.ts` 中现有的通知模板查询与创建接口，为当前机器人补齐缺失的普通模板。业务尚无钉钉绑定时，沿用首次补齐的创建及绑定流程。
-- 补齐保持现有业务绑定、触发和订阅规则。业务发送仍按已有绑定使用一份模板。改动限于运行时前端的群机器人补齐入口，消息模板页和后端接口沿用现有实现。
-- 验证普通模板接口能稳定识别同一业务和同一配置生成的模板。用两个不同 Webhook 的机器人覆盖分别生成、重复补齐、存量工作通知绑定保留、部分失败后重试，以及机器人改名后不重复生成。检查数据库模板的 `configId` 与所选机器人一致，现有业务通道和模板引用保持原值。
+`views/system/MessageNotification/Templates/hooks/useTemplateCatalog.ts` 复用消息模板页加载的通知配置，`Templates/components/TemplateChannelNavigation.vue` 在钉钉下按可见配置展示「群机器人·配置名称」，以配置 ID 标识页签。`Templates/hooks/useTemplatePage.ts` 使用现有 `configId` 查询参数回显选择。每个机器人页签展示自己保存的模板，未绑定时展示可编辑的默认预览。保存后重新打开页签会回读该配置的正文，详见 [Webhook 与钉钉多份配置及独立模板](#webhook-与钉钉多份配置及独立模板)。
 
-模块目录执行 `node --test tests/messageNotification*.test.mjs`，401 项通过。使用 9201 开发服务运行 `tests/messageNotificationBrowser/{channelTemplates,robotSigning}.mjs`，通过隔离数据验证标题和正文隐藏、自动写入默认值、链接地址必填、模板生成和 390px 布局。
+消息模板页以业务组织左侧目录。对于按配置实例管理模板的钉钉和 Webhook，`Templates/hooks/useTemplatePage.ts` 将当前配置 ID 交给 `Templates/templateDirectoryModel.ts`，每个业务显示一项，搜索及配置提示使用该配置绑定的模板。右侧页签负责切换配置和对应内容。
 
-脚本语法检查、`git diff --check` 和模块生产构建通过。工作区无独立 lint 脚本。模块类型检查改动前后均报告 197 条既有诊断，复验使用上文的 `vue-tsc` 命令。
+本地 9201 已核对第二个群机器人与工作通知的目录一致，右侧分别显示对应正文。隔离浏览器 `navigation.mjs` 的 13 组和 `webhook.mjs` 的 9 组回归通过。通知测试通过 419/420 项，余下一项为已有的 AI 合规告警邮件原型断言。模块构建、变更 Vue 文件定向样式检查和 `git diff --check` 通过，`vue-tsc` 仍为原有 195 条诊断。
+
+在模块目录执行 `node --test tests/messageNotification*.test.mjs`，412 项中 411 项通过。既有失败为 AI 合规告警邮件原型缺少来源字段。`tests/messageNotificationBrowser/navigation.mjs` 和 `tests/messageNotificationBrowser/channelTemplates.mjs` 的隔离回归通过，覆盖机器人页签切换、绑定模板回显、按指定配置首次保存及钉钉工作通知入口。
+
+模块生产构建、两个 Vue 文件的定向样式检查和 `git diff --check` 通过。工作区无独立 lint 脚本。在 `runtime-ui/` 执行 `node --max_old_space_size=8192 node_modules/vue-tsc/bin/vue-tsc.js --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，变更前后均为相同的 195 条既有诊断。
+
+### Webhook 与钉钉多份配置及独立模板
+
+- `runtime-ui/modules/notify-manager-ui` 的「通知渠道」中，Webhook 和钉钉群机器人共用配置列表及新增、编辑弹窗。每行按配置 ID 执行测试、编辑、补齐模板和删除。Webhook 弹窗填写名称、接收地址和 HTTP 请求头，列表只显示名称和脱敏地址。`views/system/MessageNotification/shared/catalog.ts` 声明两类渠道的多配置能力，`Channels/index.vue` 和 `Channels/useChannelWorkspace.ts` 负责列表入口和配置草稿。
+- `api/notice-center.ts` 和 `api/notice/messageNotification.ts` 接入 [notify-manager #94](https://github.com/jetlinks-v2/notify-manager/pull/94) 的 `channelKey`。单条查询传查询参数，单条保存传 `channel.channelKey`。新建时按凭证 ID 分配稳定 key。存量绑定按实际 `template.configId` 匹配，沿用服务端已有的 key、通道 ID 和模板 ID，包括无 key 的默认实例。上线依赖后端先提供该契约。
+- `Templates/useTemplateWorkspace.ts` 和 `Templates/workspace/businessTemplates.ts` 按业务记录、服务商及凭证隔离模板草稿、保存和回读。消息模板页显示工作通知、每个机器人和每份 Webhook 配置各自的模板。切换或刷新后按 `configId` 打开对应模板。保存核对返回的实例和凭证，读取失败时保持错误状态。
+- `Channels/templateSetup/fillMessageTemplates.ts` 以当前凭证的绑定判断是否需要补齐。`Channels/members/syncWorkRecipients.ts` 只更新工作通知实际绑定的模板。保留已有模板的正文、状态和通道变量。个人订阅、发送策略和独立启停功能分别沿用现有契约及对应方案。
+- 模块目录执行 `node --test tests/messageNotification*.test.mjs`，419 项中 418 项通过。既有失败为 AI 合规告警邮件原型的来源字段断言。新增验证覆盖同主题多实例保存回读、存量默认 ID、收件人同步、切换草稿和写入前的错误处理。
+- `tests/messageNotificationBrowser/` 下的 `webhook.mjs`、`navigation.mjs` 和 `channelTemplates.mjs` 通过隔离浏览器回归，覆盖多份配置、独立模板、重复补齐及 390px 窄屏。`robotSigning.mjs` 的 12 项浏览器断言全部通过，报告生成后浏览器退出超时，已结束该测试进程。模块生产构建、定向样式检查及 `git diff --check` 通过。模块无独立 lint 脚本。在 `runtime-ui/` 执行 `vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，仍为原有 195 条诊断。真实后端联调和实际投递需在支持 `channelKey` 的环境验证。
+
+基于 `origin/2.20` 的 `9873828` 交付复验。模块目录执行 `node --test tests/messageNotification*.test.mjs views/notice/template/hooks/noticeAlarmVariables.test.mjs`，433 项全部通过，包含已修复的 AI 合规告警默认邮件模板断言。模块生产构建、12 个变更 Vue 文件的样式检查、中英日各 1204 个语言键一致性检查及 `git diff --check` 通过。模块 `vue-tsc` 与该基线均有 197 条相同诊断。上线依赖 [notify-manager #94](https://github.com/jetlinks-v2/notify-manager/pull/94) 的 `channelKey` 契约，需在支持该契约的环境验证实际保存、回读和投递。
+
+隔离浏览器复验覆盖模板导航、Webhook 多配置、渠道创建后补齐模板及收件人对应。复验时修正了浏览器夹具的初始化顺序，以及导航测试从窄屏切回桌面后读取业务目录的时机。
 
 ### 历史钉钉工作通知接收人选择
 
@@ -177,15 +205,17 @@ AgentId 说明验证（2026-11-19）：模块目录执行 `node --test tests/mes
 
 实现提交：`8dc19ca`；配置说明与按钮修正：`48553f4`（本地 `2.20`）；未推送。
 
-`/system/notification/channels?channel=dingTalk:dingTalkRobotWebHook` 使用紧凑机器人列表，每行展示名称、脱敏 Webhook 地址、「测试」和「更多」。更多菜单提供「编辑」和「补齐消息模板」。右侧标题保留“添加群机器人”入口，无数据复用 `CloudEmpty`。列表与空状态均常驻显示图文说明侧栏；页头“配置说明”按钮、侧栏标题和“收起”按钮已移除。窄屏沿用单列布局。
+`/system/notification/channels?channel=dingTalk:dingTalkRobotWebHook` 使用紧凑机器人列表，每行展示名称、脱敏 Webhook 地址、「测试」和「更多」。更多菜单提供「编辑」「补齐消息模板」和「删除」。删除受通知配置删除权限控制，确认框显示机器人名称。`Channels/configuration/useChannelConfigurations.ts` 校验确认目标，由 `Channels/useChannelWorkspace.ts` 删除对应配置并刷新列表。请求失败时保留该配置并提示原因。右侧标题保留“添加群机器人”入口，无数据复用 `CloudEmpty`。列表与空状态均常驻显示图文说明侧栏；页头“配置说明”按钮、侧栏标题和“收起”按钮已移除。窄屏沿用单列布局。
+
+删除回归（2026-11-21）在 `9201` 核对实际菜单入口，并用 `robotSigning.mjs` 与仅渠道的 `smoke.mjs` 在隔离数据中通过 22 组浏览器检查，覆盖取消、切换配置、权限撤销、失败重试和删除最后一条后的空态。下方四个测试文件共 124 项通过，定向样式检查、三语文案校验和模块构建通过。模块类型检查的 195 条诊断均与改动前一致，模块没有独立 lint 脚本。
 
 配置说明与按钮修正（2026-11-13）：`Channels/index.vue` 复用同一个 `ChannelHelp` 和说明按钮，机器人列表及空状态恢复说明侧栏；`messageNotification.channels.robot.add` 提供“添加群机器人”的中英日文案。沿用下方命令验证：`robotSigning.mjs` 8 组、渠道 `smoke.mjs` 10 组通过，覆盖默认展开、收起 / 重开、空列表、添加弹窗和三语 390px 布局，浏览器无页面错误或业务请求；定向样式检查 1 个 Vue 文件、三语资源及 `git diff --check` 通过。模块构建通过（23.59 秒，保留既有告警）；类型检查仍为 195 项既有诊断，无新增或移除，完整类型检查尚未通过，无独立 lint 脚本。报告与截图位于 `/tmp/jetlinks-robot-help/`，命令日志前缀 `/tmp/jetlinks-robot-help-`；未操作真实配置或发送真实消息。
 
 添加 / 编辑弹窗提供名称、Webhook 地址以及消息模板默认配置。编辑时从当前机器人配置回填 Webhook 地址，输入框默认遮挡完整地址，点击小眼睛可查看。留空保存会保留已保存的地址，列表和占位提示继续显示脱敏地址。取消会丢弃当前弹窗草稿，失败会保留输入，保存成功后关闭并刷新列表。刷新失败时只重试读取。保存时保留历史加签密钥。接口仅返回掩码且无法安全保留凭据时，弹窗提示后阻止更新。
 
-`Channels/channelSchema.ts` 从当前记录初始化地址草稿，`Channels/robot/RobotConfigurationModal.vue` 提供地址的遮挡和显隐。模块目录执行 `node --test tests/messageNotification*.test.mjs`，401 项通过。沿用下文命令运行 `robotSigning.mjs`、`smoke.mjs`，分别通过 9 组和 10 组。使用相同浏览器环境运行 `channelTemplates.mjs`，通过钉钉机器人新增和模板联动验证。本地机器人配置已只读核对地址回显。定向样式检查和模块构建通过。`vue-tsc` 仍有 195 条既有诊断，本次回显改动未引入新诊断，修复基线后按下文命令复验。
+`Channels/channelSchema.ts` 从当前记录初始化地址草稿，`Channels/configuration/ChannelConfigurationModal.vue` 提供地址的遮挡和显隐。模块目录执行 `node --test tests/messageNotification*.test.mjs`，401 项通过。沿用下文命令运行 `robotSigning.mjs`、`smoke.mjs`，分别通过 9 组和 10 组。使用相同浏览器环境运行 `channelTemplates.mjs`，通过钉钉机器人新增和模板联动验证。本地机器人配置已只读核对地址回显。定向样式检查和模块构建通过。`vue-tsc` 仍有 195 条既有诊断，本次回显改动未引入新诊断，修复基线后按下文命令复验。
 
-实现入口为 `views/system/MessageNotification/Channels/robot/`：`RobotConfigurationList.vue` 负责行展示和操作事件，`RobotConfigurationModal.vue` 负责两字段表单，`useRobotConfigurations.ts` 负责弹窗生命周期、权限与逐行操作，`robotPresentation.ts` 负责 URL 脱敏。`Channels/index.vue`、`useChannelsPage.ts` 接入机器人分支；`useChannelWorkspace.ts` 复用现有读写、校验与凭据合并，增加按草稿标识取消，并在选择配置后等待地址栏导航完成，避免路由监听误关闭测试弹窗。测试、编辑和删除始终使用点击行的配置 ID，删除确认展示机器人名称；切换渠道、外部配置深链接或权限失效会释放对应弹窗草稿。新增 Vue 文件均低于 300 行，中英日文案沿用模块资源。
+实现入口为 `views/system/MessageNotification/Channels/configuration/`：`ChannelConfigurationList.vue` 负责行展示和操作事件，`ChannelConfigurationModal.vue` 负责公共弹窗和机器人字段，`useChannelConfigurations.ts` 负责弹窗生命周期、权限与逐行操作，`configurationPresentation.ts` 负责 URL 脱敏。`Channels/index.vue`、`useChannelsPage.ts` 接入多配置渠道的列表分支；`useChannelWorkspace.ts` 复用现有读写、校验与凭据合并，增加按草稿标识取消，并在选择配置后等待地址栏导航完成，避免路由监听误关闭测试弹窗。测试、编辑和删除始终使用点击行的配置 ID，删除确认展示机器人名称；切换渠道、外部配置深链接或权限失效会释放对应弹窗草稿。新增 Vue 文件均低于 300 行，中英日文案沿用模块资源。
 
 验证（2026-11-13）：渠道、契约、试发与装配集成共 116/116 通过，覆盖取消新建、历史密钥保留、失败重试、按行目标、权限和异步选择、外部深链接、导航完成时序与保存后刷新失败。`robotSigning.mjs` 的 7 组浏览器检查通过，覆盖两字段新增 / 编辑、名称和 URL 校验、逐行测试 / 删除、脱敏、三语和 390px 布局、旧元数据及权限；`smoke.mjs` 的渠道回归 10 组通过。浏览器使用内存夹具，页面错误和业务网络请求均为空，未写入真实通知配置或发送真实消息。模块类型检查前后均为 195 项既有诊断，无新增或移除；完整类型检查尚未通过，工作区没有独立 lint 脚本。三个变更 Vue 文件的定向样式检查、中英日机器人文案键一致性和 `git diff --check` 通过；统一试发浏览器回归 10 组通过，最终模块构建通过（20.78 秒），保留既有大 chunk、CSS 等构建警告。
 
@@ -196,7 +226,7 @@ node --test modules/notify-manager-ui/tests/messageNotification{Channels,Contrac
 SMOKE_PLAYWRIGHT_MODULE="$PWD/../ui/node_modules/playwright" node modules/notify-manager-ui/tests/messageNotificationBrowser/robotSigning.mjs
 SMOKE_CHANNELS_ONLY=1 SMOKE_PLAYWRIGHT_MODULE="$PWD/../ui/node_modules/playwright" node modules/notify-manager-ui/tests/messageNotificationBrowser/smoke.mjs
 SMOKE_PLAYWRIGHT_MODULE="$PWD/../ui/node_modules/playwright" node modules/notify-manager-ui/tests/messageNotificationBrowser/trials.mjs
-node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/system/MessageNotification/Channels/index.vue modules/notify-manager-ui/views/system/MessageNotification/Channels/robot/RobotConfigurationList.vue modules/notify-manager-ui/views/system/MessageNotification/Channels/robot/RobotConfigurationModal.vue
+node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/system/MessageNotification/Channels/index.vue modules/notify-manager-ui/views/system/MessageNotification/Channels/configuration/ChannelConfigurationList.vue modules/notify-manager-ui/views/system/MessageNotification/Channels/configuration/ChannelConfigurationModal.vue
 ./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json
 ```
 
@@ -206,7 +236,7 @@ node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/sy
 
 实现提交：前端 `7eba75d`（本地 `2.20`），后端 `8444cd9ee`；后端评审见 [PR #1717](https://github.com/jetlinks-v2/jetlinks-components/pull/1717)（目标 `2.20`，草稿，待恢复 Maven 私服访问后验证）。
 
-当前暂时屏蔽钉钉机器人的加签密钥输入与清除入口，即使服务端元数据声明 `secret` 也不显示。`Channels/robot/RobotConfigurationModal.vue` 只展示名称和 Webhook 地址，通用表单 `Channels/useChannelConfiguration.ts` 仍过滤机器人 `secret`；保留已保存密钥、元数据能力与密钥合并逻辑，修改 Webhook 时继续保留原密钥，邮件、短信等渠道不受影响。后续恢复入口时仍以服务端元数据声明为前提。
+当前暂时屏蔽钉钉机器人的加签密钥输入与清除入口，即使服务端元数据声明 `secret` 也不显示。`Channels/configuration/ChannelConfigurationModal.vue` 在机器人弹窗中展示名称和 Webhook 地址，通用表单 `Channels/useChannelConfiguration.ts` 仍过滤机器人 `secret`；保留已保存密钥、元数据能力与密钥合并逻辑，修改 Webhook 时继续保留原密钥，邮件、短信等渠道不受影响。后续恢复入口时仍以服务端元数据声明为前提。
 
 `views/system/MessageNotification/shared/configuration.ts` 通过字段策略区分可选密钥和明确清除意图，不硬编码钉钉判断；原本没有可选密钥的配置允许修改。掩码密钥无法安全回传，当前入口屏蔽期间继续拒绝此类配置的普通更新，避免丢失已存密钥。清除使用 `configuration.secret: ""`，前端意图标记不进入 API，配置 ID 间不复用密钥。后端 owning module 为 `modules/jetlinks-components/notify-component/notify-dingtalk`，先升级通知服务再发布前端；不修改 `ui/` 或增加数据库列。
 
@@ -367,6 +397,15 @@ node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/sy
 Commit：`79bbbea`（本地 `2.20`，未推送）。提交快照验证（2026-11-16）：提交只包含本节改动，不含工作区内其他未提交改动；将提交内容导出到 `runtime-ui/` 下的临时目录运行同一组测试，356/359 通过，失败的 3 项为 `messageNotificationIntegration.test.mjs` 中读取真实 `modules/` 目录的菜单 / 路由聚合用例，临时目录不在 `modules/` 下，判断与导出位置有关而非本次改动；这 3 项在工作区原位置通过。日志 `/tmp/notification-business-toggle-commit-snapshot-test.log`。
 
 合规告警默认模板使用 `${detail.sourceName}`，邮件和即时消息以「来源」显示，预览使用同一个变量。默认 Webhook JSON 的 `channel` 键也取该变量。默认模板、模板编辑和 Webhook 的 70 项定向测试通过。
+
+### 按凭证启停消息模板
+
+方案待确认。消息模板页按「消息类型 → 渠道及服务商 → 凭证」选择业务模板。已保存的模板在当前渠道详情区提供「启用当前模板 / 禁用当前模板」和独立状态，同一渠道有多套可用凭证时可逐套切换。默认预览在保存并绑定凭证后开放启停。「更多」中的「启用消息类型 / 禁用消息类型」管理整个类型，类型关闭时显示暂停投递，重新开启后按各模板的状态投递。
+
+- `views/system/MessageNotification/Templates/index.vue` 复用现有渠道导航和详情区，显示当前凭证与模板状态。`Templates/hooks/useTemplatePage.ts`、`Templates/useTemplateWorkspace.ts` 和 `api/notice/messageNotification.ts` 按业务记录、服务商及凭证隔离选择、草稿、回读和启停请求。启停只提交状态，编辑、恢复默认和收件人同步沿用保存的状态。
+- `Channels/templateSetup/fillMessageTemplates.ts` 保留自动补齐的既有触发范围。新增同类凭证的模板由管理员选中凭证并保存。已停用的绑定计为已配置，补齐时保留其状态。只读账号按查询权限查看状态，启停入口沿用模板编辑权限。服务端按 `modules/notify-manager` 的模板绑定权限与状态校验执行。
+- 同时启用多条业务绑定时，各自按原有的默认通道、个人订阅和授权条件参与投递。单独保存的普通模板在显式用作业务绑定后参与这套规则，钉钉群机器人和工作通知都适用。
+- 现有 `messageNotificationBusinessWorkspace.test.mjs` 和 `messageNotificationTemplates.test.mjs` 回归通过。实施后在模块目录执行 `node --test tests/messageNotification*.test.mjs`，复用 `tests/messageNotificationBrowser/navigation.mjs` 和 `channelTemplates.mjs` 验证桌面、窄屏、同类凭证切换与页面刷新。补充关闭「设备告警／邮件 A」后邮件 B、短信及同凭证「设备告警解除」可独立使用的场景。同步运行模块构建、`vue-tsc`、定向样式和三语资源检查。
 
 ### 业务节点联动与模板预览
 
@@ -671,11 +710,13 @@ AgentId 浏览器复核：9200 实际企业微信页已显示新字段和默认�
 
 后端新增 `CorpUserContractTest` 覆盖实际 WebClient 联系方式反序列化、缺字段兼容和跨部门成员去重；定向测试及编译尚未执行成功：缺少 `org.jetlinks.pro:jetlinks-parent:2.20.0-SNAPSHOT`，私服返回 401。恢复 Maven 依赖访问后，在工作区根目录执行 `mvn -f modules/jetlinks-components/notify-component/notify-wechat/pom.xml -Dtest=CorpUserContractTest,WechatMessageTemplateTest,WechatNotifierProviderTest test`（包含编译），详细阻塞见 `/tmp/wechat-channel-backend-tests-online.log`。
 
-### Webhook 渠道表单
+### Webhook 渠道配置列表
 
-`Channels/index.vue` 的 Webhook 渠道表单用于配置接收地址和 HTTP 请求头。保存成功后按本模块的[模板自动生成规则](#邮件钉钉与-webhook-随渠道创建消息模板)补齐模板。请求体的编辑和预览位于消息模板页，渠道表单已移除本地请求示例。
+`Channels/index.vue` 按多配置能力展示列表。首次和后续配置均从页头「新增配置」打开弹窗，已有配置从行菜单进入编辑。列表显示接收地址的协议和主机。`Channels/configuration/useChannelConfigurations.ts` 复用逐行操作和弹窗草稿。保存成功后按配置 ID 及本模块的[模板自动生成规则](#邮件钉钉与-webhook-随渠道创建消息模板)补齐模板。请求体的编辑和预览位于消息模板页。
 
-使用 `tests/messageNotificationBrowser/webhook.mjs` 验证新建和已有渠道的地址回显、请求头凭据保留、模板权限及 390px 布局。模板创建和请求体由 `tests/messageNotificationBrowser/channelTemplates.mjs` 验证。
+隔离浏览器的 `tests/messageNotificationBrowser/webhook.mjs` 通过 9 组检查，覆盖空列表、新增两份配置、逐条编辑、试发与删除、取消草稿、请求头保留和 390px 布局。`channelTemplates.mjs` 验证模板补齐和请求体。群机器人、统一试发、渠道说明、渠道冒烟和模板导航回归均通过。实际服务商投递仍待联调。
+
+模块目录执行 `node --test tests/messageNotification*.test.mjs`，419 项中 418 项通过，余下一项为已有的 AI 合规告警邮件原型断言。模块生产构建、4 个 Vue 文件的定向样式检查、中英日文案键校验及 `git diff --check` 通过。模块无独立 lint 脚本。按上文 `vue-tsc` 命令复验，仍为原有 195 条诊断。
 
 ### 已配置渠道回显与整表编辑
 
@@ -733,7 +774,7 @@ AgentId 浏览器复核：9200 实际企业微信页已显示新字段和默认�
 
 固有只读字段保持只读，短信“渠道测试”和邮件“SMTP 扩展属性”均不显示。本页不接入字段自动 submit，失焦、Enter、选择下拉及元数据控件完成事件均不保存。底栏仅提供保存；整表校验后仅调用一次既有创建或更新接口，成功仍保持表单，失败保留输入。已有配置无修改时禁用保存，提交期间锁定输入、重复保存和配置切换。群机器人继续由“添加 / 编辑”入口开启独立弹窗，在弹窗右下角添加 / 保存并支持取消。
 
-非机器人渠道每个 `type/provider` 只提供一套配置入口：没有配置选择器和新增入口，已存在记录时 workspace 也禁止创建第二套。机器人由 `shared/catalog.ts` 的 `multipleConfigurations` 标记，动态目录继承该展示能力；当前后端机器人提供商为 `dingTalk:dingTalkRobotWebHook`，以多行列表及新增 / 编辑弹窗管理多套配置，保留自动重名编号和删除。未知提供商默认单套，不影响动态渠道或字段发现。历史重复数据不自动删除：默认进入后端第一条，仍兼容明确配置 ID 的原有跳转，防止已引用模板错绑。此限制作用于本页面，不新增后端唯一约束或执行历史数据迁移。
+Webhook 和钉钉群机器人通过 `shared/catalog.ts` 的 `multipleConfigurations` 标记开放多份配置，共用配置列表和新增、编辑弹窗。其他提供商每个 `type/provider` 默认一套配置入口。历史多份配置仍可按明确配置 ID 打开，避免已引用模板错绑。
 
 整表提交只包含当前配置的草稿，不夹带其他渠道的修改。单配置渠道切换时保留各自草稿及编辑状态；机器人弹窗关闭或被外部渠道 / 配置切换替换时丢弃对应草稿，离开页面仍沿用未保存提醒。保存成功后即使列表读取失败，也只重试读取，不重复写入；权限丢失后清理的配置不会被迟到响应恢复。密码与 HTTP 请求头保持掩码、空值保留及禁止提交掩码的规则；无法安全保留的凭据要求重新输入，校验涉及暂时隐藏的字段时展示表单级错误，避免无反馈。元数据新增字段和未编辑参数保留。状态显示“已配置”，不推断服务可用性；单配置渠道的名称与 ID 仅在内部继续用于保存和关联；机器人名称在列表和弹窗中展示，ID 继续仅用于内部关联。
 

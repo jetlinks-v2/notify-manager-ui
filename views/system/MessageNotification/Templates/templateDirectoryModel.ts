@@ -28,13 +28,15 @@ export function templateBusinessKey(item: NoticeChannelConfig, index = 0): strin
   return JSON.stringify(['business', item.type?.id || 'other', item.id || item.provider || item.providerId || index])
 }
 
-/** 目录仅保留分类和可选叶节点两级，模板绑定仍只采用当前渠道内的真实 ID。 */
+/** 按配置浏览时每个业务只占一行，模板搜索及状态提示只使用当前配置的真实绑定。 */
 export function buildTemplateDirectory(
   templates: NotificationTemplate[], businessTypes: NoticeChannelConfig[],
-  labels: { other: string }, translate: (key: string) => string,
+  labels: { other: string }, translate: (key: string) => string, configId?: string,
 ): TemplateDirectoryNode[] {
   if (!businessTypes.length) return []
-  const templateMap = new Map(templates.map(item => [item.id, item]))
+  const scopedToConfig = configId !== undefined
+  const visibleTemplates = scopedToConfig ? templates.filter(item => !!configId && item.configId === configId) : templates
+  const templateMap = new Map(visibleTemplates.map(item => [item.id, item]))
   // 按固定顺序预置分类。扩展分类使用独立的 key，避免与页面分类的 ID 冲突。
   const groups = new Map<string, TemplateDirectoryNode>(displayGroups.map(([id]) => {
     const key = JSON.stringify(['group', id])
@@ -68,8 +70,8 @@ export function buildTemplateDirectory(
       searchText: item.type?.name || labels.other, selectable: false, children: [],
     }
     group.children!.push(node)
-    // 多绑定模板与业务并列，保留旧节点 key 和选择入口；标题补上业务上下文以区分同名模板。
-    if (ids.length > 1) group.children!.push(...ids.map((id): TemplateDirectoryNode => {
+    // 旧版渠道的多绑定模板继续使用目录入口，具名配置的模板通过右侧选择。
+    if (!scopedToConfig && ids.length > 1) group.children!.push(...ids.map((id): TemplateDirectoryNode => {
       const template = templateMap.get(id)!
       return {
         key: JSON.stringify([key, id]), title: `${title} · ${template.name}`, kind: 'template', templateId: id,

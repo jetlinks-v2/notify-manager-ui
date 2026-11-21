@@ -413,6 +413,62 @@ test('drawer pagination and row editing reset when unified filter terms change',
   scope.stop()
 })
 
+test('department search keeps ancestor IDs, counts only matches and restores manual expansion after filtering', () => {
+  const { useRecipientMappingTable } = load(resolve(base, 'members/useRecipientMappingTable'))
+  const scope = vue.effectScope()
+  const row = (id, label, parentId, mappingStatus, externalLabel) => ({ id, label, parentId, mappingStatus, externalLabel })
+  const work = { kind: vue.ref('department'), loaded: vue.ref(true), busy: vue.ref(false), error: vue.ref(''), externalOptions: vue.ref([]), rows: vue.ref([
+    row('root', '集团', undefined, 'unbound'), row('east', '分部', 'root', 'unbound'), row('west', '分部', 'root', 'unbound'),
+    row('first', '值班组', 'east', 'bound', '华东班组'), row('second', '值班组', 'west', 'invalid', '旧班组'),
+    row('orphan', 'orphan', undefined, 'invalid'),
+  ]) }
+  const table = scope.run(() => useRecipientMappingTable(work))
+  try {
+    table.expandedKeys.value = ['root', 'west']
+    table.terms.value = [{ column: 'platform', termType: 'eq', value: '值班组' }]
+    table.setStatus('bound')
+    assert.deepEqual(table.counts.value, { all: 2, bound: 1, unbound: 0, invalid: 1 })
+    assert.deepEqual(table.expandedKeys.value, ['root', 'east'])
+    const [root] = table.tableRows.value
+    assert.equal(root.contextOnly, true)
+    assert.equal(root.children[0].id, 'east')
+    assert.equal(root.children[0].children[0].id, 'first')
+    assert.equal(root.children[0].children[0].contextOnly, false)
+    table.terms.value = [{ column: 'external', termType: 'like', value: '旧班' }]
+    assert.equal(table.tableRows.value[0].children[0].id, 'west')
+    table.setStatus('bound')
+    assert.deepEqual(table.tableRows.value, [])
+    table.terms.value = []
+    assert.deepEqual(table.expandedKeys.value, ['root', 'west'])
+    table.setStatus('invalid')
+    assert.deepEqual(table.tableRows.value.map(item => item.id), ['root', 'orphan'])
+  } finally { scope.stop() }
+})
+
+test('tag filters distinguish same-name roles by ID and an old picker cannot close the active row', async () => {
+  const { useRecipientMappingTable } = load(resolve(base, 'members/useRecipientMappingTable'))
+  const scope = vue.effectScope()
+  const rows = [
+    { id: 'west', label: '管理员', mappingStatus: 'bound', externalLabel: '值班标签' },
+    { id: 'east', label: '管理员', mappingStatus: 'unbound' },
+  ]
+  const work = { kind: vue.ref('tag'), rows: vue.ref(rows), loaded: vue.ref(true), busy: vue.ref(false), error: vue.ref(''), externalOptions: vue.ref([]) }
+  const table = scope.run(() => useRecipientMappingTable(work))
+  try {
+    table.pagination.value.onChange(2)
+    table.terms.value = [{ column: 'platform', termType: 'eq', value: 'east' }]
+    await vue.nextTick()
+    assert.equal(table.pagination.value.current, 1)
+    assert.deepEqual(table.tableRows.value.map(row => row.id), ['east'])
+    assert.ok(table.duplicateRoleNames.value.has('管理员'))
+    table.editingId.value = 'east'
+    table.closePicker('west')
+    assert.equal(table.editingId.value, 'east')
+    table.closePicker('east')
+    assert.equal(table.editingId.value, '')
+  } finally { scope.stop() }
+})
+
 test('department trees keep nested paths, deduplicate aliases and retain members without visible departments', () => {
   const departments = [{ id: '1', name: '公司', children: [{ id: 2, name: '研发', children: [{ id: '3', name: '测试组' }] }, { id: '4', name: '运营' }, { id: '5', name: '空部门' }] }]
   const members = [member('nested', '13800138000', undefined, { name: '测试成员', department: [3] }), member('shared', undefined, undefined, { department: ['2', '2', '4'] }), member('hidden', undefined, undefined, { department: ['invisible'] }), member('none', undefined, undefined, { department: [] })]
