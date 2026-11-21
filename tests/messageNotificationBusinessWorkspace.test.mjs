@@ -333,41 +333,53 @@ test('Aliyun template fields require business defaults even when the channel alr
   assert.deepEqual(Object.keys(issues('sms:aliyunSms', { messageTemplateDefaults: { code: 'SMS_1', signName: '  ' } })), ['signName'])
 })
 
-test('SMS choices require a saved configuration and discard stale account responses after a switch or credential edit', async t => {
+test('SMS choices load independently and discard stale account responses after a switch or credential edit', async t => {
   const source = id => ({ ...config(id, 'sms', 'aliyunSms'), configuration: { regionId: 'cn-test', accessKeyId: id, secret: 'fixture' } })
   const entry = vue.ref({ isNew: true, draft: source('new') })
   const canEdit = vue.ref(true)
-  const requests = []
-  t.mock.method(messageNotificationApi, 'getSmsTemplateOptions', id => new Promise(resolve => requests.push({ id, resolve })))
+  const templateRequests = []
+  const signRequests = []
+  t.mock.method(messageNotificationApi, 'getSmsTemplates', id => new Promise(resolve => templateRequests.push({ id, resolve })))
+  t.mock.method(messageNotificationApi, 'getSmsSigns', id => new Promise((resolve, reject) => signRequests.push({ id, resolve, reject })))
   const scope = vue.effectScope()
   t.after(() => scope.stop())
-  const { credentialsPending, choices, state } = scope.run(() => useSmsTemplateOptions(entry, canEdit))
+  const { credentialsPending, choices, state, ready } = scope.run(() => useSmsTemplateOptions(entry, canEdit))
   const settle = () => new Promise(resolve => setImmediate(resolve))
-  const options = id => ({ templates: [{ templateCode: `SMS_${id}` }], signs: [{ signName: id }] })
   assert.equal(credentialsPending.value, true)
-  assert.equal(requests.length, 0)
+  assert.equal(templateRequests.length + signRequests.length, 0)
   for (const id of ['one', 'two']) {
     entry.value = { isNew: false, draft: source(id), baseline: source(id) }
     await settle()
   }
-  assert.deepEqual(requests.map(request => request.id), ['one', 'two'])
-  requests[1].resolve(options('two'))
-  requests[0].resolve(options('one'))
+  assert.deepEqual(templateRequests.map(request => request.id), ['one', 'two'])
+  assert.deepEqual(signRequests.map(request => request.id), ['one', 'two'])
+  templateRequests[1].resolve([{ templateCode: 'SMS_two' }])
   await settle()
+  assert.deepEqual(state.value, { code: 'ready', signName: 'loading' })
+  assert.equal(ready.value, false)
+  signRequests[1].reject({ status: 403 })
+  templateRequests[0].resolve([{ templateCode: 'SMS_one' }])
+  signRequests[0].resolve([{ signName: 'one' }])
+  await settle()
+  assert.deepEqual(state.value, { code: 'ready', signName: 'forbidden' })
   assert.deepEqual(choices.value.code.map(option => option.value), ['SMS_two'])
+  assert.deepEqual(choices.value.signName, [])
   entry.value.draft.configuration.accessKeyId = 'replacement'
   await settle()
   assert.equal(credentialsPending.value, true)
   assert.deepEqual(choices.value, { code: [], signName: [] })
-  assert.equal(state.value, 'idle')
+  assert.deepEqual(state.value, { code: 'idle', signName: 'idle' })
   entry.value.baseline = clone(entry.value.draft)
   await settle()
-  assert.equal(requests[2].id, 'two')
+  assert.equal(templateRequests[2].id, 'two')
+  assert.equal(signRequests[2].id, 'two')
   canEdit.value = false
   await settle()
-  requests[2].resolve(options('replacement'))
+  templateRequests[2].resolve([{ templateCode: 'SMS_replacement' }])
+  signRequests[2].resolve([{ signName: 'replacement' }])
   await settle()
-  assert.equal(state.value, 'idle')
+  assert.deepEqual(state.value, { code: 'idle', signName: 'idle' })
+  assert.deepEqual(choices.value.code, [])
   assert.deepEqual(choices.value.signName, [])
 })
 
@@ -675,6 +687,38 @@ test('a robot and a legacy work notification keep independent templates, states 
   assert.equal(savedWork.template.id, existing.id)
   assert.equal(savedWork.template.template.message, '只改工作通知')
   assert.deepEqual(io.records.get('actual-topic/notifier-dingTalk/robot'), newRobot)
+})
+
+test('an empty robot provider previews defaults despite work or removed robot bindings', async () => {
+  const robot = 'dingTalk:dingTalkRobotWebHook'
+  const configs = [config('corp', 'dingTalk', 'dingTalkMessage')]
+  const io = mockApi(configs)
+  const work = item('actual-topic', template({
+    type: 'dingTalk', provider: 'dingTalkMessage', configId: 'corp', template: { message: '工作通知正文', agentId: '42' },
+  }))
+  work.channel.channelConfiguration.notifierId = 'corp'
+  io.records.set('actual-topic/notifier-dingTalk', work)
+  const removed = {
+    id: 'removed-channel', channelProvider: 'notifier-dingTalk', channelKey: 'removed',
+    channelConfiguration: { templateId: 'removed-template', notifierId: 'removed' },
+  }
+  const workspace = useTemplateWorkspace(permissions(), io.api)
+  for (const [channels, requested] of [[[work.channel], undefined], [[work.channel, removed], 'removed']]) {
+    await workspace.loadBusiness({ ...business(), channels }, robot, requested)
+    assert.equal(workspace.configState.value, 'empty')
+    assert.equal(workspace.detailState.value, 'ready')
+    assert.equal(workspace.isDefault.value, true)
+    assert.equal(workspace.draft.value.configId, '')
+    assert.equal(workspace.canSave.value, false)
+    assert.equal(await workspace.saveTemplate(), false)
+  }
+  assert.equal(io.calls.some(([method]) => method === 'getBusinessTemplate' || method.startsWith('saveBusiness')), false)
+  configs.push(config('new-robot', 'dingTalk', 'dingTalkRobotWebHook'))
+  await workspace.refreshConfigs()
+  assert.equal(workspace.configState.value, 'ready')
+  assert.equal(workspace.detailState.value, 'ready')
+  assert.equal(workspace.draft.value.configId, 'new-robot')
+  assert.equal(workspace.canSave.value, true)
 })
 
 test('robot tabs keep independent drafts, then save and reload both managed templates', async () => {

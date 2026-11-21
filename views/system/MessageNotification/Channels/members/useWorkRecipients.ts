@@ -9,7 +9,7 @@ import {
 } from '../../shared/workRecipients'
 import type { WechatMembersSummaryModel } from './useWechatMembersDrawer'
 import type { MemberStatusFilter } from './wechatMemberFilters'
-import { previewRecipientTemplates, syncRecipientTemplates, type RecipientTemplatePreview } from './syncWorkRecipients'
+import { syncRecipientTemplates } from './syncWorkRecipients'
 
 interface RecipientEditorOptions {
   channelId: Ref<string>
@@ -40,15 +40,11 @@ export function useWorkRecipients(options: RecipientEditorOptions) {
   const directories = reactive<Partial<Record<GroupRecipientKind, GroupDirectory>>>({})
   const states = reactive<Record<GroupRecipientKind, NotificationLoadState>>({ department: 'idle', tag: 'idle' })
   const directoryRequests = new Map<GroupRecipientKind, Promise<GroupDirectory | undefined>>()
-  const recipientNames = ref<Record<'user' | GroupRecipientKind, Map<string, string>>>({
-    user: new Map(), department: new Map(), tag: new Map(),
-  })
   const platform = computed(() => directories[kind.value]?.platform ?? emptyDirectory.platform)
   const external = computed(() => directories[kind.value]?.external ?? emptyDirectory.external)
   const matchCount = computed(() => matchCounts[kind.value])
   const draft = ref<DraftGroups>(emptyWorkRecipients())
   const original = shallowRef<WorkRecipients>()
-  const firstSync = shallowRef<{ recipients: WorkRecipients; rows: RecipientTemplatePreview[] }>()
   const busy = options.busy
   let request = 0
 
@@ -139,7 +135,6 @@ export function useWorkRecipients(options: RecipientEditorOptions) {
     const operation = loadGroupRecipients(current.id, current.channelId, next).then(directory => {
       if (!active()) return
       directories[next] = directory
-      recipientNames.value[next] = new Map(directory.external.map(item => [item.id, displayName(item)]))
       states[next] = directory.platform.length ? 'ready' : 'empty'
       return directory
     }).catch(failure => {
@@ -192,13 +187,11 @@ export function useWorkRecipients(options: RecipientEditorOptions) {
     loading.value = false
     loaded.value = false
     error.value = ''
-    firstSync.value = undefined
     original.value = undefined
     draft.value = emptyWorkRecipients()
     if (force) {
       failed.value = []
       saved.value = false
-      recipientNames.value = { user: new Map(), department: new Map(), tag: new Map() }
       directoryRequests.clear()
       for (const next of groupKinds) {
         delete directories[next]
@@ -241,8 +234,7 @@ export function useWorkRecipients(options: RecipientEditorOptions) {
       assertWorkConfig(config, current.id, current.channelId)
       const recipients = readWorkRecipients(config.configuration)
       const visibleUsers = new Set(users.map(user => user.id))
-      const directoryMembers = new Map(members.map(member => [member.id, displayName(member)]))
-      recipientNames.value.user = directoryMembers
+      const directoryMembers = new Set(members.map(member => member.id))
       const previouslySynced = new Set(recipients?.memberIds)
       // A narrower operator view cannot enroll unseen users or silently remove previously synced ones.
       const memberIds = [...new Set(bindings.flatMap(({ userId, thirdPartyUserId }) =>
@@ -255,6 +247,11 @@ export function useWorkRecipients(options: RecipientEditorOptions) {
   }
   async function persist(current: NonNullable<ReturnType<typeof target>>, active: () => boolean,
     recipients: WorkRecipients, latest: WorkRecipients | undefined, config: NotifierConfig) {
+    // 首次启用需要实际接收对象，已启用的渠道可通过解绑同步清空收件人。
+    if (!latest && workRecipientsEmpty(recipients, current.channelId)) {
+      error.value = 'empty'
+      return
+    }
     if (signature(latest) !== signature(recipients)) {
       if (!await options.saveSetting(recipients, config)) throw new NotificationRequestError('error')
     }
@@ -266,7 +263,6 @@ export function useWorkRecipients(options: RecipientEditorOptions) {
     if (!confirmed || signature(confirmed) !== signature(recipients)) throw new NotificationRequestError('error')
     original.value = confirmed
     draft.value = { departments: confirmed.departments, tags: confirmed.tags }
-    firstSync.value = undefined
     open.value = false
     const pending = await syncRecipientTemplates(api, current.id, current.channelId, confirmed, active, async () => {
       const latest = await api.getConfig(current.id)
@@ -290,7 +286,7 @@ export function useWorkRecipients(options: RecipientEditorOptions) {
         matchCounts[next] = matches.length
         if (!matches.length) return
         const recipients = { ...(latest ?? emptyWorkRecipients()), [group]: [...existing, ...matches], memberIds }
-        await saveOrPreview(current, active, recipients, latest, config)
+        await persist(current, active, recipients, latest, config)
       })
     } finally { automaticKind.value = undefined }
   }
@@ -299,40 +295,17 @@ export function useWorkRecipients(options: RecipientEditorOptions) {
     await withCurrent(async (current, active, latest, memberIds, config) => {
       if (signature(latest) !== signature(original.value)) { error.value = 'conflict'; return }
       const recipients = { ...draft.value, memberIds }
-      await saveOrPreview(current, active, recipients, latest, config)
-    })
-  }
-  async function saveOrPreview(current: NonNullable<ReturnType<typeof target>>, active: () => boolean,
-    recipients: WorkRecipients, latest: WorkRecipients | undefined, config: NotifierConfig) {
-    if (latest) {
       await persist(current, active, recipients, latest, config)
-      return
-    }
-    if (workRecipientsEmpty(recipients, current.channelId)) { error.value = 'empty'; return }
-    const rows = await previewRecipientTemplates(api, current.id, current.channelId, recipients)
-    if (active()) firstSync.value = { recipients, rows }
-  }
-  async function confirmFirstSync() {
-    const preview = firstSync.value
-    if (!preview) return
-    await withCurrent(async (current, active, latest, memberIds, config) => {
-      if (latest || JSON.stringify(memberIds) !== JSON.stringify(preview.recipients.memberIds)) {
-        error.value = 'conflict'; firstSync.value = undefined; return
-      }
-      const rows = await previewRecipientTemplates(api, current.id, current.channelId, preview.recipients)
-      if (!active()) return
-      if (JSON.stringify(rows) !== JSON.stringify(preview.rows)) { firstSync.value = { ...preview, rows }; return }
-      await persist(current, active, preview.recipients, latest, config)
     })
   }
   function retry() {
     return withCurrent(async (current, active, latest, memberIds, config) => {
-      await saveOrPreview(current, active, { ...(latest ?? emptyWorkRecipients()), memberIds }, latest, config)
+      await persist(current, active, { ...(latest ?? emptyWorkRecipients()), memberIds }, latest, config)
     })
   }
-  return { open, kind, loading, loaded, busy, error, failed, saved, matchCount, rows, externalOptions, recipientNames,
-    canSave, canAutoMatchDraft, enabled, empty, groupDirty, kinds, summaries, firstSync, prepare, show, close, reload: () => load(kind.value, true),
-    refreshGroup: (next: GroupRecipientKind) => readDirectory(next, true), assign, autoMatch, autoMatchAndSave, requestSave, confirmFirstSync, retry }
+  return { open, kind, loading, loaded, busy, error, failed, saved, matchCount, rows, externalOptions,
+    canSave, canAutoMatchDraft, enabled, empty, groupDirty, kinds, summaries, prepare, show, close, reload: () => load(kind.value, true),
+    refreshGroup: (next: GroupRecipientKind) => readDirectory(next, true), assign, autoMatch, autoMatchAndSave, requestSave, retry }
 }
 
 export type WorkRecipientsWorkspace = ReturnType<typeof useWorkRecipients>

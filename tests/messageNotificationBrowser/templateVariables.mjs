@@ -15,7 +15,7 @@ const row = (page, id) => list(page).locator(`tr[data-row-key="${id}"]`)
 const edit = page => page.getByRole('button', { name: /^编\s*辑$/ })
 const save = page => page.getByRole('button', { name: '保存模板', exact: true })
 
-async function open(channel, width = 1543) {
+async function open(channel, width = 1543, business = 'device-config') {
   const page = await browser.newPage({ viewport: { width, height: 898 }, serviceWorkers: 'block' })
   page.setDefaultTimeout(12000)
   page.on('pageerror', error => errors.push(error.message))
@@ -28,7 +28,7 @@ async function open(channel, width = 1543) {
     }
     return route.continue()
   })
-  await page.goto(`${entry.href}?templateWorkspace&catalog=extended#/templates?channel=${encodeURIComponent(channel)}&business=device-config`,
+  await page.goto(`${entry.href}?templateWorkspace&catalog=extended#/templates?channel=${encodeURIComponent(channel)}&business=${encodeURIComponent(business)}`,
     { waitUntil: 'domcontentloaded', timeout: 45000 })
   await edit(page).click()
   await list(page).waitFor()
@@ -78,6 +78,28 @@ async function checkWechatVariableDeletion(page) {
 
 await mkdir(output, { recursive: true })
 try {
+  for (const [business, title, space] of [['aiComplianceAlarm', '合规告警', '收银区'], ['aiSecurityAlarm', '安全告警', '仓储区']]) {
+    const page = await open('weixin:corpMessage', 1543, business)
+    const panel = page.getByRole('complementary', { name: '可用变量', exact: true })
+    assert.deepEqual(await panel.locator('.template-variables__group').allTextContents(), ['通用', title])
+    const samples = await panel.locator('.template-variables__sample').allTextContents()
+    assert.equal(samples.length, 14)
+    assert.ok(samples.every(value => value.trim() && value !== '—'))
+    const spaceRow = panel.locator('button[title^="${detail.spaceName}"]')
+    assert.equal(await spaceRow.locator('.template-variables__name').innerText(), '{空间名称}')
+    assert.equal(await spaceRow.locator('.template-variables__sample').innerText(), space)
+    assert.match(await spaceRow.getAttribute('title'), /当前原生 AI 告警的投递数据未提供此字段/)
+    const sourceId = '${detail.sourceId}'
+    const body = page.getByRole('textbox', { name: '正文', exact: true })
+    await body.click()
+    await body.press('End')
+    await panel.locator(`button[title^="${sourceId}"]`).click()
+    assert.equal((await body.locator(`[data-template-variable="${sourceId}"]`).innerText()).replaceAll('\uFEFF', ''), '{告警源 ID}')
+    await page.screenshot({ path: join(output, `${business}-variables.png`) })
+    await page.close()
+    console.log(title, '变量示例和中文标签通过')
+  }
+
   const voice = await open('voice:aliyun')
   assert.deepEqual(await list(voice).getByRole('columnheader').allTextContents(), ['变量', '名称', '类型', '格式'])
   assert.equal(await list(voice).locator('tbody tr[data-row-key]').count(), 1)

@@ -54,8 +54,8 @@ export function useTemplatePage() {
   const busy = computed(() => saving.value || uploading.value || changingBusiness.value || fillingInsideMail.value)
   const pendingChannelRefresh = ref('')
   const navigation = computed(() => normalizeNotificationNavigation(route.query, channels.value))
-  const activeConfigId = computed(() => draft.value?.configId || navigation.value.configId
-    || workspace.configurationsByChannel.value[channelId.value]?.[0]?.id)
+  const activeConfigId = computed(() => workspace.entry.value?.businessConfigId === '' ? undefined
+    : draft.value?.configId || navigation.value.configId || workspace.configurationsByChannel.value[channelId.value]?.[0]?.id)
   const directoryConfigId = computed(() => usesBusinessChannelKey(channelId.value) ? activeConfigId.value || '' : undefined)
   const directoryNodes = computed(() => flattenTemplateDirectory(buildTemplateDirectory(templates.value, directory.businessTypes.value,
     { other: t('messageNotification.templates.otherGroup') }, t, directoryConfigId.value)))

@@ -150,9 +150,48 @@ test('AI 原型只使用确证字段，不把识别集合、文件集合或不�
   assert.match(compliance.template.text, /来源：\$\{detail\.sourceName\}/)
   assert.doesNotMatch(JSON.stringify(compliance.template), /detail\.mediaChannelName/)
   assert.equal(JSON.parse(create('aiComplianceAlarm', 'webhook:http', incoming).template.body).channel, '${detail.sourceName}')
-  assert.equal(defaults.prototypePreviewExamples(business('aiComplianceAlarm'))['detail.sourceName'], '收银台 · 通道 03')
   assert.match(safety.template.text, /请立即处理/)
   assert.match(compliance.template.text, /请及时核实/)
+})
+
+test('两类 AI 告警都展示后端声明的变量名称及示例，并沿用自定义声明', () => {
+  const { resolveTemplateVariables } = load(resolve(templates, 'variables/catalog.ts'))
+  const messages = JSON.parse(readFileSync(resolve(root, 'locales/lang/zh.json'), 'utf8'))
+  const names = {
+    message: '通知正文', notifyTime: '通知时间',
+    'detail.targetType': '告警类型', 'detail.alarmConfigName': '告警名称', 'detail.targetName': '告警目标名称',
+    'detail.level': '告警级别', 'detail.alarmTime': '告警时间',
+    'detail.sourceType': '告警源类型', 'detail.sourceName': '告警源名称', 'detail.targetId': '告警目标 ID',
+    'detail.sourceId': '告警源 ID', 'detail.spaceId': '空间 ID', 'detail.spaceName': '空间名称', 'detail.mediaChannelId': '视频通道 ID',
+  }
+  const metadata = Object.keys(names).filter(id => id.startsWith('detail.')).map(id => ({ id: id.slice(7), name: id.slice(7) }))
+  const declared = [{ id: 'detail.sourceId', name: '自定义来源 ID', type: 'string', format: '%s' }]
+
+  for (const [code, sourceName] of [['aiComplianceAlarm', '收银台 · 通道 03'], ['aiSecurityAlarm', '仓库入口 · 通道 01']]) {
+    const options = defaults.prototypeAvailableVariables(business(code), metadata, key => messages[key] || key)
+    assert.deepEqual(Object.fromEntries(options.map(item => [item.id, item.name])), names)
+    const available = defaults.prototypeAvailableVariables(business(code), [])
+    assert.deepEqual(available.map(item => item.id), Object.keys(names))
+    assert.equal(available.find(item => item.id === 'detail.targetId').name, names['detail.targetId'])
+
+    const examples = defaults.prototypePreviewExamples(business(code))
+    assert.deepEqual(Object.keys(examples), Object.keys(names))
+    assert.ok(Object.values(examples).every(value => value.trim()))
+    assert.equal(examples['detail.targetType'], 'aiTaskMediaTarget')
+    assert.equal(examples['detail.sourceType'], 'mediaChannel')
+    assert.equal(examples['detail.sourceName'], sourceName)
+    assert.equal(examples['detail.alarmTime'], '2026-01-01 12:00:00')
+
+    const display = resolveTemplateVariables(options, declared, code, key => messages[key] || key, true)
+    const sourceId = display.find(item => item.id === 'detail.sourceId')
+    assert.equal(sourceId.name, declared[0].name)
+    assert.equal(sourceId.type, declared[0].type)
+    assert.equal(sourceId.format, declared[0].format)
+
+    const payload = model.buildTemplatePayload(model.createTemplateDraft(create(code)))
+    assert.ok(payload.variableDefinitions.every(item => !Object.hasOwn(item, 'defaultValue')))
+    assert.ok(!JSON.stringify(payload).includes(sourceName))
+  }
 })
 
 test('场景只保留场景名称及触发方式，公告只保留标题、摘要和类型', () => {
