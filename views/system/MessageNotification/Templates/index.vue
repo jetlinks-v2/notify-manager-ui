@@ -3,7 +3,8 @@
     <EqualHeightColumns class="notification-page__layout" :show-left="!compact" left-width="15rem" right-width="1fr">
       <template #left>
         <aside class="notification-page__sidebar message-templates__directory" :aria-label="t('messageNotification.templates.title')">
-          <TemplateDirectory :templates="templates" :business-types="businessTypes" :directory-state="directoryState" :state="directoryState" :selected-id="selectedDirectoryKey" :disabled="busy" @select="selectTemplate" @reload="reload" />
+          <TemplateDirectory :templates="templates" :business-types="businessTypes" :config-id="directoryConfigId"
+            :directory-state="directoryState" :state="directoryState" :selected-id="selectedDirectoryKey" :disabled="busy" @select="selectTemplate" @reload="reload" />
         </aside>
       </template>
       <template #right>
@@ -13,8 +14,9 @@
               <p class="message-templates__description" :title="description">{{ description }}</p>
             </template>
             <template #titleExtra>
-              <a-tag v-if="dirty" color="processing">{{ t('messageNotification.templates.unsaved') }}</a-tag>
-              <a-tag v-else-if="draft" :color="isDefault ? 'warning' : undefined">{{ t(isDefault ? 'messageNotification.templates.defaultContent' : entry?.existing ? 'messageNotification.templates.configured' : 'messageNotification.templates.unconfigured') }}</a-tag>
+              <a-tag v-if="templateStatus" :color="templateStatus === 'unsaved' ? 'processing' : isDefault ? 'warning' : undefined">
+                {{ t(`messageNotification.templates.${templateStatus}`) }}
+              </a-tag>
               <a-tag v-if="business" class="message-templates__business-state" :color="businessEnabled ? 'success' : undefined"
                 :title="t(businessEnabled ? 'messageNotification.templates.businessEnabled' : 'messageNotification.templates.businessDisabled')">
                 {{ t(businessEnabled ? 'messageNotification.templates.businessStateEnabled' : 'messageNotification.templates.businessStateDisabled') }}
@@ -62,7 +64,8 @@
           </div>
           <a-alert v-if="['error', 'forbidden', 'unavailable'].includes(businessActionState)" type="error" show-icon :message="t(`messageNotification.templates.${businessActionState}`)" />
           <div class="message-templates__channels">
-            <TemplateChannelNavigation :value="channelId" :channels="channels" :configuration-states="channelConfigurationStates" :disabled="busy" @change="changeChannel" />
+            <TemplateChannelNavigation :value="channelId" :channels="channels" :configuration-states="channelConfigurationStates"
+              :configurations-by-channel="configurationsByChannel" :active-config-id="activeConfigId" :disabled="busy" @change="changeChannel" />
           </div>
           <a-alert v-if="listFailure" type="warning" show-icon :message="t(`messageNotification.templates.${catalogState}`)">
             <template #action><a-button size="small" :disabled="busy" @click="reload">{{ t('messageNotification.templates.reload') }}</a-button></template>
@@ -76,7 +79,7 @@
                 <template #action><a-button type="link" size="small" :disabled="busy || !canConfigure" @click="goConfigure">{{ t('messageNotification.templates.configure') }}</a-button></template>
               </a-alert>
               <div :key="activeKey" class="message-templates__content" :class="{ 'message-templates__content--editing': editing }">
-                <TemplateEditor v-if="editing" ref="contentEditor" :draft="draft" :existing="entry?.existing" :business="business" :business-mode="!!business" :configs="configs" :config-state="configState" :metadata="metadata" :metadata-state="metadataState" :available-variables="availableVariables" :disabled="!canEdit || saving" @uploading="setUploading" />
+                <TemplateEditor v-if="editing" ref="contentEditor" :draft="draft" :existing="entry?.existing" :business="business" :business-mode="!!business" :configs="configs" :config-state="configState" :metadata="metadata" :metadata-state="metadataState" :available-variables="availableVariables" :disabled="!canEdit || saving" @uploading="setUploading" @configuration="selectConfiguration" />
                 <TemplateVariablePanel v-if="editing" :draft="draft" :business="business" :business-title="business && title" :variables="availableVariables" :disabled="busy || !contentEditor?.canInsertVariable" @insert="contentEditor?.insertVariable($event)" />
                 <TemplatePreview v-if="hasContent || editing" :draft="draft" :editing="editing" :business="business" :channel="currentChannel" :config="activeConfig" />
                 <CloudEmpty v-else class="notification-page__feedback" :description="t('messageNotification.templates.noDefault')" />
@@ -115,9 +118,9 @@ const {
   t, compact, workspace, channels, channelId, templates, configs, listState, configState, channelConfigurationStates, businessTypes, directoryState,
   detailState, activeKey, draft, entry, business, dirty, saving, canSave, canQuery, editing, title, description,
   canAdd, canEdit, canConfigure, busy, uploading, validationMessage, channelOptions, templateOptions,
-  selectedDirectoryKey, listFailure, detailFailure, feedbackState, saveFailure, saveState, confirmation,
+  selectedDirectoryKey, directoryConfigId, listFailure, detailFailure, feedbackState, saveFailure, saveState, confirmation,
   isDefault, canRestoreDefault, missingConfiguration, hasContent, catalogState, metadata, metadataState, availableVariables, saveOutcomeUnknown,
-  currentChannel, activeConfig, setUploading, reload, changeChannel, selectTemplate, createTemplate, save,
+  currentChannel, activeConfig, configurationsByChannel, activeConfigId, templateStatus, setUploading, reload, changeChannel, selectConfiguration, selectTemplate, createTemplate, save,
   startEditing, restoreDefault, requestDiscard, goConfigure, resolveConfirmation,
 } = useTemplatePage()
 </script>

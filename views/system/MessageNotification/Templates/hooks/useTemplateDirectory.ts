@@ -6,6 +6,7 @@ import { buildTemplateDirectory, filterTemplateDirectory, flattenTemplateDirecto
 
 interface DirectoryProps {
   templates: NotificationTemplate[]; businessTypes: NoticeChannelConfig[]; selectedId: string
+  configId?: string
   state: NotificationLoadState; directoryState: NotificationLoadState; disabled?: boolean
 }
 interface DirectoryEvents { (event: 'select', id: string): void; (event: 'reload'): void }
@@ -19,7 +20,7 @@ export function useTemplateDirectory(props: DirectoryProps, emit: DirectoryEvent
   const directoryFailure = computed(() => ['unavailable', 'forbidden', 'error'].includes(props.directoryState))
   const tree = computed(() => buildTemplateDirectory(props.templates, props.businessTypes, {
     other: t('messageNotification.templates.otherGroup'),
-  }, t))
+  }, t, props.configId))
   const allNodes = computed(() => flattenTemplateDirectory(tree.value))
   const visibleTemplates = computed(() => filterTemplateDirectory(tree.value, search.value))
   const expandedKeys = computed(() => flattenTemplateDirectory(visibleTemplates.value)

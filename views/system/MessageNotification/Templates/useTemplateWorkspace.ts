@@ -2,7 +2,7 @@ import { computed, getCurrentScope, onScopeDispose, reactive, ref, type Ref } fr
 import { messageNotificationApi, type MessageNotificationApi } from '../../../../api/notice/messageNotification'
 import type { NoticeChannelConfig, NoticeChannelTemplateItem } from '../../../../api/notice-center'
 import {
-  classifyNotificationFailure, cloneNotificationValue, findNotificationChannel, notificationEnumValue,
+  classifyNotificationFailure, cloneNotificationValue, findNotificationChannel, notificationEnumValue, usesBusinessChannelKey,
   NotificationRequestError, withNotificationChannel,
   type NotificationLoadState, type NotificationTemplate, type NotificationVariable,
 } from '../shared'
@@ -13,8 +13,9 @@ import { applyWorkRecipients, assertWorkConfig, emptyWorkRecipients, isWorkChann
   workRecipientContent, type WorkRecipients } from '../shared/workRecipients'
 import { useTemplateCatalog } from './hooks/useTemplateCatalog'
 import {
-  buildBusinessTemplateItem, businessDraftKey, businessIdentity, channelProviderFor,
-  hasDefiniteSaveRejection, mergeSavedBusiness, readBusinessTemplate, restoreBusinessDefaultDraft, type TemplateDraftEntry,
+  bindingConfigId, buildBusinessTemplateItem, businessChannelBindings, businessChannelKey, businessDraftKey, businessIdentity, channelProviderFor,
+  hasDefiniteSaveRejection, loadBusinessTemplateForConfig, mergeSavedBusiness, readBusinessTemplate, readSavedBusinessTemplate,
+  restoreBusinessDefaultDraft, type TemplateDraftEntry,
 } from './workspace/businessTemplates'
 
 interface WorkspaceAccess { query: Ref<boolean>; add: Ref<boolean>; update: Ref<boolean> }
@@ -25,7 +26,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
   const templates = ref<NotificationTemplate[]>([])
   const business = ref<NoticeChannelConfig>()
   const catalog = useTemplateCatalog(access.query, channelId, api)
-  const { channels, catalogState, configs, configState, channelConfigurationStates, metadata, metadataState } = catalog
+  const { channels, catalogState, configs, configurationsByChannel, configState, channelConfigurationStates, metadata, metadataState } = catalog
   const listState = ref<NotificationLoadState>('idle')
   const detailState = ref<NotificationLoadState>('idle')
   const saveState = ref<NotificationLoadState>('idle')
@@ -72,6 +73,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     && (entry.value.existing ? access.update.value : access.add.value)))
   const canSave = computed(() => Boolean(access.query.value && detailState.value === 'ready' && entry.value && !saveOutcomeUnknown.value
     && (entry.value.existing ? access.update.value : access.add.value)
+    && (entry.value.businessConfigId === undefined || entry.value.businessConfigId === draft.value?.configId)
     && configState.value === 'ready' && configs.value.some(config => config.id === draft.value?.configId)))
   /** Build the dynamic directory and shared config snapshot without touching in-memory drafts. */
   async function loadCatalog() {
@@ -120,20 +122,25 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     return request
   }
 
-  /** Deep links initialize only unbound drafts; unavailable explicit IDs stay unmatched instead of choosing another config. */
+  /** 使用旧版单通道的草稿可以原地选择配置，具名模板通过重新选择实例加载。 */
   function selectDraftConfig(current: TemplateDraftEntry | undefined, requestedConfigId?: string) {
-    if (current && !current.existing && !current.draft.configId) {
-      const configId = requestedConfigId || (configs.value.length === 1 ? configs.value[0].id : '')
-      if (!configId) return
-      current.draft.configId = configId
-      current.baselineDraft.configId = current.draft.configId
-      current.baseline = templateDraftFingerprint(current.baselineDraft)
-    }
+    if (!current || current.existing || current.businessConfigId !== undefined || current.draft.configId) return
+    const configId = requestedConfigId || (configs.value.length === 1 ? configs.value[0]?.id : undefined)
+    if (!configId || configId === current.draft.configId) return
+    current.draft.configId = configId
+    current.baselineDraft.configId = configId
+    current.baseline = templateDraftFingerprint(current.baselineDraft)
   }
 
   async function refreshConfigs() {
     await catalog.loadConfigs(true)
-    selectDraftConfig(entry.value)
+    const current = entry.value
+    const selected = business.value
+    if (selected && current?.businessConfigId === '' && configs.value.length) {
+      await loadBusiness(selected, channelId.value)
+    } else {
+      selectDraftConfig(current)
+    }
   }
 
   /** A new binding invalidates only previously unbound, untouched drafts for its channel. */
@@ -169,7 +176,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     return { draft: value, baseline: templateDraftFingerprint(value), baselineDraft: cloneNotificationValue(value), existing, ...rest }
   }
 
-  /** Query the one backend channel before applying a prototype for a verified absence of stored content. */
+  /** 凭证也是业务模板的选择身份，每个实例拥有独立草稿和保存基线。 */
   async function loadBusiness(selected: NoticeChannelConfig, id: string, requestedConfigId?: string) {
     const revision = ++detailRevision
     ++listRevision
@@ -186,10 +193,20 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
       await loadCatalog()
       if (revision !== detailRevision || !access.query.value) return
       const channel = catalog.requireChannel(id)
-      void loadTemplates(id)
-      await catalog.loadMetadata(channel)
+      const keyed = usesBusinessChannelKey(id)
+      const listRequest = loadTemplates(id)
+      await Promise.all([catalog.loadMetadata(channel), keyed ? listRequest : undefined])
       if (revision !== detailRevision || !access.query.value) return
-      const key = businessDraftKey(resolved, id)
+      const records = templateLists.get(id) ?? []
+      const knownConfigIds = businessChannelBindings(resolved, channel)
+        .map(binding => bindingConfigId(binding, records) || businessChannelKey(binding))
+      const configId = keyed ? requestedConfigId || knownConfigIds.find(candidate => configs.value.some(config => config.id === candidate))
+        || configs.value[0]?.id || knownConfigIds.find(Boolean) || '' : undefined
+      if (keyed && requestedConfigId && !knownConfigIds.includes(requestedConfigId) && !configs.value.some(config => config.id === requestedConfigId)) {
+        detailState.value = 'unavailable'
+        return
+      }
+      const key = businessDraftKey(resolved, id, configId)
       activeKey.value = key
       const cached = drafts.get(key)
       if (cached) {
@@ -197,18 +214,21 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
         detailState.value = 'ready'
         return
       }
-      const [item, fields] = await Promise.all([
-        resolved.id ? api.getBusinessTemplate(resolved.id, channelProviderFor(channel)) : Promise.resolve(undefined),
+      const [stored, fields] = await Promise.all([
+        keyed ? loadBusinessTemplateForConfig(api, resolved, channel, configId || '', records)
+          : (resolved.id ? api.getBusinessTemplate(resolved.id, channelProviderFor(channel)) : Promise.resolve(undefined))
+            .then(item => readBusinessTemplate(resolved, channel, item)),
         loadBusinessVariables(resolved),
       ])
       if (revision !== detailRevision || !access.query.value) return
-      const stored = readBusinessTemplate(resolved, channel, item)
       const prototype = createPrototypeTemplate(resolved, channel, fields, translate)
       const value = stored.template ? createTemplateDraft(stored.template)
         : prototype ? createTemplateDraft(prototype) : newTemplateDraft(channel)
       if (!stored.template && !value.name) value.name = resolved.name || channel.name || channel.type
+      if (configId !== undefined) value.configId = configId
       const next = draftEntry(value, Boolean(stored.template), {
-        businessIdentity: businessIdentity(resolved), channel: cloneNotificationValue(stored.channel || {}), prototype,
+        businessIdentity: businessIdentity(resolved), businessConfigId: configId,
+        channel: stored.channel && cloneNotificationValue(stored.channel), prototype,
       })
       selectDraftConfig(next, requestedConfigId)
       drafts.set(key, next)
@@ -270,7 +290,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     if (!channel || !access.add.value) return
     ++detailRevision
     business.value = undefined
-    const key = `new:${channel.id}`
+    const key = channel.multipleConfigurations && configId ? `new:${channel.id}:${configId}` : `new:${channel.id}`
     if (!drafts.has(key)) drafts.set(key, draftEntry(newTemplateDraft(channel, configId), false))
     activeKey.value = key
     detailState.value = 'ready'
@@ -294,7 +314,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
       item.businessIdentity = nextIdentity
       if (item.channel) item.channel.providerId = updated.id
       if (previousIdentity !== nextIdentity) {
-        const nextKey = businessDraftKey(updated, `${item.draft.type}:${item.draft.provider}`)
+        const nextKey = businessDraftKey(updated, `${item.draft.type}:${item.draft.provider}`, item.businessConfigId)
         drafts.set(nextKey, item); drafts.delete(key)
         if (activeKey.value === key) activeKey.value = nextKey
       }
@@ -305,12 +325,9 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
   }
 
   /** Apply only a verified successful response; preserve text entered while the request was pending. */
-  function applySavedBusiness(current: TemplateDraftEntry, item: NoticeChannelTemplateItem, submitted: string,
-    selected = business.value, channel = currentChannel.value) {
-    if (!selected || !channel) throw new NotificationRequestError('error', item)
-    const stored = readBusinessTemplate(selected, channel, item)
-    if (!stored.template) throw new NotificationRequestError('error', item)
-    const savedDraft = createTemplateDraft(stored.template)
+  function applySavedBusiness(current: TemplateDraftEntry, item: NoticeChannelTemplateItem, stored: NotificationTemplate,
+    submitted: string, channelId: string) {
+    const savedDraft = createTemplateDraft(stored)
     if (templateDraftFingerprint(current.draft) === submitted) current.draft = savedDraft
     else current.draft.id = savedDraft.id
     current.baselineDraft = cloneNotificationValue(savedDraft)
@@ -321,20 +338,21 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     templateListRequests.clear()
     // Upsert into the channel-wide directory snapshot; do not hide other business templates after saving one row.
     for (const [id, records] of templateLists) {
-      const next = records.filter(value => value.id !== stored.template?.id)
-      if (id === channel.id) next.push(stored.template)
+      const next = records.filter(value => value.id !== stored.id)
+      if (id === channelId) next.push(stored)
       templateLists.set(id, next)
       templateListStates.set(id, next.length ? 'ready' : 'empty')
     }
-    if (!templateLists.has(channel.id)) templateLists.set(channel.id, [stored.template])
-    templateListStates.set(channel.id, 'ready')
-    if (channelId.value === channel.id) {
-      templates.value = templateLists.get(channel.id) || []
+    if (!templateLists.has(channelId)) templateLists.set(channelId, [stored])
+    templateListStates.set(channelId, 'ready')
+    if (currentChannel.value?.id === channelId) {
+      templates.value = templateLists.get(channelId) || []
       listState.value = templates.value.length ? 'ready' : 'empty'
     }
-    // Saving another vendor replaces the same backend channelProvider; retained drafts must follow the new channel settings.
+    if (usesBusinessChannelKey(channelId)) return
+    // 其他类型沿用默认单通道模型，同类型的旧草稿需同步实际绑定信息。
     for (const other of drafts.values()) {
-      if (other === current || other.businessIdentity !== current.businessIdentity || other.draft.type !== channel.type) continue
+      if (other === current || other.businessIdentity !== current.businessIdentity || other.draft.type !== stored.type) continue
       other.channel = cloneNotificationValue(item.channel)
       other.existing = false
       other.draft.id = ''; other.baselineDraft.id = ''
@@ -350,27 +368,28 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     if (!selected?.provider || !channel) throw new NotificationRequestError('error')
     const base = buildBusinessTemplateItem(selected, channel, current, payload)
     const item = recipients && isWorkChannel(channel.id) ? applyWorkRecipients(base, channel.id, recipients) : base
+    let saved: NoticeChannelTemplateItem
+    let updated: NoticeChannelConfig
     if (selected.id) {
-      const saved = await api.saveBusinessTemplate(selected.id, channelProviderFor(channel), item)
-      if (!readBusinessTemplate(selected, channel, saved).template) throw new NotificationRequestError('error', saved)
-      const updated = mergeSavedBusiness(selected, saved.channel)
-      resetBusinessIdentity(updated, selected)
-      applySavedBusiness(current, saved, fingerprint, updated, channel)
+      saved = await api.saveBusinessTemplate(selected.id, channelProviderFor(channel), item)
+      updated = mergeSavedBusiness(selected, saved.channel)
     } else {
       const response = await api.saveBusinessTemplates(selected.provider, {
         provider: { ...cloneNotificationValue(selected), id: undefined, channels: undefined, state: 'enabled' },
         channels: insideMail ? [item, { channel: insideMail }] : [item],
       })
-      const saved = response.channels.find(value => value.channel.channelProvider === channelProviderFor(channel))
-      if (!response.provider?.id || !saved?.template) throw new NotificationRequestError('error', response)
-      const updated = response.channels.reduce<NoticeChannelConfig>(
+      const matched = response.channels.find(value => value.channel.channelProvider === channelProviderFor(channel)
+        && businessChannelKey(value.channel) === businessChannelKey(item.channel))
+      if (!response.provider?.id || !matched?.template) throw new NotificationRequestError('error', response)
+      saved = matched
+      updated = response.channels.reduce<NoticeChannelConfig>(
         (business, { channel }) => mergeSavedBusiness(business, channel),
         { ...cloneNotificationValue(selected), ...response.provider, channels: selected.channels },
       )
-      if (!readBusinessTemplate(updated, channel, saved).template) throw new NotificationRequestError('error', response)
-      resetBusinessIdentity(updated, selected)
-      applySavedBusiness(current, saved, fingerprint, updated, channel)
     }
+    const stored = readSavedBusinessTemplate(updated, channel, item, saved)
+    resetBusinessIdentity(updated, selected)
+    applySavedBusiness(current, saved, stored, fingerprint, channel.id)
   }
 
   /** Failed writes retain the original draft; no automatic retry can duplicate an uncertain first topic creation. */
@@ -451,7 +470,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
       if (record.id !== id || notificationEnumValue(record.type) !== channel?.type || notificationEnumValue(record.provider) !== channel?.provider) {
         throw new NotificationRequestError('error', record)
       }
-      current.draft = createTemplateDraft({ ...record, id: current.draft.id })
+      current.draft = createTemplateDraft({ ...record, id: current.draft.id, configId: current.businessConfigId ?? record.configId })
       saveState.value = 'idle'
     } catch (error) { if (revision === detailRevision) saveState.value = classifyNotificationFailure(error) }
   }
@@ -480,7 +499,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
   if (getCurrentScope()) onScopeDispose(() => { ++listRevision; ++detailRevision; ++listEpoch; ++variableRevision; catalog.clear(); variables.clear(); variablePools.clear(); variablesRequests.clear() })
 
   return { channelId, currentChannel, channels, catalogState, metadata, metadataState, business, templates,
-    configs, listState, configState, channelConfigurationStates, detailState, saveState, activeKey, draft, dirty, hasDirtyDrafts, saving,
+    configs, configurationsByChannel, listState, configState, channelConfigurationStates, detailState, saveState, activeKey, draft, dirty, hasDirtyDrafts, saving,
     canSave, entry, isDefault, hasContent, availableVariables, canRestoreDefault, saveOutcomeUnknown, loadCatalog, reloadCatalog, loadBusiness, loadChannel,
     selectTemplate, refreshConfigs, refreshUnboundTemplates, createTemplate, saveTemplate, discardDraft, discardBusinessDrafts,
     restoreDefault, resetBusinessIdentity, importTemplate }

@@ -15,6 +15,7 @@ export interface ChannelConfigurationProps {
   entry: ChannelDraftEntry
   disabled: boolean
   busy?: boolean
+  externalFields?: readonly string[]
   submit?: (changes: ChannelFieldChange[], errorPath: string) => Promise<boolean>
 }
 
@@ -92,7 +93,7 @@ export function useChannelConfiguration(props: ChannelConfigurationProps, change
     return issue(key) || (failure ? t(`messageNotification.state.${failure}`) : undefined)
   }
   // Whole-form validation can reject preserved credentials whose controls are intentionally hidden.
-  const hiddenErrors = computed(() => props.entry.issues.filter(item => !fields.value.some(field => field.key === item.path))
+  const hiddenErrors = computed(() => props.entry.issues.filter(item => !props.externalFields?.includes(item.path) && !fields.value.some(field => field.key === item.path))
     .map(item => `${label(props.entry.definition?.fields.find(field => field.key === item.path) || { key: item.path })}: ${issue(item.path)}`))
   function metadataField(key: string) { return fields.value.find(field => `config:${field.key}` === key) }
   const clearSecretOpen = ref(false)

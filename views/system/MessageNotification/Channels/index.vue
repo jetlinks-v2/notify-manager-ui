@@ -42,32 +42,27 @@
               <img v-if="channelIcon(channel.type)" class="notification-channels__heading-icon" :src="channelIcon(channel.type)" alt="" />
               <AIcon v-else type="NotificationOutlined" class="notification-channels__heading-icon" aria-hidden="true" />
               <div class="notification-channels__summary">
-                <div class="notification-channels__title-row"><h2>{{ channelTitle(channel) }}</h2><StatusPill v-if="!isRobot && ['ready', 'empty'].includes(state)" :status="t(state === 'empty' ? 'messageNotification.channels.unconfigured' : dirty || entry?.isNew ? 'messageNotification.channels.draft' : 'messageNotification.channels.configured')" /></div>
+                <div class="notification-channels__title-row"><h2>{{ channelTitle(channel) }}</h2><StatusPill v-if="!multipleConfigurations && ['ready', 'empty'].includes(state)" :status="t(state === 'empty' ? 'messageNotification.channels.unconfigured' : dirty || entry?.isNew ? 'messageNotification.channels.draft' : 'messageNotification.channels.configured')" /></div>
                 <p>{{ help.description }}</p>
               </div>
-              <div v-if="isRobot || (configurationVisible && trialSupported)" class="notification-page__actions">
-                <j-permission-button v-if="isRobot" type="primary" :has-permission="[notificationPermissions.channels.add]" :disabled="!robotCanAdd" @click="robot.add"><template #icon><PlusOutlined aria-hidden="true" /></template>{{ t('messageNotification.channels.robot.add') }}</j-permission-button>
+              <div v-if="multipleConfigurations || (configurationVisible && trialSupported)" class="notification-page__actions">
+                <j-permission-button v-if="multipleConfigurations" type="primary" :has-permission="[notificationPermissions.channels.add]" :disabled="!configurationCanAdd" @click="configurationList.add"><template #icon><PlusOutlined aria-hidden="true" /></template>{{ t(isRobot ? 'messageNotification.channels.robot.add' : 'messageNotification.channels.add') }}</j-permission-button>
                 <j-permission-button v-else :has-permission="[notificationPermissions.channels.action]" :disabled="!canTrial || operationBusy" @click="showSend"><template #icon><SendOutlined aria-hidden="true" /></template>{{ t('messageNotification.channels.test') }}</j-permission-button>
               </div>
             </header>
-            <div v-if="!isRobot && multipleConfigurations && configs.length" class="notification-page__toolbar">
-              <a-select :value="selectedConfigId" class="notification-channels__selector" :options="configurationOptions" :disabled="operationBusy || !canQuery || state === 'loading'" :placeholder="t('messageNotification.channels.chooseConfig')" :aria-label="t('messageNotification.channels.chooseConfig')" @change="workspace.selectConfig(String($event))" />
-              <div class="notification-page__actions">
-                <j-permission-button :has-permission="[notificationPermissions.channels.add]" :disabled="operationBusy || !['ready', 'empty'].includes(state)" @click="workspace.createConfig()"><template #icon><PlusOutlined aria-hidden="true" /></template>{{ t('messageNotification.channels.add') }}</j-permission-button>
-              </div>
-            </div>
-            <div v-if="state === 'loading' || (!isRobot && detailState === 'loading')" class="notification-page__feedback" role="status"><a-spin :tip="t('messageNotification.common.loading')" /></div>
+            <div v-if="state === 'loading' || (!multipleConfigurations && detailState === 'loading')" class="notification-page__feedback" role="status"><a-spin :tip="t('messageNotification.common.loading')" /></div>
             <CloudEmpty v-else-if="['unavailable', 'forbidden', 'error'].includes(state)" class="notification-page__feedback" :description="t(`messageNotification.state.${state}`)"><a-button v-if="canQuery && channel" @click="refresh">{{ t('messageNotification.common.retry') }}</a-button></CloudEmpty>
-            <CloudEmpty v-else-if="!isRobot && ['unavailable', 'forbidden', 'error'].includes(detailState)" class="notification-page__feedback" :description="t(`messageNotification.state.${detailState}`)"><a-button v-if="canQuery && selectedConfigId" @click="workspace.selectConfig(selectedConfigId)">{{ t('messageNotification.common.retry') }}</a-button></CloudEmpty>
-            <template v-else-if="isRobot || entry">
+            <CloudEmpty v-else-if="!multipleConfigurations && ['unavailable', 'forbidden', 'error'].includes(detailState)" class="notification-page__feedback" :description="t(`messageNotification.state.${detailState}`)"><a-button v-if="canQuery && selectedConfigId" @click="workspace.selectConfig(selectedConfigId)">{{ t('messageNotification.common.retry') }}</a-button></CloudEmpty>
+            <template v-else-if="multipleConfigurations || entry">
               <div class="notification-page__body notification-channels__body">
-                <a-alert v-if="!isRobot && entry?.refreshFailure" type="warning" show-icon :message="t('messageNotification.channels.savedRefreshFailed')" class="notification-channels__alert"><template #action><a-button :disabled="operationBusy" @click="workspace.refreshSaved()">{{ t('messageNotification.common.retry') }}</a-button></template></a-alert>
+                <a-alert v-if="entry?.refreshFailure" type="warning" show-icon :message="t('messageNotification.channels.savedRefreshFailed')" class="notification-channels__alert"><template #action><a-button :disabled="operationBusy" @click="workspace.refreshSaved()">{{ t('messageNotification.common.retry') }}</a-button></template></a-alert>
                 <div class="notification-channels__content notification-channels__content--help">
-                  <div v-if="isRobot" class="notification-channels__editor">
+                  <div v-if="multipleConfigurations" class="notification-channels__editor">
                     <a-alert v-if="['unavailable', 'forbidden', 'error'].includes(detailState)" type="error" show-icon :message="t(`messageNotification.state.${detailState}`)" class="notification-channels__alert"><template #action><a-button :disabled="operationBusy" @click="refresh">{{ t('messageNotification.common.retry') }}</a-button></template></a-alert>
-                    <RobotConfigurationList v-if="configs.length" :items="robotRows" :disabled="operationBusy || robotModal.open" :can-fill-templates="canFillRobotTemplates" @action="robot.act" />
+                    <ChannelConfigurationList v-if="configurationRows.length" :items="configurationRows" :disabled="operationBusy || configurationModal.open"
+                      :can-fill-templates="canFillConfigurationTemplates" :can-delete="configurationCanDelete" @action="configurationList.act" />
                     <CloudEmpty v-else :description="t('messageNotification.channels.empty')" />
-                    <ChannelTemplateSetup v-if="templateSetupModel.available && !robotModal.open" :model="templateSetupModel" mode="feedback"
+                    <ChannelTemplateSetup v-if="templateSetupModel.available && !configurationModal.open" :model="templateSetupModel" mode="feedback"
                       @fill="templateSetup.fill()" @view="viewMessageTemplates" />
                   </div>
                   <div v-else-if="entry" class="notification-channels__editor">
@@ -91,23 +86,25 @@
                   <ChannelHelp :key="`${channelId}:${entry?.key || ''}`" :model="help" :active-section="activeHelpSection" :focus-version="helpFocusVersion" />
                 </div>
               </div>
-              <StickyActionBar v-if="!isRobot && entry && canEdit" position="inline" class="notification-page__footer notification-channels__footer">
+              <StickyActionBar v-if="!multipleConfigurations && entry && canEdit" position="inline" class="notification-page__footer notification-channels__footer">
                 <j-permission-button type="primary" :has-permission="[entry.isNew ? notificationPermissions.channels.add : notificationPermissions.channels.update]" :loading="busy || fillingTemplates" :disabled="(!entry.isNew && !dirty) || !canEdit || operationBusy" @click="save">{{ t(templateSetupModel.saveCredentialsFirst ? 'messageNotification.channels.templateSetup.saveCredentials' : 'messageNotification.common.save') }}</j-permission-button>
               </StickyActionBar>
             </template>
-            <CloudEmpty v-else-if="multipleConfigurations && state === 'empty'" class="notification-page__feedback" :description="t('messageNotification.channels.empty')">
-              <j-permission-button type="primary" :has-permission="[notificationPermissions.channels.add]" :disabled="operationBusy || !canQuery" @click="workspace.createConfig()"><template #icon><PlusOutlined aria-hidden="true" /></template>{{ t('messageNotification.common.add') }}</j-permission-button>
-            </CloudEmpty>
             <CloudEmpty v-else class="notification-page__feedback" :description="t(state === 'empty' ? 'messageNotification.channels.cannotCreate' : 'messageNotification.channels.selectConfig')" />
           </template>
         </section>
       </template>
     </EqualHeightColumns>
-    <RobotConfigurationModal :model="robotModal" @close="robot.close" @save="robot.save" @change="robot.change">
-      <template #template-defaults>
-        <ChannelTemplateSetup v-if="robotModal.open" :model="templateSetupModel" mode="fields" @change="templateSetup.change" />
-      </template>
-    </RobotConfigurationModal>
+    <ChannelConfigurationModal :model="configurationModal" @close="configurationList.close" @save="configurationList.save" @change="configurationList.change">
+      <ChannelTemplateSetup v-if="configurationModal.open && isRobot" :model="templateSetupModel" mode="fields" @change="templateSetup.change" />
+      <ChannelConfiguration v-else-if="configurationModal.open && entry" :entry="entry" :external-fields="['name']"
+        :disabled="configurationModal.disabled" :busy="configurationModal.busy" @field="workspace.changeField" @focus="focusField" />
+    </ChannelConfigurationModal>
+    <JlConfirmDialog :open="!!configurationDeleteTarget" tone="danger"
+      :title="t(isRobot ? 'messageNotification.channels.robot.deleteTitle' : 'messageNotification.channels.webhook.deleteTitle')"
+      :message="t(isRobot ? 'messageNotification.channels.robot.deleteMessage' : 'messageNotification.channels.webhook.deleteMessage', { name: configurationDeleteTarget?.name ?? '' })"
+      :confirm-text="t('messageNotification.common.delete')" :cancel-text="t('messageNotification.common.cancel')"
+      @confirm="configurationList.confirmDelete" @cancel="configurationList.cancelDelete" />
     <ChannelTestModal :model="testModel" @close="trial.close()" @recipient="trial.selectRecipient" @address="trial.setAddress" @validate="trial.validateRecipient" @retry-identity="trial.loadIdentity" @retry-members="trial.loadMembers" @send="trial.send" @again="trial.again" @fix="fixTestConfiguration" @closed="afterTestClosed" />
     <WechatMembersDrawer :model="memberDrawer" @close="closeMembers" @reload="reloadMembers" @save="saveMembers" @unbind="unbindMember" @assign="members.assign" @filter="updateMemberFilters" @match="members.autoMatch" @status="updateMemberStatus" @reset-filters="resetMemberFilters" />
     <JlConfirmDialog :open="memberDiscardOpen" :title="t('messageNotification.members.discardTitle')" :message="t('messageNotification.members.discardMessage')" :confirm-text="t('messageNotification.channels.leave')" :cancel-text="t('messageNotification.channels.stay')" @confirm="decideMemberDiscard(true)" @cancel="decideMemberDiscard(false)" @update:open="!$event && decideMemberDiscard(false)" />
@@ -127,17 +124,17 @@ import ChannelHelp from './configuration/ChannelHelp.vue'
 import WechatMembersDrawer from './members/WechatMembersDrawer.vue'
 import WechatMembersSummary from './members/WechatMembersSummary.vue'
 import WorkRecipientGroups from './members/WorkRecipientGroups.vue'
-import RobotConfigurationList from './robot/RobotConfigurationList.vue'
-import RobotConfigurationModal from './robot/RobotConfigurationModal.vue'
+import ChannelConfigurationList from './configuration/ChannelConfigurationList.vue'
+import ChannelConfigurationModal from './configuration/ChannelConfigurationModal.vue'
 const ChannelTemplateSetup = defineAsyncComponent(() => import('./templateSetup/ChannelTemplateSetup.vue'))
 defineOptions({ name: 'MessageNotificationChannels' })
 const channelIcons: Record<string, string> = { email: Email, dingTalk: DingTalk, weixin: WeixinCorp, voice: Voice, sms: Sms, webhook: Webhook }
 const channelIcon = (type: string) => channelIcons[type]
 const {
-  templateSetup, templateSetupModel, fillingTemplates, viewMessageTemplates, canFillRobotTemplates,
-  robot, isRobot, robotRows, robotModal, robotCanAdd,
-  t, notificationPermissions, isNarrow, channelOptions, channelSearch, filteredChannelTree, openChannelKeys, selectChannel, configurationOptions,
-  canQuery, channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId,
+  templateSetup, templateSetupModel, fillingTemplates, viewMessageTemplates, canFillConfigurationTemplates,
+  configurationList, isRobot, configurationRows, configurationModal, configurationCanAdd, configurationCanDelete, configurationDeleteTarget,
+  t, notificationPermissions, isNarrow, channelOptions, channelSearch, filteredChannelTree, openChannelKeys, selectChannel,
+  canQuery, channelId, channel, multipleConfigurations, state, detailState, entry, selectedConfigId,
   busy, dirty, canEdit, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave,
   workspace, trial, testModel, fixTestConfiguration, afterTestClosed, refresh, save, showSend, configurationVisible,
   catalog, directoryState, providerFeedback, channelTitle, help, saveFields, focusField, activeHelpSection, helpFocusVersion, sending,
@@ -161,7 +158,6 @@ const {
 .notification-channels__title-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
 .notification-channels__title-row h2 { margin: 0; font-size: var(--fs-18); font-weight: 500; }
 .notification-channels__summary p { margin: var(--space-2) 0 0; font-size: var(--fs-12); color: var(--text-color-secondary); }
-.notification-channels__selector { flex: 1 1 15rem; min-width: 0; max-width: 28rem; }
 .notification-channels__body { display: flex; flex-direction: column; overflow: hidden; }
 .notification-channels__editor { min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .notification-channels__editor :deep(.notification-channels__members) { margin-top: var(--space-6); padding-top: var(--space-4); border-top: 1px solid var(--line); }

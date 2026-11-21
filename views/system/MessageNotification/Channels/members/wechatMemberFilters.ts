@@ -1,9 +1,16 @@
-import type { ConditionFilterExpressionNode, ConditionFilterTerm } from '@jetlinks-web-core/components/ConditionFilter'
+import type { ConditionFilterExpressionNode, ConditionFilterField, ConditionFilterTerm } from '@jetlinks-web-core/components/ConditionFilter'
 import type { MemberPlatformUser, WechatDepartment, WechatMember } from '../../../../../api/notice/wechatMembers'
 
-export type MemberStatusFilter = 'all' | 'bound' | 'unbound' | 'invalid'
+export const mappingStatuses = ['all', 'bound', 'unbound', 'invalid'] as const
+export type MemberStatusFilter = typeof mappingStatuses[number]
 export type MemberFilterTerm = ConditionFilterTerm
 interface MemberFilterRow { user: MemberPlatformUser; member?: WechatMember; memberId?: string; binding?: { providerName?: string }; mappingStatus: Exclude<MemberStatusFilter, 'all'> }
+
+export function mappingStatusField(t: (key: string) => string): ConditionFilterField {
+  return { dataIndex: 'mappingStatus', title: t('messageNotification.members.status'), search: { type: 'select', termTypeOptions: ['eq'],
+    options: mappingStatuses.filter(value => value !== 'all').map(value => ({ value, label: t(`messageNotification.members.filter.${value}`) })),
+    optionPanel: { multiple: false } } }
+}
 
 /** Status shortcuts edit the same terms as ConditionFilter; counts ignore only status clauses. */
 export function withoutMemberStatus<T extends MemberFilterTerm>(terms: T[]): T[] {
@@ -45,16 +52,24 @@ export function filterWechatMemberRows<T extends MemberFilterRow>(rows: T[], ter
     })
   }
   collect(departments)
+  return filterMappingRows(rows, terms, (row, column) => {
+    if (column === 'member') return [row.member?.name || row.binding?.providerName, row.memberId]
+    if (column === 'platformUser') return [row.user.name, row.user.username, row.user.id]
+    if (column === 'contact') return [row.user.telephone, row.user.email, row.member?.mobile, row.member?.email, row.member?.bizMail]
+    if (column === 'department') return row.member?.department || []
+    return column === 'mappingStatus' ? [row.mappingStatus] : []
+  }, (column, values) => column === 'department' ? values.flatMap(id => descendants.get(id) || [id]) : values)
+}
+
+/** 两个对应抽屉使用同一套条件运算和 AND / OR 分组，字段值由各自的目录提供。 */
+export function filterMappingRows<T>(rows: T[], terms: MemberFilterTerm[], valuesFor: (row: T, column?: string) => unknown[],
+  expandValues?: (column: string | undefined, values: string[]) => string[]): T[] {
   function matches(row: T, term: MemberFilterTerm): boolean {
     if (term.terms) return expression(row, term.terms)
-    const values = term.column === 'member' ? [row.member?.name || row.binding?.providerName, row.memberId]
-      : term.column === 'platformUser' ? [row.user?.name, row.user?.username, row.user?.id]
-        : term.column === 'contact' ? [row.user.telephone, row.user.email, row.member?.mobile, row.member?.email, row.member?.bizMail]
-          : term.column === 'department' ? row.member?.department || []
-            : term.column === 'mappingStatus' ? [row.mappingStatus] : []
+    const values = valuesFor(row, term.column)
     const expected = (Array.isArray(term.value) ? term.value : [term.value]).filter(value => value !== undefined && value !== null).map(String)
     if (!expected.length) return true
-    const options = term.column === 'department' ? expected.flatMap(id => descendants.get(id) || [id]) : expected
+    const options = expandValues ? expandValues(term.column, expected) : expected
     const found = values.some(value => value != null && options.some(option => ['like', 'nlike'].includes(term.termType || '')
       ? String(value).toLowerCase().includes(option.toLowerCase()) : String(value).toLowerCase() === option.toLowerCase()))
     return ['not', 'nin', 'nlike'].includes(term.termType || '') ? !found : found

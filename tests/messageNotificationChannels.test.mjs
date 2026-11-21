@@ -64,8 +64,8 @@ const { emailEncryption, emailEncryptionProperties } = load(resolve(root, 'confi
 const { emailSmtpEndpoints, emailBrandForHost } = load(resolve(root, 'configuration/emailSmtpCatalog.ts'))
 const { useChannelConfiguration } = load(resolve(root, 'useChannelConfiguration.ts'))
 const { useChannelWorkspace } = load(resolve(root, 'useChannelWorkspace.ts'))
-const { useRobotConfigurations } = load(resolve(root, 'robot/useRobotConfigurations.ts'))
-const { robotWebhookSummary } = load(resolve(root, 'robot/robotPresentation.ts'))
+const { useChannelConfigurations } = load(resolve(root, 'configuration/useChannelConfigurations.ts'))
+const { configurationAddressSummary } = load(resolve(root, 'configuration/configurationPresentation.ts'))
 const { createChannelConfigDraft, channelConfigPayload, validateChannelDraft } = load(resolve(root, 'channelSchema.ts'))
 const { useChannelLeaveGuard } = load(resolve(root, 'useChannelLeaveGuard.ts'))
 const { useChannelsPage } = load(resolve(root, 'useChannelsPage.ts'))
@@ -563,7 +563,7 @@ test('extracted page orchestration preserves route filters, send-only trial perm
     permissionRefs.get(notificationPermissions.channels.update).value = true
     await vue.nextTick()
     assert.equal(page.canEdit.value, true)
-    assert.equal(page.configurationOptions.value.length, 2)
+    assert.equal(page.configs.value.length, 2)
     assert.equal(page.multipleConfigurations.value, false)
     assert.equal(pageContext.route.query.configId, 'smtp-real')
     assert.equal(pageContext.route.query.q, 'kept-filter')
@@ -632,6 +632,11 @@ test('extracted page orchestration preserves route filters, send-only trial perm
     for (const [channelId, fields] of [['sms:aliyunSms', ['regionId', 'accessKeyId', 'secret', 'testTemplate']], ['webhook:http', ['url', 'headers']]]) {
       await page.workspace.activate(channelId)
       assert.equal(page.state.value, 'empty')
+      if (channelId === 'webhook:http') {
+        assert.equal(page.entry.value, undefined)
+        page.configurationList.add()
+        assert.equal(page.configurationModal.value.open, true)
+      }
       assert.equal(page.entry.value.isNew, true)
       assert.deepEqual(page.entry.value.definition.fields.map(field => field.key), fields)
       assert.equal(page.dirty.value, false)
@@ -662,7 +667,7 @@ test('pair editing emits replacements and rejects malformed saved rows without m
 
 
 test('all channel SFCs compile through Vue script/template without auto-named script extensions', () => {
-  for (const filename of ['index.vue', 'ChannelConfiguration.vue', 'ConfigurationPairs.vue', 'testing/ChannelTestModal.vue', 'testing/ChannelTestSettings.vue', 'configuration/ChannelHelp.vue']) {
+  for (const filename of ['index.vue', 'ChannelConfiguration.vue', 'ConfigurationPairs.vue', 'testing/ChannelTestModal.vue', 'testing/ChannelTestSettings.vue', 'configuration/ChannelHelp.vue', 'configuration/ChannelConfigurationList.vue', 'configuration/ChannelConfigurationModal.vue']) {
     const source = readFileSync(resolve(root, filename), 'utf8')
     const { descriptor, errors } = parse(source, { filename })
     assert.deepEqual(errors, [])
@@ -1287,7 +1292,7 @@ test('empty robots require Add, retain explicit drafts across channels and retur
   assert.equal(io.calls.filter(([method]) => method === 'createConfig').length, 1)
 })
 
-test('only robots allow a second configuration and keep automatic duplicate-name numbering', async () => {
+test('robots allow a second configuration and single-config providers retain their limit', async () => {
   const io = testApi([email(), robot()])
   const workspace = useChannelWorkspace({ api: io.api, permissions: permissions(), channelName: () => '群机器人' })
   await workspace.activate('email:embedded')
@@ -1310,6 +1315,30 @@ test('only robots allow a second configuration and keep automatic duplicate-name
   await workspace.selectConfig('robot-real')
   assert.equal(workspace.selectedConfigId.value, 'robot-real')
   assert.equal(io.calls.filter(([method]) => method === 'createConfig').length, 1)
+})
+
+test('Webhook waits for explicit creation and stores a second config under its own ID', async () => {
+  const io = testApi([])
+  const workspace = useChannelWorkspace({ api: io.api, permissions: permissions(), channelName: () => 'Webhook' })
+  await workspace.activate('webhook:http')
+  assert.equal(workspace.multipleConfigurations.value, true)
+  assert.equal(workspace.entry.value, undefined)
+  workspace.createConfig()
+  assert.equal(workspace.entry.value.isNew, true)
+  workspace.changeField('url', 'https://fixture.example.test/alarms')
+  assert.equal(await workspace.save(), true)
+  const firstId = workspace.selectedConfigId.value
+  workspace.createConfig()
+  assert.equal(workspace.entry.value.draft.name, 'Webhook (2)')
+  workspace.changeField('url', 'https://fixture.example.test/scenes')
+  assert.equal(await workspace.save(), true)
+  const secondId = workspace.selectedConfigId.value
+  assert.notEqual(firstId, secondId)
+  await workspace.selectConfig(firstId)
+  assert.equal(workspace.entry.value.draft.configuration.url, 'https://fixture.example.test/alarms')
+  await workspace.selectConfig(secondId)
+  assert.equal(workspace.entry.value.draft.configuration.url, 'https://fixture.example.test/scenes')
+  assert.equal(io.calls.filter(([method]) => method === 'createConfig').length, 2)
 })
 
 const { builtinEmailTemplates, builtinEmailContext } = load(resolve(root, '../shared/builtinEmailTemplates.ts'))
@@ -1512,7 +1541,7 @@ function robotDialogFixture(records, navigate) {
   pageContext = { messages: [] }
   let dialog
   const app = mount(vue.defineComponent({ setup() {
-    dialog = useRobotConfigurations({ workspace, permissions: perms, blocked, pending,
+    dialog = useChannelConfigurations({ workspace, permissions: perms, blocked, pending,
       test: () => actions.push(['test', workspace.entry.value.baseline.id]),
       fillTemplates: async id => { actions.push(['fill', id, workspace.entry.value.baseline.id]) },
     })
@@ -1521,14 +1550,15 @@ function robotDialogFixture(records, navigate) {
   return { io, workspace, dialog, perms, pending, actions, dispose() { app.unmount(); pageContext = undefined } }
 }
 
-test('robot rows redact all query credentials, URL passwords and fragments, including invalid URLs', () => {
-  assert.equal(robotWebhookSummary('https://user:password@oapi.dingtalk.com/robot/send?access_token=secret-1234&sign=signature#private'),
+test('configuration rows redact URL credentials and show only the origin for Webhook', () => {
+  assert.equal(configurationAddressSummary('https://user:password@oapi.dingtalk.com/robot/send?access_token=secret-1234&sign=signature#private', true),
     'https://oapi.dingtalk.com/robot/send?access_token=…1234&sign=…')
-  assert.equal(robotWebhookSummary('https://oapi.dingtalk.com/robot/send?access_token=1234'), 'https://oapi.dingtalk.com/robot/send?access_token=…')
-  assert.equal(robotWebhookSummary('https://oapi.dingtalk.com/robot/send?access_token=********1234'), 'https://oapi.dingtalk.com/robot/send?access_token=…')
-  assert.equal(robotWebhookSummary('invalid secret URL'), '••••••••')
-  assert.equal(robotWebhookSummary('javascript:secret'), '••••••••')
-  assert.equal(robotWebhookSummary(undefined), '')
+  assert.equal(configurationAddressSummary('https://oapi.dingtalk.com/robot/send?access_token=1234', true), 'https://oapi.dingtalk.com/robot/send?access_token=…')
+  assert.equal(configurationAddressSummary('https://oapi.dingtalk.com/robot/send?access_token=********1234', true), 'https://oapi.dingtalk.com/robot/send?access_token=…')
+  assert.equal(configurationAddressSummary('https://user:password@fixture.example.test:8080/private-path?key=token#fragment', false), 'https://fixture.example.test:8080')
+  assert.equal(configurationAddressSummary('invalid secret URL', true), '••••••••')
+  assert.equal(configurationAddressSummary('javascript:secret', false), '••••••••')
+  assert.equal(configurationAddressSummary(undefined, true), '')
 })
 
 test('canceling a new robot dialog removes its draft and reopening creates a fresh identity', async () => {

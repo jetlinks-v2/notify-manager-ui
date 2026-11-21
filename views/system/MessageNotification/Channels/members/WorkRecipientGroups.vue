@@ -22,32 +22,15 @@
     <a-alert v-else-if="work.saved.value && !work.failed.value.length" type="success" show-icon :message="t('messageNotification.recipients.synced')" />
   </div>
   <JlDrawerShell :key="kind" :open="work.open.value" :title="t(`messageNotification.recipients.${kind}Manage`)" :width="900" @update:open="!$event && emit('close')">
-    <div class="recipient-groups__toolbar">
-      <a-input v-model:value="work.keyword.value" :placeholder="t('messageNotification.recipients.search')" :aria-label="t('messageNotification.recipients.search')" allow-clear />
-      <a-button :disabled="!work.loaded.value || work.busy.value" @click="work.autoMatch()">{{ t('messageNotification.members.autoMatch') }}</a-button>
-    </div>
+    <WechatMembersSummary v-if="work.loaded.value" summary-key="messageNotification.recipients.summary"
+      :model="{ ...work.summaries.value[kind], canAutoMatch: work.canAutoMatchDraft.value && !disabled }" @match="work.autoMatch()" />
     <a-alert v-if="work.error.value" type="error" show-icon :message="failure">
       <template v-if="!work.loaded.value || work.error.value === 'conflict'" #action>
         <a-button size="small" :disabled="work.loading.value || work.busy.value" @click="emit('reload')">{{ t('messageNotification.members.retryRead') }}</a-button>
       </template>
     </a-alert>
     <a-alert v-else-if="work.matchCount.value === 0" type="info" show-icon :message="t('messageNotification.members.noMatches')" />
-    <a-table v-if="work.loaded.value || work.loading.value" :columns="columns" :data-source="work.rows.value" :loading="work.loading.value"
-      :locale="{ emptyText: t('messageNotification.recipients.noOptions') }" row-key="id" size="small" :scroll="{ x: 550 }" :pagination="{ pageSize: 15, hideOnSinglePage: true }">
-      <template #bodyCell="{ column, record }">
-        <template v-if="column.key === 'platform'">
-          <span>{{ record.name }}</span>
-          <a-tag v-if="record.invalid" color="error">{{ t('messageNotification.members.filter.invalid') }}</a-tag>
-        </template>
-        <a-select v-else-if="column.key === 'external'" :value="record.externalId" :disabled="work.busy.value || !record.available"
-          :aria-label="record.name" :placeholder="t('messageNotification.recipients.choose')" show-search option-filter-prop="label"
-          :options="optionsFor(record)" class="recipient-groups__select" @update:value="typeof $event === 'string' && work.assign(record.id, $event)" />
-        <a-popconfirm v-else-if="column.key === 'action' && record.externalId" :title="t('messageNotification.members.confirmUnbind')"
-          :ok-text="t('messageNotification.members.unbind')" :cancel-text="t('messageNotification.common.cancel')" @confirm="work.assign(record.id)">
-          <a-button danger type="link" :disabled="work.busy.value">{{ t('messageNotification.members.unbind') }}</a-button>
-        </a-popconfirm>
-      </template>
-    </a-table>
+    <RecipientMappingTable v-if="work.open.value" :work="work" />
     <template #foot><StickyActionBar position="inline">
       <a-button :disabled="work.busy.value" @click="emit('close')">{{ t('messageNotification.common.close') }}</a-button>
       <a-button v-if="work.enabled.value && work.loaded.value && !work.groupDirty.value" :disabled="work.busy.value" @click="work.retry()">{{ t('messageNotification.recipients.sync') }}</a-button>
@@ -76,6 +59,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { GroupRecipientKind } from '../../shared/workRecipients'
 import WechatMembersSummary from './WechatMembersSummary.vue'
+import RecipientMappingTable from './RecipientMappingTable.vue'
 import type { useWorkRecipients } from './useWorkRecipients'
 
 const props = defineProps<{ work: ReturnType<typeof useWorkRecipients>; disabled: boolean; canManage: boolean }>()
@@ -92,11 +76,6 @@ const failure = computed(() => {
   if (error === 'conflict') return t('messageNotification.members.error.conflict')
   return t(`messageNotification.state.${error}`)
 })
-const columns = computed(() => [
-  { key: 'platform', title: t(`messageNotification.recipients.${kind.value}Platform`) },
-  { key: 'external', title: t(`messageNotification.recipients.${kind.value}External`) },
-  { key: 'action', title: t('messageNotification.members.actions'), width: 96 },
-])
 const newTargets = computed(() => {
   const recipients = props.work.firstSync.value?.recipients
   if (!recipients) return []
@@ -110,21 +89,9 @@ const newTargets = computed(() => {
     label: t(label), ids: ids.map(id => names[kind].get(id) ?? id),
   }))
 })
-function optionsFor(record: Record<string, unknown>) {
-  const row = props.work.rows.value.find(item => item.id === record.id)
-  if (!row) return []
-  const options = props.work.externalOptions.value.map(item => ({ ...item, disabled: !!item.assignedTo && item.assignedTo !== row.id }))
-  if (row.invalid && row.externalId && !options.some(item => item.value === row.externalId)) {
-    options.push({ value: row.externalId, label: row.externalName || row.externalId, assignedTo: row.id, disabled: true })
-  }
-  return options
-}
 </script>
 
 <style scoped>
 .recipient-groups__feedback { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
-.recipient-groups__toolbar { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
-.recipient-groups__toolbar > .ant-input-affix-wrapper { flex: 1 1 12rem; }
-.recipient-groups__select { width: 100%; }
 .recipient-groups__preview { max-height: 14rem; overflow-y: auto; }
 </style>

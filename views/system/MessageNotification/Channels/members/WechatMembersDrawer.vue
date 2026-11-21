@@ -2,14 +2,8 @@
   <JlDrawerShell :open="model.open" :title="t('messageNotification.members.title')" :sub="t('messageNotification.members.description')" :width="1000" @update:open="!$event && emit('close')">
     <WechatMembersSummary :model="model" @match="emit('match')" @reload="emit('reload')" />
     <p class="wechat-members__secondary">{{ t('messageNotification.members.matchHelp') }}</p>
-    <div class="wechat-members__toolbar">
-      <ConditionFilter class="wechat-members__search" :model-value="model.filterTerms" :fields="filterFields" :disabled="model.busy || model.state !== 'ready'" @update:model-value="emit('filter', $event)" />
-      <a-button-group class="wechat-members__statuses" role="group" :aria-label="t('messageNotification.members.status')">
-        <a-button v-for="option in statusOptions" :key="option.value" :type="model.statusFilter === option.value ? 'primary' : 'default'" :ghost="model.statusFilter === option.value" :aria-pressed="model.statusFilter === option.value" :disabled="model.busy || model.state !== 'ready'" @click="emit('status', option.value)">
-          <a-badge :status="statusTones[option.value]" />{{ option.label }}
-        </a-button>
-      </a-button-group>
-    </div>
+    <MappingFilterBar :terms="model.filterTerms" :fields="filterFields" :counts="model.filterCounts" :disabled="model.busy || model.state !== 'ready'"
+      @filter="emit('filter', $event)" @status="emit('status', $event)" />
     <a-spin v-if="model.state === 'loading'" :tip="t('messageNotification.common.loading')" />
     <CloudEmpty v-else-if="['error', 'forbidden', 'unavailable'].includes(model.state)" :description="t(`messageNotification.state.${model.state}`)" />
     <CloudEmpty v-else-if="model.state === 'empty'" :description="t('messageNotification.members.empty')" />
@@ -64,7 +58,7 @@
 <script setup lang="ts">
 import { useWechatMembersDrawer, type WechatMembersDrawerModel } from './useWechatMembersDrawer'
 import type { MemberFilterTerm, MemberStatusFilter } from './useWechatMembers'
-import ConditionFilter from '@jetlinks-web-core/components/ConditionFilter'
+import MappingFilterBar from './MappingFilterBar.vue'
 import AutoTree from '@jetlinks-web-core/components/AutoTree'
 import WechatMembersSummary from './WechatMembersSummary.vue'
 const props = defineProps<{ model: WechatMembersDrawerModel }>()
@@ -75,19 +69,15 @@ const emit = defineEmits<{
   (event: 'unbind', value: string): void
   (event: 'assign', userId: string, memberId?: string): void
 }>()
-const { t, columns, filterFields, statusOptions, statusTones, editingUser, setEditing, selectMember, selectNode, stopEditing, pagination, memberTree, memberKeyword, expandedKeys, selectedKeys, expand, searchInput } = useWechatMembersDrawer(() => props.model, (userId, memberId) => emit('assign', userId, memberId))
+const { t, columns, filterFields, editingUser, setEditing, selectMember, selectNode, stopEditing, pagination, memberTree, memberKeyword, expandedKeys, selectedKeys, expand, searchInput } = useWechatMembersDrawer(() => props.model, (userId, memberId) => emit('assign', userId, memberId))
 </script>
 
 <style scoped>
-.wechat-members__toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); }
-.wechat-members__search { flex: 1 1 16rem; min-width: 0; }
 .wechat-members__member-picker { display: flex; flex-direction: column; gap: var(--space-3); width: 20rem; max-width: calc(100vw - 3rem); }
 .wechat-members__tree { height: 16rem; max-height: 40vh; overflow: hidden; }
 .wechat-members__tree-node { display: flex; align-items: center; gap: var(--space-2); }
 .wechat-members__tree-label { display: flex; flex: 1; min-width: 0; flex-direction: column; overflow-wrap: anywhere; }
 .wechat-members__tree-node > .wechat-members__secondary { flex-shrink: 0; }
 .wechat-members__secondary { color: var(--text-color-secondary); font-size: var(--fs-12); }
-.wechat-members__statuses { display: flex; max-width: 100%; overflow-x: auto; }
-.wechat-members__statuses > .ant-btn { flex-shrink: 0; }
 .wechat-members__actions { display: flex; align-items: center; }
 </style>

@@ -32,9 +32,16 @@ const fixture = [
   channel('customType', 'primary'), channel('customType', 'secondary'), channel('sms', 'aliyunSms'),
 ]
 function setup(channels = fixture, value = 'email:embedded', configurationStates = {}) {
-  const props = reactive({ channels: channels.map(item => ({ ...item })), value, configurationStates: { ...configurationStates } })
+  const props = reactive({
+    channels: channels.map(item => ({ ...item })), value, configurationStates: { ...configurationStates },
+    configurationsByChannel: {}, activeConfigId: undefined,
+  })
   const events = []
-  const result = useTemplateChannelNavigation(props, (name, id) => { events.push([name, id]); props.value = id })
+  const result = useTemplateChannelNavigation(props, (name, id, ...config) => {
+    events.push([name, id, ...config])
+    props.value = id
+    props.activeConfigId = config[0]
+  })
   return { props, events, result }
 }
 
@@ -87,6 +94,30 @@ test('subtabs keep exact provider identities and repeated current-family clicks 
   assert.equal(events.length, count)
   assert.deepEqual(result.subChannels.value.map(item => item.id), ['dingTalk:dingTalkRobotWebHook', 'dingTalk:customDing', 'dingTalk:dingTalkMessage'])
   assert.equal(result.subChannels.value.find(item => item.id === 'dingTalk:customDing').label, 'customDing')
+})
+
+test('configured robots appear as distinct named tabs and emit their configuration ID', () => {
+  const { result, props, events } = setup(fixture, 'dingTalk:dingTalkMessage')
+  props.configurationsByChannel['dingTalk:dingTalkRobotWebHook'] = [{ id: 'robot-a', name: '告警群' }, { id: 'robot-b', name: '告警群' }]
+  assert.deepEqual(result.subChannels.value.map(tab => tab.label), ['群机器人·告警群', '群机器人·告警群', 'customDing', '工作通知'])
+  assert.equal(result.activeTabKey.value, 'dingTalk:dingTalkMessage')
+  const [first, second] = result.subChannels.value
+  assert.notEqual(first.key, second.key)
+  result.selectChannel(second.key)
+  assert.deepEqual(events.at(-1), ['change', 'dingTalk:dingTalkRobotWebHook', 'robot-b'])
+  assert.equal(result.activeTabKey.value, second.key)
+  props.configurationsByChannel['dingTalk:dingTalkRobotWebHook'][1].name = '值班群'
+  assert.equal(result.subChannels.value[1].label, '群机器人·值班群')
+  assert.equal(result.activeTabKey.value, second.key)
+})
+
+test('Webhook tabs select their own configuration rather than the first Webhook', () => {
+  const { result, props, events } = setup([channel('webhook', 'http')], 'webhook:http')
+  props.configurationsByChannel['webhook:http'] = [{ id: 'hook-a', name: '告警回调' }, { id: 'hook-b', name: '工单回调' }]
+  assert.deepEqual(result.subChannels.value.map(tab => tab.label), ['告警回调', '工单回调'])
+  result.selectChannel(result.subChannels.value[1].key)
+  assert.deepEqual(events.at(-1), ['change', 'webhook:http', 'hook-b'])
+  assert.equal(result.activeTabKey.value, 'webhook:http:hook-b')
 })
 
 test('a family without a built-in work provider falls back only to its first actual backend entry', () => {

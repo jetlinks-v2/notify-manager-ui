@@ -44,6 +44,7 @@ export interface NoticeChannelConfig {
   i18nName?: string
   provider?: string
   channelProvider?: string
+  channelKey?: string | null
   state?: NoticeCenterState
   grant?: Record<string, unknown>
   configuration?: Record<string, unknown>

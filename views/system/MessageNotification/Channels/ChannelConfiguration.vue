@@ -41,6 +41,7 @@ const props = defineProps({
   entry: { type: Object as PropType<ChannelDraftEntry>, required: true },
   disabled: { type: Boolean, default: false },
   busy: { type: Boolean, default: false },
+  externalFields: { type: Array as PropType<readonly string[]>, default: undefined },
   submit: { type: Function as PropType<(changes: ChannelFieldChange[], errorPath: string) => Promise<boolean>>, default: undefined },
 })
 const emit = defineEmits<{ (event: 'field', key: string, value: unknown, topLevel?: boolean): void; (event: 'focus', key: string): void }>()
