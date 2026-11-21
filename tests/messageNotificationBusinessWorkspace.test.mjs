@@ -40,6 +40,7 @@ function load(filename) {
 
 const { useTemplateWorkspace } = load(resolve(root, 'views/system/MessageNotification/Templates/useTemplateWorkspace.ts'))
 const { fillMessageTemplates } = load(resolve(root, 'views/system/MessageNotification/Channels/templateSetup/fillMessageTemplates.ts'))
+const { useSmsTemplateOptions } = load(resolve(root, 'views/system/MessageNotification/Channels/templateSetup/useSmsTemplateOptions.ts'))
 const { readTemplateSetup, templateSetupIssues } = load(resolve(root, 'views/system/MessageNotification/Channels/templateSetup/templateDefaults.ts'))
 const { notificationChannels } = load(resolve(root, 'views/system/MessageNotification/shared/catalog.ts'))
 const { useTemplateCatalog } = load(resolve(root, 'views/system/MessageNotification/Templates/hooks/useTemplateCatalog.ts'))
@@ -224,6 +225,16 @@ test('new external channels fill four message types with their saved config ID, 
         else assert.match(message, /\$\{detail\./)
         assert.equal(item.channel.channelConfiguration.variables.userIdList.relation.objectSource.upperKey, 'subscriber')
       } },
+    { id: 'weixin:corpMessage', configuration: { corpId: 'fixture-corp', agentId: '42', workNotificationRecipients: {
+      memberIds: ['member-2', 'member-1', 'member-2'],
+      departments: [{ platformId: 'org-id', externalId: 'department-id' }],
+      tags: [{ platformId: 'role-id', externalId: 'tag-id' }],
+    } }, verify: item => {
+      assert.equal(item.template.template.toParty, 'department-id')
+      assert.equal(item.template.template.toTag, 'tag-id')
+      assert.equal(item.template.template.toUser, 'member-1,member-2')
+      assert.equal(item.channel.channelConfiguration.variables.toUser, undefined)
+    } },
     { id: 'dingTalk:dingTalkRobotWebHook', configuration: { messageTemplateDefaults: { messageType: 'link', title: '旧标题', message: '旧正文', messageUrl: 'https://fixture.example.test/details' } },
       verify: item => {
         assert.deepEqual(item.template.template, { messageType: 'link', link: { title: '${topic}', text: '${message}', messageUrl: 'https://fixture.example.test/details' } })
@@ -241,12 +252,42 @@ test('new external channels fill four message types with their saved config ID, 
         if (provider === 'extension-business') assert.deepEqual(body, { message: '${message}' })
         else assert.match(item.template.template.body, /\$\{detail\./)
       } },
+    { id: 'sms:aliyunSms', configuration: {
+      testTemplate: { signName: '试发签名', code: 'SMS_TEST_ONLY' },
+      messageTemplateDefaults: { code: 'SMS_APPROVED', signName: '业务签名' },
+    }, verify: item => {
+      assert.deepEqual(item.template.template, { code: 'SMS_APPROVED', signName: '业务签名', message: '审核原文 ${message}' })
+      assert.deepEqual(item.template.variableDefinitions.map(({ id }) => id), ['message'])
+      assert.equal(item.channel.channelConfiguration.variables.phoneNumber.relation.objectSource.upperKey, 'subscriber')
+    } },
+    { id: 'voice:aliyun', configuration: { messageTemplateDefaults: { templateCode: 'TTS_APPROVED', message: '历史内容' } },
+      verify: (item, provider) => {
+        const { templateType, templateCode, ttsCode, message, playTimes } = item.template.template
+        assert.equal(templateType, 'tts')
+        assert.equal(templateCode, 'TTS_APPROVED')
+        assert.equal(ttsCode, templateCode)
+        assert.ok(playTimes >= 1)
+        if (provider === 'extension-business') assert.equal(message, '${message}')
+        else assert.match(message, /\$\{detail\./)
+        assert.equal(item.channel.channelConfiguration.variables.calledNumber.relation.objectSource.upperKey, 'subscriber')
+      } },
+    { id: 'voice:aliyun', configuration: { messageTemplateDefaults: { templateType: 'voice', templateCode: 'recording.wav', message: '旧原文 ${unused}' } },
+      verify: item => {
+        assert.equal(item.template.template.templateType, 'voice')
+        assert.equal(item.template.template.ttsCode, 'recording.wav')
+        assert.equal(item.template.template.message, undefined)
+        assert.deepEqual(item.template.variableDefinitions, [])
+      } },
   ]
   for (const { id, configuration, verify } of cases) {
     const channel = notificationChannels.find(value => value.id === id)
     const saved = { ...config('current-config', channel.type, channel.provider), configuration }
     const io = mockApi([saved])
     io.api.getConfig = async () => clone(saved)
+    io.api.getSmsTemplateContent = async (...args) => {
+      io.calls.push(['getSmsTemplateContent', ...args])
+      return '审核原文 ${message}'
+    }
     const directory = [business(), business('relieve', 'alarm-device-relieve'), business(null, 'scene'), business('extension', 'extension-business')]
     io.api.queryTemplateDirectory = async () => clone(directory)
     const persist = io.api.saveBusinessTemplates
@@ -259,6 +300,8 @@ test('new external channels fill four message types with their saved config ID, 
     const fill = () => fillMessageTemplates(io.api, saved, channel, () => true, key => key)
     assert.deepEqual(await fill(), { created: 4, skipped: 0, failed: [], unknown: false }, id)
     assert.deepEqual(await fill(), { created: 0, skipped: 4, failed: [], unknown: false }, id)
+    assert.deepEqual(io.calls.filter(([method]) => method === 'getSmsTemplateContent'), id === 'sms:aliyunSms'
+      ? [['getSmsTemplateContent', saved.id, 'SMS_APPROVED', '业务签名']] : [])
     const records = [...io.records.values()].filter(item => item.template)
     assert.equal(records.length, 4)
     for (const item of records) {
@@ -271,6 +314,74 @@ test('new external channels fill four message types with their saved config ID, 
     assert.equal(request.provider.defaultSubscribed, false)
     assert.deepEqual(request.channels[1], { channel: { name: '站内信', state: 'enabled', channelProvider: 'inside-mail' } })
   }
+})
+
+test('Aliyun template fields require business defaults even when the channel already has trial settings', () => {
+  const issues = (id, configuration) => templateSetupIssues(id, readTemplateSetup(id, configuration))
+  assert.deepEqual(Object.keys(issues('sms:aliyunSms', { testTemplate: { code: 'SMS_TEST', signName: '签名' } })), ['code', 'signName'])
+  assert.deepEqual(Object.keys(issues('voice:aliyun', { testTemplate: { templateType: 'tts', templateCode: 'TTS_TEST' } })), ['templateCode'])
+  assert.deepEqual(Object.keys(issues('voice:aliyun', { messageTemplateDefaults: { templateType: 'other', templateCode: '123' } })), ['templateType'])
+  assert.deepEqual(Object.keys(issues('sms:aliyunSms', { messageTemplateDefaults: { code: 'SMS_1', signName: '  ' } })), ['signName'])
+})
+
+test('SMS choices require a saved configuration and discard stale account responses after a switch or credential edit', async t => {
+  const source = id => ({ ...config(id, 'sms', 'aliyunSms'), configuration: { regionId: 'cn-test', accessKeyId: id, secret: 'fixture' } })
+  const entry = vue.ref({ isNew: true, draft: source('new') })
+  const canEdit = vue.ref(true)
+  const requests = []
+  t.mock.method(messageNotificationApi, 'getSmsTemplateOptions', id => new Promise(resolve => requests.push({ id, resolve })))
+  const scope = vue.effectScope()
+  t.after(() => scope.stop())
+  const { credentialsPending, choices, state } = scope.run(() => useSmsTemplateOptions(entry, canEdit))
+  const settle = () => new Promise(resolve => setImmediate(resolve))
+  const options = id => ({ templates: [{ templateCode: `SMS_${id}` }], signs: [{ signName: id }] })
+  assert.equal(credentialsPending.value, true)
+  assert.equal(requests.length, 0)
+  for (const id of ['one', 'two']) {
+    entry.value = { isNew: false, draft: source(id), baseline: source(id) }
+    await settle()
+  }
+  assert.deepEqual(requests.map(request => request.id), ['one', 'two'])
+  requests[1].resolve(options('two'))
+  requests[0].resolve(options('one'))
+  await settle()
+  assert.deepEqual(choices.value.code.map(option => option.value), ['SMS_two'])
+  entry.value.draft.configuration.accessKeyId = 'replacement'
+  await settle()
+  assert.equal(credentialsPending.value, true)
+  assert.deepEqual(choices.value, { code: [], signName: [] })
+  assert.equal(state.value, 'idle')
+  entry.value.baseline = clone(entry.value.draft)
+  await settle()
+  assert.equal(requests[2].id, 'two')
+  canEdit.value = false
+  await settle()
+  requests[2].resolve(options('replacement'))
+  await settle()
+  assert.equal(state.value, 'idle')
+  assert.deepEqual(choices.value.signName, [])
+})
+
+test('SMS approval failures preserve the saved channel and retry only missing templates after rechecking the account', async () => {
+  const channel = notificationChannels.find(value => value.id === 'sms:aliyunSms')
+  const saved = { ...config('sms-channel', channel.type, channel.provider), configuration: { messageTemplateDefaults: { code: 'SMS_1', signName: '签名' } } }
+  const io = mockApi([saved])
+  io.api.getConfig = async () => clone(saved)
+  io.api.queryTemplateDirectory = async () => [business('occupied'), business('missing', 'scene')]
+  const existing = item('occupied', { ...template(), type: 'sms', provider: 'aliyunSms', configId: saved.id })
+  io.records.set('occupied/notifier-sms', existing)
+  const fill = (active = () => true) => fillMessageTemplates(io.api, saved, channel, active, key => key)
+  io.api.getSmsTemplateContent = async () => undefined
+  assert.deepEqual(await fill(), { created: 0, skipped: 1, failed: [], unknown: false, loadFailure: 'smsDefaults' })
+  io.api.getSmsTemplateContent = async () => { throw { status: 403 } }
+  assert.equal((await fill()).loadFailure, 'forbidden')
+  let active = true
+  io.api.getSmsTemplateContent = async () => { active = false; return '短信 ${message}' }
+  assert.equal((await fill(() => active)).created, 0)
+  assert.equal(io.calls.some(([method]) => method === 'saveBusinessTemplate'), false)
+  io.api.getSmsTemplateContent = async () => '短信 ${message}'
+  assert.deepEqual(await fill(), { created: 1, skipped: 1, failed: [], unknown: false })
+  assert.equal(io.records.get('occupied/notifier-sms'), existing)
 })
 
 test('template setup requires DingTalk AgentId and mode-specific robot fields without validating stored message content', () => {

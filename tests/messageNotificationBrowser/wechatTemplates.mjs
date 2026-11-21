@@ -136,7 +136,8 @@ try {
 
   const edit = existing.getByRole('button', { name: /编\s*辑/ })
   await edit.click()
-  for (const label of ['接收部门', '接收用户', '接收标签']) await existing.getByText(label, { exact: true }).waitFor()
+  await existing.getByText('在此编辑消息内容。请到「通知渠道」管理接收范围。').waitFor()
+  assert.equal(await existing.getByText(/接收部门|接收用户|接收标签/).count(), 0)
   assert.equal(await channelSwitch.count(), 0)
   const message = '设备告警解除提醒已更新'
   await existing.getByRole('textbox', { name: '正文', exact: true }).fill(message)

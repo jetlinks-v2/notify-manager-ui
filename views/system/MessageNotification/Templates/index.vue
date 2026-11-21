@@ -77,7 +77,7 @@
               </a-alert>
               <div :key="activeKey" class="message-templates__content" :class="{ 'message-templates__content--editing': editing }">
                 <TemplateEditor v-if="editing" ref="contentEditor" :draft="draft" :existing="entry?.existing" :business="business" :business-mode="!!business" :configs="configs" :config-state="configState" :metadata="metadata" :metadata-state="metadataState" :available-variables="availableVariables" :disabled="!canEdit || saving" @uploading="setUploading" />
-                <TemplateVariablePanel v-if="editing" :draft="draft" :business="business" :variables="availableVariables" :disabled="busy || !contentEditor?.canInsertVariable" @insert="contentEditor?.insertVariable($event)" />
+                <TemplateVariablePanel v-if="editing" :draft="draft" :business="business" :business-title="business && title" :variables="availableVariables" :disabled="busy || !contentEditor?.canInsertVariable" @insert="contentEditor?.insertVariable($event)" />
                 <TemplatePreview v-if="hasContent || editing" :draft="draft" :editing="editing" :business="business" :channel="currentChannel" :config="activeConfig" />
                 <CloudEmpty v-else class="notification-page__feedback" :description="t('messageNotification.templates.noDefault')" />
               </div>

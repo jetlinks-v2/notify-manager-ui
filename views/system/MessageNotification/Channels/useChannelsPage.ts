@@ -23,6 +23,9 @@ import { useRobotConfigurations } from './robot/useRobotConfigurations'
 import { dingTalkRobotChannel, dingTalkWorkChannel } from './templateSetup/templateDefaults'
 import { useChannelTemplateSetup } from './templateSetup/useChannelTemplateSetup'
 import { wechatCorpChannel } from './wechat/templateDefaults'
+import { useWorkRecipients } from './members/useWorkRecipients'
+import { isWorkChannel, workRecipientsKey } from '../shared/workRecipients'
+import { dingTalkMemberApi, wechatMemberApi } from '../../../../api/notice/wechatMembers'
 
 /** Own backend directory, routing, permissions and draft effects outside rendering components. */
 export function useChannelsPage() {
@@ -42,7 +45,7 @@ export function useChannelsPage() {
     update: computed(() => auth.hasPermission(notificationPermissions.channels.update)),
     delete: usePermission(notificationPermissions.channels.delete).hasPerm,
     action: computed(() => auth.hasPermission(notificationPermissions.channels.action)),
-    bind: usePermission(notificationPermissions.channels.bind).hasPerm,
+    bind: computed(() => auth.hasPermission(notificationPermissions.channels.bind)),
   }
   const canQuery = permissions.query
   const catalog = useChannelCatalog(canQuery)
@@ -78,9 +81,11 @@ export function useChannelsPage() {
   const members = useWechatMembers()
   const sending = trial.sending
   const fillingTemplates = ref(false)
-  const externalBusy = computed(() => sending.value || members.busy.value || fillingTemplates.value)
+  const recipientsBusy = ref(false)
+  const workspaceBlocked = computed(() => sending.value || members.busy.value || fillingTemplates.value)
+  const externalBusy = computed(() => workspaceBlocked.value || recipientsBusy.value)
   const workspace = useChannelWorkspace({
-    permissions, navigate, blocked: externalBusy, channels: catalog.channels, loadConfigs: catalog.loadConfigs,
+    permissions, navigate, blocked: workspaceBlocked, channels: catalog.channels, loadConfigs: catalog.loadConfigs,
     loadDefinition: catalog.loadDefinition, channelName: channelTitle,
     onMutationError: error => onlyMessage(notificationFailureMessage(error) || t(`messageNotification.state.${classifyNotificationFailure(error)}`), 'error'),
   })
@@ -90,6 +95,14 @@ export function useChannelsPage() {
   const canFillTemplates = computed(() => canQuery.value
     && auth.hasPermission(notificationPermissions.templates.query)
     && (auth.hasPermission(notificationPermissions.templates.add) || auth.hasPermission(notificationPermissions.templates.update)))
+  const workChannel = computed(() => isWorkChannel(channelId.value))
+  const canManageWork = computed(() => workChannel.value && permissions.query.value && permissions.bind.value && permissions.update.value
+    && auth.hasPermission(notificationPermissions.templates.query) && auth.hasPermission(notificationPermissions.templates.update)
+    && !!entry.value?.baseline?.id && !entry.value.isNew && !dirty.value)
+  const workRecipients = useWorkRecipients({
+    config: () => entry.value?.baseline, channelId, canWrite: canManageWork, busy: recipientsBusy,
+    saveSetting: (value, baseline) => workspace.saveFields([{ key: workRecipientsKey, value }], workRecipientsKey, baseline),
+  })
   const templateSetup = useChannelTemplateSetup(workspace, {
     channel, permitted: canFillTemplates, blocked: operationBusy, generating: fillingTemplates, translate: t,
   })
@@ -110,11 +123,11 @@ export function useChannelsPage() {
     }
   }
   const configurationVisible = computed(() => !!entry.value && ![state.value, detailState.value].some(value => ['loading', 'unavailable', 'forbidden', 'error'].includes(value)))
-  const { leaveOpen, decideLeave } = useChannelLeaveGuard(computed(() => hasUnsavedChanges.value || members.dirty.value), operationBusy)
+  const { leaveOpen, decideLeave } = useChannelLeaveGuard(computed(() => hasUnsavedChanges.value || members.dirty.value || workRecipients.groupDirty.value), operationBusy)
   // The dialog reports missing prerequisites for any supported channel.
   const trialSupported = computed(() => !!channelTestAdapters[channelId.value])
   const canTrial = computed(() => trialSupported.value && canQuery.value && permissions.action.value && !!entry.value?.baseline?.id && !entry.value?.isNew && !dirty.value && configurationVisible.value)
-  const canSyncMembers = computed(() => canQuery.value && permissions.bind.value && channelId.value === 'weixin:corpMessage' && !!entry.value?.baseline?.id && !entry.value?.isNew && !dirty.value)
+  const canSyncMembers = computed(() => canQuery.value && permissions.bind.value && workChannel.value && (!workRecipients.enabled.value || canManageWork.value) && !!entry.value?.baseline?.id && !entry.value?.isNew && !dirty.value)
   const configurationOptions = computed(() => configs.value.map(item => ({ value: item.id, label: `${item.name} · ${item.id}` })))
   const memberDrawer = computed<WechatMembersDrawerModel>(() => ({
     open: members.open.value, state: members.state.value, busy: members.busy.value, autoMatching: members.autoMatching.value, error: members.error.value,
@@ -122,15 +135,15 @@ export function useChannelsPage() {
     departments: members.departments.value, rows: members.visibleRows.value, members: members.members.value,
     filterTerms: members.filterTerms.value,
     pendingCount: members.rows.value.filter(row => row.memberId && row.memberId !== row.binding?.thirdPartyUserId).length,
-    canAutoMatch: canSyncMembers.value && !operationBusy.value && (members.open.value ? members.canAutoMatch.value : members.canAutoMatchAndSave.value),
+    canAutoMatch: canSyncMembers.value && !operationBusy.value && !workRecipients.open.value && (members.open.value ? members.canAutoMatch.value : members.canAutoMatchAndSave.value),
     stats: members.stats.value, filterCounts: members.filterCounts.value, statusFilter: members.statusFilter.value, matchCount: members.matchCount.value,
     memberUnavailable: members.memberUnavailable,
   }))
   const memberDiscardOpen = ref(false)
   let memberAfterDiscard: (() => void) | undefined
-  function withMemberDiscard(action: () => void) {
-    if (members.busy.value) return
-    if (!members.dirty.value) { action(); return }
+  function withMemberDiscard(action: () => void, dirty = members.dirty.value) {
+    if (members.busy.value || recipientsBusy.value) return
+    if (!dirty) { action(); return }
     memberAfterDiscard = action
     memberDiscardOpen.value = true
   }
@@ -146,14 +159,31 @@ export function useChannelsPage() {
     if (!members.open.value && members.refreshRequired.value) { void members.reload(); return }
     withMemberDiscard(() => { void members.reload() })
   }
+  function closeWorkRecipients() { withMemberDiscard(() => workRecipients.close(), workRecipients.groupDirty.value) }
+  function reloadWorkRecipients() {
+    withMemberDiscard(() => { void workRecipients.reload() }, workRecipients.groupDirty.value)
+  }
+  function memberContext(id: string) {
+    return {
+      configId: id, api: channelId.value === dingTalkWorkChannel ? dingTalkMemberApi : wechatMemberApi,
+      permitted: () => canSyncMembers.value,
+      clean: () => !dirty.value && !entry.value?.isNew && entry.value?.baseline?.id === id,
+    }
+  }
   async function showMembers() {
-    if (!canSyncMembers.value || operationBusy.value || members.state.value === 'loading') return
+    if (!canSyncMembers.value || operationBusy.value || workRecipients.open.value || members.state.value === 'loading') return
     const id = entry.value!.baseline!.id
-    await members.show({ configId: id, permitted: () => canQuery.value && permissions.bind.value, clean: () => !dirty.value && !entry.value?.isNew && entry.value?.baseline?.id === id })
+    await members.show(memberContext(id))
   }
   async function autoMatchMembers() {
-    if (!canSyncMembers.value || operationBusy.value) return false
-    return members.autoMatchAndSave()
+    if (!canSyncMembers.value || operationBusy.value || workRecipients.open.value) return false
+    return afterMemberWrite(members.autoMatchAndSave())
+  }
+  async function afterMemberWrite(write: Promise<boolean>) {
+    const configId = selectedConfigId.value
+    const success = await write
+    if (success && configId === selectedConfigId.value && canManageWork.value) await workRecipients.retry()
+    return success
   }
   function updateMemberFilters(value: MemberFilterTerm[]) { if (!members.busy.value) members.filterTerms.value = value }
   function updateMemberStatus(value: MemberStatusFilter) { members.statusFilter.value = value }
@@ -205,10 +235,11 @@ export function useChannelsPage() {
     const savedChannel = channelId.value
     const configId = entry.value?.draft.id?.trim()
     const created = !!entry.value?.isNew
+    const credentialsOnly = templateSetup.model.value.saveCredentialsFirst
     if (!templateSetup.prepareForSave()) return
     if (!await workspace.save()) return
     onlyMessage(t('messageNotification.channels.saveSuccess'), 'success')
-    if (configId) await fillSavedTemplates(savedChannel, configId, created)
+    if (configId && !credentialsOnly) await fillSavedTemplates(savedChannel, configId, created)
   }
   async function fillSavedTemplates(savedChannel: string, id: string, created: boolean) {
     if (channelId.value !== savedChannel || selectedConfigId.value !== id) return
@@ -254,17 +285,21 @@ export function useChannelsPage() {
   watch([() => route.query.channel, () => route.query.ch, () => route.query.configId], () => trial.close(true))
   // A refreshed saved configuration invalidates the snapshot used by an open test.
   watch(() => entry.value?.baseline, () => trial.close(true))
-  watch([channelId, selectedConfigId], () => { trial.close(true); members.close(true); decideMemberDiscard(false); focusedField.value = '' })
+  watch([channelId, selectedConfigId], () => { trial.close(true); members.close(true); workRecipients.close(true); decideMemberDiscard(false); focusedField.value = '' })
   watch([canQuery, permissions.bind], ([query, bind]) => { if (!query || !bind) { members.close(true); decideMemberDiscard(false) } })
+  watch([canManageWork, selectedConfigId], ([allowed]) => {
+    if (allowed) workRecipients.prepare()
+    else workRecipients.close(true)
+  })
   // A saved, readable configuration owns the summary; this read never creates suggestions or writes.
   watch([canSyncMembers, () => entry.value?.baseline, busy, detailState], () => {
     if (!canSyncMembers.value) { members.close(true); return }
     if (operationBusy.value || detailState.value !== 'ready' || members.state.value !== 'idle') return
     const id = entry.value!.baseline!.id
-    void members.prepare({ configId: id, permitted: () => canQuery.value && permissions.bind.value, clean: () => !dirty.value && !entry.value?.isNew && entry.value?.baseline?.id === id })
+    void members.prepare(memberContext(id))
   })
   watch([canQuery, permissions.action], ([query, send]) => { if (!query || !send) trial.close(true) })
-  onBeforeUnmount(() => { trial.close(true); members.close(true) })
+  onBeforeUnmount(() => { trial.close(true); members.close(true); workRecipients.close(true) })
   watch(channel, value => {
     const key = `type:${value?.type}`
     if (value && channelTree.value.some(node => node.key === key) && !openChannelKeys.value.includes(key)) openChannelKeys.value.push(key)
@@ -278,6 +313,8 @@ export function useChannelsPage() {
     busy, dirty, canEdit, editing, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave,
     sending, workspace, trial, testModel: trial.model, fixTestConfiguration, afterTestClosed, refresh, save, showSend, configurationVisible,
     catalog, directoryState, providerFeedback, channelTitle, help, saveFields, focusField, activeHelpSection, helpFocusVersion,
+    workChannel, canManageWork, workRecipients, closeWorkRecipients, reloadWorkRecipients,
+    saveMembers: () => afterMemberWrite(members.save()), unbindMember: (id: string) => afterMemberWrite(members.unbind(id)),
     members, memberDrawer, canSyncMembers, showMembers, autoMatchMembers, closeMembers, reloadMembers, memberDiscardOpen, decideMemberDiscard, updateMemberFilters, updateMemberStatus, resetMemberFilters,
   }
 }

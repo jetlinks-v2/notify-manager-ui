@@ -295,6 +295,25 @@ test('channel directory and metadata endpoints preserve opaque type/provider IDs
   assert.deepEqual(calls.at(-1), { method: 'post', url: '/notifier/config/_query/no-paging', data: {} })
 })
 
+test('the saved SMS account supplies the exact approved template text and signature', async t => {
+  const template = { templateCode: 'SMS_1', auditStatus: 'AUDIT_STATE_PASS', templateContent: '审核原文 ${message} ' }
+  const sign = { signName: '签名', auditStatus: 'AUDIT_STATE_PASS' }
+  const get = t.mock.method(request, 'get', async url => ({ success: true, result: url.endsWith('/templates') ? [template] : [sign] }))
+  const load = (code = 'SMS_1', signName = '签名') => api.getSmsTemplateContent('account/1', code, signName)
+  assert.equal(await load(), template.templateContent)
+  assert.deepEqual(get.mock.calls.map(call => call.arguments[0]), ['/notifier/sms/aliyun/account%2F1/templates', '/notifier/sms/aliyun/account%2F1/signs'])
+  assert.equal(await load('SMS_OTHER'), undefined)
+  assert.equal(await load('SMS_1', '其他签名'), undefined)
+  sign.auditStatus = 'AUDIT_STATE_INIT'
+  assert.equal(await load(), undefined)
+  sign.auditStatus = 'AUDIT_STATE_PASS'
+  template.auditStatus = 'AUDIT_STATE_NOT_PASS'
+  assert.equal(await load(), undefined)
+  template.auditStatus = 'AUDIT_STATE_PASS'
+  template.templateContent = ' '
+  assert.equal(await load(), undefined)
+})
+
 test('real ConfigMetadata property/type responses normalize without dropping provider fields', async () => {
   for (const [id, metadata] of Object.entries(channelWireMetadata)) {
     response = { success: true, result: structuredClone(metadata) }

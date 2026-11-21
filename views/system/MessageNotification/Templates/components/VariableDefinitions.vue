@@ -1,33 +1,61 @@
 <template>
-  <div class="template-variables">
-    <p class="template-variables__hint">{{ t('messageNotification.templates.variableHint') }}</p>
-    <div v-for="(variable, index) in variables" :key="index" class="template-variables__row">
-      <a-input :value="variable.id" :aria-label="t('messageNotification.templates.variableId')" :placeholder="t('messageNotification.templates.variableId')" :disabled="disabled" @update:value="setField(index, 'id', $event)" />
-      <a-input :value="variable.name" :aria-label="t('messageNotification.templates.variableName')" :placeholder="t('messageNotification.templates.variableName')" :disabled="disabled" @update:value="setField(index, 'name', $event)" />
-      <a-input :value="variable.defaultValue" :aria-label="t('messageNotification.templates.variableDefault')" :placeholder="t('messageNotification.templates.variableDefault')" :disabled="disabled" @update:value="setField(index, 'defaultValue', $event)" />
-      <a-checkbox :checked="variable.required" :disabled="disabled" @update:checked="setField(index, 'required', $event)">{{ t('messageNotification.templates.required') }}</a-checkbox>
-      <a-button type="text" danger :disabled="disabled" :aria-label="t('messageNotification.templates.removeVariable')" @click="removeVariable(index)"><AIcon type="DeleteOutlined" /></a-button>
-    </div>
-    <a-button :disabled="disabled" @click="addVariable"><AIcon type="PlusOutlined" />{{ t('messageNotification.templates.addVariable') }}</a-button>
-  </div>
+  <section class="template-used-variables" :aria-label="t('NoticeCenter.template.variable.title')">
+    <h3>{{ t('NoticeCenter.template.variable.title') }}</h3>
+    <a-table :columns="columns" :data-source="variables" row-key="id" size="small" table-layout="fixed" :pagination="false"
+      :locale="{ emptyText: t('messageNotification.templates.noUsedVariables') }">
+      <template #bodyCell="{ column, record }">
+        <label v-if="column.dataIndex === 'type' || (column.dataIndex === 'format' && record.type === 'date')"
+          class="template-used-variables__control-label" :for="`${listId}-${record.id}-${column.dataIndex}`">{{ record.name }} {{ column.title }}</label>
+        <TemplateVariableText v-if="column.dataIndex === 'id'" :value="variableToken(record.id)" />
+        <span v-else-if="column.dataIndex === 'name'">{{ record.name }}</span>
+        <a-select v-else-if="column.dataIndex === 'type'" :id="`${listId}-${record.id}-type`" size="small"
+          :value="record.type" :options="typeOptions" :disabled="disabled" :dropdown-match-select-width="false"
+          @change="value => isTemplateVariableType(value) && emit('changeType', record.id, value)" />
+        <template v-else-if="column.dataIndex === 'format'">
+          <a-select v-if="record.type === 'date'" :id="`${listId}-${record.id}-format`" size="small"
+            :value="record.format" :options="dateOptions" :disabled="disabled" :title="record.format" :dropdown-match-select-width="false"
+            @change="value => typeof value === 'string' && emit('changeFormat', record.id, value)" />
+          <a-input v-else-if="record.type === 'double'" size="small" :value="record.format" :disabled="disabled"
+            :aria-label="record.name + ' ' + column.title" :placeholder="t('NoticeCenter.template.placeholder.variableFormat')"
+            @update:value="emit('changeFormat', record.id, $event)" />
+          <span v-else>{{ record.format || '—' }}</span>
+        </template>
+      </template>
+    </a-table>
+  </section>
 </template>
 
 <script setup lang="ts">
-import type { PropType } from 'vue'
-import type { NotificationVariable } from '../../shared'
-import { useTemplateVariables } from '../hooks/useTemplateVariables'
+import { computed, useId } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { variableToken } from '../../../../notice/template/hooks/noticeTemplateFormModel'
+import { isTemplateVariableType, variableTypeFormats, type TemplateVariableType, type UsedTemplateVariable } from '../variables/definitions'
+import TemplateVariableText from '../variables/TemplateVariableText.vue'
 
-const props = defineProps({
-  variables: { type: Array as PropType<NotificationVariable[]>, default: () => [] },
-  disabled: { type: Boolean, default: false },
-})
-const emit = defineEmits<{ (event: 'update:variables', value: NotificationVariable[]): void }>()
-const { t, setField, removeVariable, addVariable } = useTemplateVariables(props, emit)
+defineProps<{ variables: UsedTemplateVariable[]; disabled?: boolean }>()
+const emit = defineEmits<{
+  changeType: [id: string, type: TemplateVariableType]
+  changeFormat: [id: string, format: string]
+}>()
+const { t } = useI18n()
+const listId = useId()
+const widths = { id: '27%', name: '20%', type: '28%', format: '25%' }
+const columns = computed(() => Object.entries(widths).map(([dataIndex, width]) => ({
+  dataIndex, width, title: t(`NoticeCenter.template.variable.${dataIndex}`), customHeaderCell: () => ({ scope: 'col' }),
+})))
+const typeOptions = computed(() => Object.keys(variableTypeFormats).map(value => ({
+  value, label: t(`NoticeCenter.template.variable.type.${value}`),
+})))
+const dateOptions = ['timestamp', 'yyyy-MM-dd', 'yyyy-MM-dd HH:mm:ss'].map(value => ({ value, label: value }))
 </script>
 
 <style scoped>
-.template-variables { display: flex; flex-direction: column; gap: var(--space-3); }
-.template-variables__hint { margin: 0; color: var(--text-color-secondary); }
-.template-variables__row { display: grid; grid-template-columns: 1fr 1fr 1fr auto auto; align-items: center; gap: var(--space-2); }
-@media (max-width: 768px) { .template-variables__row { grid-template-columns: 1fr 1fr; } }
+.template-used-variables { min-width: 0; margin-block: var(--space-4); container-type: inline-size; }
+.template-used-variables h3 { margin: 0 0 var(--space-2); font: inherit; }
+.template-used-variables :deep(.ant-table-cell) { overflow-wrap: anywhere; }
+.template-used-variables :deep(.ant-select) { width: 100%; min-width: 0; }
+.template-used-variables__control-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@container (max-width: 26rem) {
+  .template-used-variables :deep(.ant-table.ant-table-small .ant-table-cell) { padding-inline: var(--space-1); }
+}
 </style>

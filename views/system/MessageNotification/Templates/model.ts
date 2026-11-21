@@ -5,6 +5,7 @@ import {
 } from '../shared'
 import { getByPath, normalizeTemplateBeforeSubmit } from '../../../notice/template/hooks/noticeTemplateFormModel'
 import { hasEmailBodyContent, toEmailBodyHtml } from './definition/emailTemplateContent'
+import { variablesForTemplateSave } from './variables/definitions'
 
 export interface TemplateDraft {
   builtinKey?: string
@@ -110,11 +111,10 @@ function normalizeProviderContent(draft: TemplateDraft, content: NotificationObj
 }
 
 /** Validate against the supplied backend catalog; omission retains the original verified catalog. */
-export function buildTemplatePayload(draft: TemplateDraft, allowedChannels?: readonly NotificationChannel[]): NotificationTemplatePayload {
+export function buildTemplatePayload(draft: TemplateDraft, allowedChannels?: readonly NotificationChannel[],
+  editing?: { baseline: TemplateDraft; available: NotificationVariable[] }): NotificationTemplatePayload {
   if (!draft.name.trim()) throw new TemplateValidationError('nameRequired')
   if (!resolveNotificationChannel(draft.type, draft.provider, allowedChannels)) throw new TemplateValidationError('unsupportedProvider')
-  const ids = draft.variables.map(variable => variable.id.trim())
-  if (ids.some(id => !id || /[${}\s]/.test(id)) || new Set(ids).size !== ids.length) throw new TemplateValidationError('invalidVariables')
   let content: NotificationObject
   if (isEmailDraft(draft)) {
     const body = toEmailBodyHtml(draft.text)
@@ -133,11 +133,15 @@ export function buildTemplatePayload(draft: TemplateDraft, allowedChannels?: rea
     content = { ...cloneNotificationValue(draft.extraTemplate), subject: draft.subject, text: body,
       sendTo: draft.sendTo.map(value => value.trim()).filter(Boolean), attachments: cloneNotificationValue(draft.attachments) }
   } else content = parseTemplateObject(draft.templateJson)
+  const template = normalizeProviderContent(draft, content)
+  const definitions = editing ? variablesForTemplateSave(draft, editing.baseline, editing.available, template) : draft.variables
+  const ids = definitions.map(variable => variable.id.trim())
+  if (ids.some(id => !id || /[${}\s]/.test(id)) || new Set(ids).size !== ids.length) throw new TemplateValidationError('invalidVariables')
   return {
     ...(draft.id.trim() ? { id: draft.id.trim() } : {}), name: draft.name.trim(),
     type: draft.type, provider: draft.provider, configId: draft.configId || '',
-    description: draft.description, template: normalizeProviderContent(draft, content),
-    variableDefinitions: cloneNotificationValue(draft.variables).map(variable => ({ ...variable, id: variable.id.trim() })),
+    description: draft.description, template,
+    variableDefinitions: cloneNotificationValue(definitions).map(variable => ({ ...variable, id: variable.id.trim() })),
   }
 }
 

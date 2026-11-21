@@ -49,6 +49,7 @@ export const useNoticeTemplateEditorOptions = (
   context: NoticeTemplateFormContext,
   form: NoticeTemplateEditorPayload,
   channel: () => NoticeTemplateChannelNode | undefined,
+  workRecipientOptions = true,
 ) => {
   const smsTemplates = createRemoteState()
   const smsSigns = createRemoteState()
@@ -64,9 +65,9 @@ export const useNoticeTemplateEditorOptions = (
     asText(form.configId || channel()?.template?.configId || channel()?.notifierConfig?.id),
   )
   const isSms = computed(() => context.type === 'sms')
-  const isCorpWeixin = computed(() => context.type === 'weixin' && context.provider === 'corpMessage')
+  const isCorpWeixin = computed(() => workRecipientOptions && context.type === 'weixin' && context.provider === 'corpMessage')
   const selectedDepartmentId = computed(() => asText(form.template.toParty).trim())
-  const dingTalkConfigId = computed(() => context.type === 'dingTalk' && context.provider === 'dingTalkMessage'
+  const dingTalkConfigId = computed(() => workRecipientOptions && context.type === 'dingTalk' && context.provider === 'dingTalkMessage'
     ? configId.value : '')
 
   /** Keep each directory independent and ignore requests from a previous binding or a closed editor. */

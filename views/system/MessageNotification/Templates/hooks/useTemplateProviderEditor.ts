@@ -2,12 +2,12 @@ import { computed, reactive, watch } from 'vue'
 import type { NotificationConfigMetadata, NotificationConfigProperty, NotificationLoadState, NotifierConfig } from '../../shared'
 import type { TemplateDraft } from '../model'
 import {
-  applyTemplateFieldChange, getByPath, getTemplateFieldSchemas, normalizeTemplateBeforeSubmit,
-  resolveTemplateForm, setByPath, type NoticeTemplateEditorPayload, type NoticeTemplateFieldSchema,
+  applyTemplateFieldChange, getByPath, normalizeTemplateBeforeSubmit,
+  setByPath, type NoticeTemplateEditorPayload, type NoticeTemplateFieldSchema,
   type NoticeTemplateFormContext,
 } from '../../../../notice/template/hooks/noticeTemplateFormModel'
 import { useNoticeTemplateEditorOptions } from '../../../../notice/template/hooks/useNoticeTemplateEditorOptions'
-import { hasKnownTemplatePresentation, matchesTemplateConfiguration, readPresentationTemplate } from './templatePresentation'
+import { hasKnownTemplatePresentation, matchesTemplateConfiguration, readPresentationTemplate, resolveProviderTemplateForm, templateContentFields } from './templatePresentation'
 
 export interface ProviderEditorProps {
   draft: TemplateDraft
@@ -37,15 +37,7 @@ export function useTemplateProviderEditor(props: ProviderEditorProps) {
       form.template = parsed.value.template
       return
     }
-    const template = { ...parsed.value.template }
-    // The backend persists ttsCode; populate the editor alias before legacy defaults can mask it.
-    if (draft.type === 'voice' && draft.provider === 'aliyun' && template.templateCode === undefined && template.ttsCode !== undefined) {
-      template.templateCode = template.ttsCode
-    }
-    const resolved = resolveTemplateForm(undefined, {
-      id: draft.id, name: draft.name, type: draft.type, provider: draft.provider,
-      configId: draft.configId, template, variableDefinitions: draft.variables,
-    }, draft.name)
+    const resolved = resolveProviderTemplateForm(draft, parsed.value.template)
     context.type = resolved.type
     context.provider = resolved.provider
     Object.assign(form, resolved.payload, { configId: props.configs.some(item => item.id === draft.configId && matchesTemplateConfiguration(draft, item)) ? draft.configId : undefined })
@@ -56,9 +48,8 @@ export function useTemplateProviderEditor(props: ProviderEditorProps) {
     form.configId = props.configs.some(item => item.id === props.draft.configId && matchesTemplateConfiguration(props.draft, item))
       ? props.draft.configId : undefined
   }, { immediate: true, flush: 'sync' })
-  const remote = useNoticeTemplateEditorOptions(context, form, () => undefined)
-  const fields = computed(() => known.value && parsed.value.valid ? getTemplateFieldSchemas(context, form)
-    .filter(field => field.key !== 'provider' && field.kind !== 'attachments')
+  const remote = useNoticeTemplateEditorOptions(context, form, () => undefined, false)
+  const fields = computed(() => known.value && parsed.value.valid ? templateContentFields(context, form)
     .map(field => remote.resolveField({ ...field, disabled: props.disabled || field.disabled }))
     .filter(field => !field.hidden) : [])
   const metadataFields = computed(() => known.value ? [] : props.metadata?.properties ?? [])

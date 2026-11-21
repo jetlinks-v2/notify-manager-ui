@@ -68,6 +68,12 @@ function effectiveHeaderValue(key: string, value: unknown, baseline?: NotifierCo
   return typeof candidate === 'string' && candidate.trim() && !isNotificationSecretMask(candidate) ? candidate : undefined
 }
 
+/** 短信选项属于已保存的账号。密钥输入留空表示沿用该配置的原密钥。 */
+export function smsCredentialsChanged(draft: NotificationObject, saved?: NotificationObject): boolean {
+  return !saved || draft.regionId !== saved.regionId || draft.accessKeyId !== saved.accessKeyId
+    || Boolean(draft.secret && draft.secret !== saved.secret)
+}
+
 /** Validate local input before writing and allow an unchanged credential to retain its saved value. */
 export function validateChannelDraft(draft: NotifierConfigPayload, baseline?: NotifierConfig, definition?: ChannelDefinition, clearFields: readonly string[] = []): ChannelValidationIssue[] {
   const issues: ChannelValidationIssue[] = []
@@ -118,6 +124,15 @@ export function validateChannelDraft(draft: NotifierConfigPayload, baseline?: No
 /** A safe payload is derived only after validation; extension settings are preserved by the shared mapper. */
 export function channelConfigPayload(draft: NotifierConfigPayload, baseline?: NotifierConfig, definition?: ChannelDefinition, clearFields: readonly string[] = []): NotifierConfigPayload {
   const payload = buildNotificationConfigPayload({ ...draft, id: draft.id?.trim(), name: draft.name.trim() }, baseline, definition?.secretFields, secretPolicy(draft, definition, clearFields))
+  if (draft.type === 'sms' && draft.provider === 'aliyunSms' && smsCredentialsChanged(draft.configuration, baseline?.configuration)) {
+    // 只清理写入副本。校验或写入失败后，用户改回原凭据仍可沿用草稿中的选值。
+    const defaults = payload.configuration.messageTemplateDefaults
+    if (defaults && typeof defaults === 'object' && !Array.isArray(defaults)) {
+      const choices = defaults as NotificationObject
+      delete choices.code
+      delete choices.signName
+    }
+  }
   const headers = draft.configuration.headers
   if (draft.type === 'webhook' && draft.provider === 'http' && Array.isArray(headers)) {
     payload.configuration.headers = headers.map(row => {

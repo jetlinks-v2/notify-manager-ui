@@ -6,9 +6,10 @@ import type { useChannelWorkspace } from '../useChannelWorkspace'
 import { messageTemplateDefaultsKey, wechatCorpChannel } from '../wechat/templateDefaults'
 import {
   channelTemplateDefaultsKey, dingTalkRobotChannel, dingTalkWorkChannel, readTemplateSetup, savedTemplateDefaults, supportsTemplateSetup,
-  templateSetupFields, templateSetupIssues,
+  smsChannel, templateSetupFields, templateSetupIssues, voiceChannel,
 } from './templateDefaults'
 import { fillMessageTemplates, type TemplateFillResult } from './fillMessageTemplates'
+import { useSmsTemplateOptions } from './useSmsTemplateOptions'
 
 type Workspace = Pick<ReturnType<typeof useChannelWorkspace>, 'entry' | 'dirty' | 'canEdit' | 'changeField'>
 
@@ -25,9 +26,21 @@ export function useChannelTemplateSetup(
   const { entry, canEdit, dirty } = workspace
   const channelId = computed(() => context.channel.value?.id || '')
   const current = computed(() => supportsTemplateSetup(channelId.value) ? entry.value : undefined)
+  const isSms = computed(() => channelId.value === smsChannel)
+  const sms = useSmsTemplateOptions(computed(() => isSms.value ? current.value : undefined), canEdit)
   const values = computed(() => readTemplateSetup(channelId.value, current.value?.draft.configuration))
   const fields = computed(() => templateSetupFields(channelId.value, values.value))
-  const issues = computed(() => templateSetupIssues(channelId.value, values.value))
+  const issues = computed(() => {
+    const result = templateSetupIssues(channelId.value, values.value)
+    if (isSms.value && sms.state.value === 'ready') {
+      for (const key of ['code', 'signName'] as const) {
+        if (values.value[key] && !sms.choices.value[key].some(option => option.value === values.value[key])) {
+          result[key] = 'messageNotification.channels.validation.invalidValue'
+        }
+      }
+    }
+    return result
+  })
   const configId = computed(() => current.value?.baseline?.id)
   const submittedId = ref<string>()
   const feedback = shallowRef<{ id: string; result: TemplateFillResult }>()
@@ -37,11 +50,14 @@ export function useChannelTemplateSetup(
 
   const model = computed(() => ({
     available: !!current.value,
-    fields: fields.value.map(field => ({ ...field, value: values.value[field.key],
+    fields: fields.value.map(field => ({ ...field, value: sms.credentialsPending.value ? '' : values.value[field.key],
+      options: field.key === 'code' || field.key === 'signName' ? sms.choices.value[field.key] : field.options,
       error: submittedId.value === current.value?.draft.id ? issues.value[field.key] : undefined })),
+    saveCredentialsFirst: sms.credentialsPending.value,
+    smsOptionsState: isSms.value ? sms.state.value : undefined,
     disabled: !canEdit.value || context.blocked.value,
     generating: context.generating.value,
-    canFill: ready.value && canEdit.value && context.permitted.value,
+    canFill: ready.value && canEdit.value && context.permitted.value && (!isSms.value || sms.state.value === 'ready'),
     noPermission: ready.value && canEdit.value && !context.permitted.value,
     result: feedback.value && feedback.value.id === configId.value && !dirty.value ? feedback.value.result : undefined,
   }))
@@ -49,18 +65,32 @@ export function useChannelTemplateSetup(
   function change(key: string, value: unknown) {
     const configuration = current.value?.draft.configuration
     if (!configuration || model.value.disabled || typeof value !== 'string' || !fields.value.some(field => field.key === key)) return
+    if ((key === 'code' || key === 'signName') && !sms.choices.value[key].some(option => option.value === value)) return
     const storageKey = channelId.value === wechatCorpChannel ? messageTemplateDefaultsKey : channelTemplateDefaultsKey
-    workspace.changeField(storageKey, { ...savedTemplateDefaults(configuration[storageKey]), [key]: key === 'agentId' ? value.trim() : value })
+    const defaults = { ...savedTemplateDefaults(configuration[storageKey]), [key]: key === 'agentId' ? value.trim() : value }
+    // 录音文件和 TTS 模板使用不同的编号，切换类型后需填写对应编号。
+    if (channelId.value === voiceChannel && key === 'templateType' && value !== values.value.templateType) {
+      delete defaults.templateCode
+    }
+    workspace.changeField(storageKey, defaults)
   }
 
-  /** 校验模板参数，并将生成群机器人模板所需的默认值随渠道保存。 */
+  /** 业务模板使用本次渠道保存的默认值，独立于渠道试发参数。 */
   function prepareForSave() {
     const { value: selected } = current
     if (!selected) return true
+    if (sms.credentialsPending.value) {
+      submittedId.value = undefined
+      return true
+    }
     submittedId.value = selected.draft.id
+    if (isSms.value && sms.state.value !== 'ready') return false
     // 工作通知 AgentId 由现有渠道校验标记，错误显示在原字段上。
     if (Object.keys(issues.value).some(key => key !== 'agentId' || channelId.value !== dingTalkWorkChannel)) return false
-    if (channelId.value === dingTalkRobotChannel) {
+    if (channelId.value === smsChannel || channelId.value === voiceChannel) {
+      const defaults = Object.fromEntries(fields.value.map(({ key }) => [key, values.value[key].trim()]))
+      workspace.changeField(channelTemplateDefaultsKey, { ...savedTemplateDefaults(selected.draft.configuration[channelTemplateDefaultsKey]), ...defaults })
+    } else if (channelId.value === dingTalkRobotChannel) {
       const { messageType, title, message, messageUrl } = values.value
       workspace.changeField(channelTemplateDefaultsKey, {
         ...savedTemplateDefaults(selected.draft.configuration[channelTemplateDefaultsKey]),
@@ -93,7 +123,7 @@ export function useChannelTemplateSetup(
     }
   }
 
-  return { model, change, fill, prepareForSave }
+  return { model, change, fill, prepareForSave, reloadSmsOptions: sms.reload }
 }
 
 export type ChannelTemplateSetupModel = ReturnType<typeof useChannelTemplateSetup>['model']['value']

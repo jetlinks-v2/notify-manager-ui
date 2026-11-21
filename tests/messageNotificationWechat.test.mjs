@@ -25,7 +25,7 @@ function load(filename) {
   return module.exports
 }
 const base = resolve(root, 'views/system/MessageNotification/Channels')
-const { matchWechatMembers, memberBindingChanges, memberPhone, memberEmail } = load(resolve(base, 'members/wechatMemberMatching'))
+const { matchWechatMembers, memberBindingChanges } = load(resolve(base, 'members/wechatMemberMatching'))
 const { useWechatMembers } = load(resolve(base, 'members/useWechatMembers'))
 const { useWechatMembersDrawer } = load(resolve(base, 'members/useWechatMembersDrawer'))
 const { withMemberStatus } = load(resolve(base, 'members/wechatMemberFilters'))
@@ -38,29 +38,30 @@ const clone = value => JSON.parse(JSON.stringify(value))
 const user = (id, telephone, email) => ({ id, telephone, email, name: id })
 const member = (id, mobile, email, extra = {}) => ({ id, mobile, email, name: id, department: ['2'], ...extra })
 
-test('matches normalized unique phones/emails and never matches name or equal IDs', () => {
+test('matches only unique exact names after trimming whitespace', () => {
   const result = matchWechatMembers([
-    member('a', '+86 (138) 0013-8000'), member('b', undefined, ' B@Example.org '), member('c', undefined, undefined, { bizMail: 'work@example.org' }), member('same'),
-  ], [user('u1', '+8613800138000'), user('u2', undefined, 'b@example.org'), user('u3', undefined, 'WORK@example.org'), user('same')], [])
-  assert.equal(result.get('a').userId, 'u1'); assert.equal(result.get('b').userId, 'u2'); assert.equal(result.get('c').userId, 'u3')
-  assert.equal(result.get('same').state, 'missing')
-  assert.equal(memberPhone('138****8000'), ''); assert.equal(memberEmail('a***@example.org'), '')
-  assert.notEqual(memberPhone('+8613800138000'), memberPhone('13800138000'))
+    member('external-a', undefined, undefined, { name: ' 张三 ' }),
+    member('same', '111', 'member@example.org', { name: 'Different' }),
+    member('missing', '333', undefined, { name: ' ' }),
+  ], [{ ...user('platform-a'), name: '张三' }, user('same', '111', 'member@example.org'), user('missing', '333')], [])
+  assert.deepEqual([...result], [['external-a', 'platform-a']])
 })
 
-test('duplicates and contradictory phones/emails produce no suggestions', () => {
-  const users = [user('u1', '111', 'one@example.org'), user('u2', '222', 'two@example.org'), user('u3', '333'), user('u4', '333')]
-  const result = matchWechatMembers([member('cross', '111', 'two@example.org'), member('dup', '333'), member('a', '222'), member('b', '222')], users, [])
-  for (const match of result.values()) assert.deepEqual(match, { state: 'conflict' })
-  const collision = matchWechatMembers([member('a', '111'), member('b', undefined, 'one@example.org')], users, [])
-  assert.equal(collision.get('a').state, 'conflict'); assert.equal(collision.get('b').state, 'conflict')
+test('duplicate names in either directory produce no suggestion', () => {
+  const users = [user('u1'), { ...user('u2'), name: 'Same' }, { ...user('u3'), name: 'Same' }]
+  const result = matchWechatMembers([
+    member('a', undefined, undefined, { name: 'u1' }), member('b', undefined, undefined, { name: 'u1' }),
+    member('c', undefined, undefined, { name: 'Same' }),
+  ], users, [])
+  assert.equal(result.size, 0)
 })
 
 test('existing bindings reserve accounts and are not rematched', () => {
   const bindings = [{ id: 'binding', userId: 'u1', thirdPartyUserId: 'bound' }]
-  const result = matchWechatMembers([member('bound', '222'), member('new', '111')], [user('u1', '111'), user('u2', '222')], bindings)
-  assert.equal(result.has('bound'), false)
-  assert.equal(result.get('new').state, 'conflict')
+  const result = matchWechatMembers([
+    member('bound', undefined, undefined, { name: 'u2' }), member('new', undefined, undefined, { name: 'u1' }),
+  ], [user('u1'), user('u2')], bindings)
+  assert.equal(result.size, 0)
   assert.deepEqual(memberBindingChanges([member('bound'), member('new')], bindings, new Map([['u1', 'new'], ['u3', 'bound']])), [
     { id: 'binding', userId: 'u1', thirdPartyUserId: 'new', providerName: 'new' }, { userId: 'u3', thirdPartyUserId: 'bound', providerName: 'bound' },
   ])
@@ -82,7 +83,7 @@ function memberFixture() {
   const calls = []
   const api = {
     departments: async () => [{ id: '1', name: 'Root', children: [{ id: '2', name: 'Team' }] }],
-    members: async () => [member('bound'), member('auto', '222'), member('manual'), member('auto', '222')],
+    members: async () => [member('bound'), member('auto', '222', undefined, { name: 'u2' }), member('manual'), member('auto', '222', undefined, { name: 'u2' })],
     users: async () => ({ data: [user('u1'), user('u2', '222'), user('u3'), user('u4')], total: 4 }),
     bindings: async () => { calls.push(['read']); return clone(bindings) },
     bind: async (configId, payload) => {
@@ -380,7 +381,7 @@ test('core filters search platform users and selected members with department de
   workspace.autoMatch()
   workspace.filterTerms.value = [{ column: 'department', termType: 'in', value: ['1'] }]
   assert.equal(workspace.visibleRows.value.length, 2)
-  workspace.filterTerms.value.push({ column: 'member', termType: 'like', value: 'AUTO' })
+  workspace.filterTerms.value.push({ column: 'member', termType: 'like', value: 'U2' })
   assert.deepEqual(workspace.visibleRows.value.map(row => row.id), ['u2'])
   assert.deepEqual(workspace.filterCounts.value, { all: 1, bound: 0, unbound: 1, invalid: 0 })
   workspace.statusFilter.value = 'bound'
@@ -393,7 +394,7 @@ test('core filters search platform users and selected members with department de
   assert.deepEqual(workspace.visibleRows.value.map(row => row.id), ['u1'])
   workspace.filterTerms.value = [{ column: 'department', termType: 'nin', value: ['2'] }]
   assert.deepEqual(workspace.visibleRows.value.map(row => row.id), ['u3', 'u4'])
-  workspace.filterTerms.value = [{ column: 'member', termType: 'nlike', value: 'auto' }]
+  workspace.filterTerms.value = [{ column: 'member', termType: 'nlike', value: 'u2' }]
   assert.deepEqual(workspace.visibleRows.value.map(row => row.id), ['u1', 'u3', 'u4'])
   workspace.filterTerms.value = []
   assert.equal(workspace.statusFilter.value, 'all'); assert.equal(workspace.visibleRows.value.length, 4)

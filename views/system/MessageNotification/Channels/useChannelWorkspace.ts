@@ -230,20 +230,22 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
   }
 
   /** Merge only this field transaction into the saved baseline; other unsaved edits never enter its payload. */
-  async function saveFields(changes: ChannelFieldChange[], errorPath: string): Promise<boolean> {
+  async function saveFields(changes: ChannelFieldChange[], errorPath: string, latest?: NotifierConfig): Promise<boolean> {
     const current = entry.value
     if (!current?.baseline || current.isNew || !canEdit.value || busy.value || options.blocked?.value || !changes.length) return false
     const clearFields = changes.filter(change => change.clearSecret).map(change => change.key)
     if (clearFields.some(key => !current.definition?.optionalSecretFields?.includes(key))) return false
-    const candidate = createChannelConfigDraft(current.baseline, current.definition)
+    if (latest && (latest.id !== current.baseline.id || dirty.value)) return false
+    const baseline = latest ?? current.baseline
+    const candidate = createChannelConfigDraft(baseline, current.definition)
     for (const change of changes) {
       if (change.topLevel && change.key === 'name') candidate.name = String(change.value ?? '')
       else if (!change.topLevel) candidate.configuration[change.key] = change.value
     }
-    if (!clearFields.length && JSON.stringify(candidate) === JSON.stringify(createChannelConfigDraft(current.baseline, current.definition))) return true
+    if (!clearFields.length && JSON.stringify(candidate) === JSON.stringify(createChannelConfigDraft(baseline, current.definition))) return true
     const paths = new Set(changes.map(change => change.key))
     // Validate this transaction and preservation of secrets, without blocking on unrelated legacy fields.
-    const issues = validateChannelDraft(candidate, current.baseline, current.definition, clearFields)
+    const issues = validateChannelDraft(candidate, baseline, current.definition, clearFields)
       .filter(issue => paths.has(issue.path) || issue.key === 'secretRequired')
     current.issues = [...current.issues.filter(issue => !paths.has(issue.path)), ...issues]
     if (issues.length) return false
@@ -252,13 +254,14 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
     current.fieldFailures ??= {}
     delete current.fieldFailures[errorPath]
     try {
-      const payload = channelConfigPayload(candidate, current.baseline, current.definition, clearFields)
+      const payload = channelConfigPayload(candidate, baseline, current.definition, clearFields)
       await api.updateConfig({ ...payload, id: current.baseline.id })
       if (version !== detailVersion || !options.permissions.query.value) return true
       const saved: NotifierConfig = { ...payload, id: current.baseline.id }
       const clean = createChannelConfigDraft(saved, current.definition)
       current.baseline = saved
       current.snapshot = JSON.stringify(clean)
+      if (latest) current.draft = cloneNotificationValue(clean)
       for (const change of changes) {
         if (change.topLevel && change.key === 'name') current.draft.name = clean.name
         else if (!change.topLevel) current.draft.configuration[change.key] = clean.configuration[change.key]

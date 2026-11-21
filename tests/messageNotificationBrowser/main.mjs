@@ -28,7 +28,7 @@ import FileUpload from '@jetlinks-web-core/components/Upload/File/index.vue'
 import Records from '../../views/system/MessageNotification/Records/index.vue'
 import { notificationHistoryAdapterKey } from '../../views/system/MessageNotification/Records/recordQuery'
 import { messageNotificationApi } from '../../api/notice/messageNotification'
-import { wechatMemberApi } from '../../api/notice/wechatMembers'
+import { dingTalkMemberApi, wechatMemberApi } from '../../api/notice/wechatMembers'
 import fixtures from './fixtures.mjs'
 import templateDirectoryFixture from '../messageNotificationTemplateDirectoryFixture.mjs'
 import { channelTypes, channelProviders, channelWireMetadata, extensionType, extensionProviders, extensionMetadata } from '../messageNotificationChannelFixtures.mjs'
@@ -150,6 +150,27 @@ if (businessWorkspace) {
       channelConfiguration: { notifierId: `fixture-config-${provider}`, templateId: id, variables: {} } })
   }
 }
+if (flags.has('workRecipients')) {
+  platformMembers.find(member => member.id === 'platform-phone').name = '张三'
+  corporateMembers.find(member => member.id === 'corp-phone').name = '张三'
+  configs.push({ id: 'ding-work-fixture', name: '钉钉隔离配置', type: 'dingTalk', provider: 'dingTalkMessage',
+    configuration: { appKey: 'fixture-key', appSecret: 'fixture-secret', agentId: '42' } })
+  for (const [topic, name] of [['work-1', '设备告警'], ['work-2', '设备告警解除'], ['work-3', '场景联动']]) {
+    const provider = { 'work-1': 'alarm-device', 'work-2': 'alarm-device-relieve', 'work-3': 'scene' }[topic]
+    businessTypes.push({ id: topic, provider, name, channels: [], state: 'enabled' })
+    if (topic === 'work-3') continue
+    for (const [type, provider, configId, old] of [
+      ['weixin', 'corpMessage', 'corp-fixture', { toParty: 'legacy-dept', toUser: 'legacy-wechat' }],
+      ['dingTalk', 'dingTalkMessage', 'ding-work-fixture', { departmentIdList: 'legacy-ding', toAllUser: true }],
+    ]) {
+      persistBusinessTemplate(topic, {
+        channel: { channelProvider: `notifier-${type}`, state: topic === 'work-1' ? 'enabled' : 'disabled',
+          channelConfiguration: { variables: { toUser: { source: 'relation' }, userIdList: { source: 'relation' }, business: 'keep' } } },
+        template: { type, provider, configId, name, template: { ...old, agentId: '42', message: `旧正文 ${topic}` } },
+      })
+    }
+  }
+}
 const histories = clone(fixtures.history)
 if (flags.get('history') === 'missing') histories.splice(0, histories.length, { id: 'history-missing', state: 'error' })
 if (flags.get('history') === 'long') {
@@ -162,6 +183,9 @@ if (flags.get('history') === 'pages') {
 function record(operation, payload) {
   calls.push([operation, clone(payload)])
   if (operation === 'deleteConfig' && flags.has('deleteReferenced')) throw { response: { status: 400, data: { status: 400, code: 'error.data.referenced', message: '当前通知配置已绑定模板，不可删除' } } }
+  if (operation === 'saveBusinessTemplate' && failures.delete(`saveRecipient:${payload.providerId}`)) {
+    throw new Error('Fixture recipient sync failure')
+  }
   if (failures.delete(operation)) throw Object.assign(new Error(`Test failure: ${operation}`), { response: { status: 500 } })
 }
 const queryRows = (rows, query) => rows.filter(row => (query.terms || []).every(term => {
@@ -172,8 +196,20 @@ const queryRows = (rows, query) => rows.filter(row => (query.terms || []).every(
 // Direct legacy remote-option hooks are isolated too; the fixture never reaches a real service.
 notificationRequest.get = async (path, params) => {
   record('remoteOption', path)
-  if (/\/templates$/.test(path)) return { success: true, result: [{ templateCode: 'SMS_FIXTURE', templateName: '设备告警', templateContent: '设备 ${detail.targetName} 发生告警：${detail.alarmConfigName}' }] }
-  if (/\/signs$/.test(path)) return { success: true, result: [{ signName: '测试签名' }] }
+  const smsRoute = path.match(/^\/notifier\/sms\/aliyun\/([^/]+)\/(templates|signs)$/)
+  if (smsRoute) {
+    const account = configs.find(config => config.id === decodeURIComponent(smsRoute[1]))
+    const rotated = account?.configuration.accessKeyId === 'fixture-key-rotated'
+    const template = rotated
+      ? { templateCode: 'SMS_ROTATED', templateName: '新账号通知', templateContent: '新账号通知 ${message}' }
+      : { templateCode: 'SMS_FIXTURE', templateName: '设备告警', templateContent: '设备 ${detail.targetName} 发生告警：${detail.alarmConfigName}' }
+    const item = smsRoute[2] === 'templates' ? template : { signName: rotated ? '新账号签名' : '测试签名' }
+    return { success: true, result: [{ ...item, auditStatus: 'AUDIT_STATE_PASS' }] }
+  }
+  if (flags.has('workRecipients') && path.endsWith('/tags')) return { success: true, result: [{ id: 'tag-duty', name: '值班员' }] }
+  if (flags.has('workRecipients') && path.startsWith('/notifier/dingtalk/corp/') && path.endsWith('/departments')) {
+    return { success: true, result: [{ id: 'ding-team', name: '研发组' }, { id: 'ding-other', name: '运营组' }] }
+  }
   if (flags.has('dingTalkRecipients') && path.startsWith('/notifier/dingtalk/corp/')) {
     if (path.endsWith('/departments') && params?.fetchChild) {
       return { success: true, result: [{ id: '101', name: '运维部' }, { id: '102', name: '运维一组' }] }
@@ -187,6 +223,14 @@ notificationRequest.get = async (path, params) => {
   throw new Error(`Unexpected request in isolated fixture: ${path}`)
 }
 for (const method of ['post', 'put', 'patch', 'remove']) notificationRequest[method] = async path => { throw new Error(`Unexpected ${method} in isolated fixture: ${path}`) }
+if (flags.has('workRecipients')) notificationRequest.post = async path => {
+  record('recipientDirectory', path)
+  if (path === '/organization/_all/tree') return { success: true, result: [
+    { id: 'org-team', name: '研发组' }, { id: 'org-dup-one', name: '运营组' }, { id: 'org-dup-two', name: '运营组' },
+  ] }
+  if (path === '/role/_query/no-paging') return { success: true, result: [{ id: 'role-duty', name: '值班员' }] }
+  throw new Error(`Unexpected post in recipient fixture: ${path}`)
+}
 if (flags.has('emailImages')) notificationRequest.post = async (path, data) => {
   if (!path.startsWith('/file/upload')) throw new Error(`Unexpected post in image fixture: ${path}`)
   const file = data.get('file')
@@ -309,6 +353,13 @@ Object.assign(wechatMemberApi, {
     })
   },
   unbind: async id => { record('unbindMember', id); const index = memberBindings.findIndex(binding => binding.id === id); if (index >= 0) memberBindings.splice(index, 1) },
+})
+
+if (flags.has('workRecipients')) Object.assign(dingTalkMemberApi, {
+  departments: async () => [{ id: 'ding-team', name: '研发组' }, { id: 'ding-other', name: '运营组' }],
+  members: async () => [{ id: 'ding-zhang', name: '张三' }],
+  users: wechatMemberApi.users,
+  bindings: async () => [],
 })
 
 const historyAdapter = {

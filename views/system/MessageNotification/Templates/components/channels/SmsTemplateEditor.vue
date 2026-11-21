@@ -8,15 +8,6 @@
       <TemplateProviderField :field="field" :editor="editor" />
       <p v-if="field.key === 'message'" class="sms-editor__hint">{{ t('messageNotification.templates.visual.smsApprovedContentHint') }}</p>
     </a-form-item>
-    <section class="sms-editor__mapping" :aria-label="t('messageNotification.templates.visual.variableMapping')">
-      <h3>{{ t('messageNotification.templates.visual.variableMapping') }}</h3>
-      <table v-if="mappings.length">
-        <thead><tr><th>{{ t('messageNotification.templates.visual.supplierVariable') }}</th><th>{{ t('messageNotification.templates.visual.platformVariable') }}</th></tr></thead>
-        <tbody><tr v-for="row in mappings" :key="row.id"><td><TemplateVariableText :value="'${' + row.id + '}'" /></td><td><TemplateVariableText v-if="row.available" :value="'${' + row.id + '}'" /><template v-else>{{ t('messageNotification.templates.visual.providedAtSendTime') }}</template></td></tr></tbody>
-      </table>
-      <p v-else class="sms-editor__hint">{{ t('messageNotification.templates.visual.noSupplierVariables') }}</p>
-      <p class="sms-editor__hint">{{ t('messageNotification.templates.visual.smsMappingHint') }}</p>
-    </section>
   </div>
 </template>
 
@@ -24,12 +15,11 @@
 import type { TemplateDraft } from '../../model'
 import type { TemplateEditorController } from '../../channelViewTypes'
 import { useSmsTemplateEditorVisual } from '../../hooks/useSmsTemplateVisual'
-import TemplateVariableText from '../../variables/TemplateVariableText.vue'
 import TemplateProviderField from '../../variables/TemplateProviderField.vue'
 
 const props = defineProps<{ draft: TemplateDraft; editor: TemplateEditorController; disabled?: boolean }>()
 const { t } = props.editor
-const { mainFields, advancedFields, mappings } = useSmsTemplateEditorVisual(props.editor)
+const { mainFields, advancedFields } = useSmsTemplateEditorVisual(props.editor)
 </script>
 
 <style scoped>
@@ -39,8 +29,4 @@ const { mainFields, advancedFields, mappings } = useSmsTemplateEditorVisual(prop
 .sms-editor :deep(.ant-form-item-label > label) { color: var(--jet-theme-text-secondary); }
 .sms-editor :deep(textarea) { color: var(--text-color); line-height: 1.75; }
 .sms-editor__hint { margin: var(--space-1) 0 0; color: var(--text-color-secondary); line-height: 1.6; }
-.sms-editor__mapping h3 { margin: 0 0 var(--space-2); color: var(--jet-theme-text-secondary); font-weight: 400; }
-.sms-editor__mapping table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-.sms-editor__mapping th { padding: var(--space-2); background: var(--bg-sunken); color: var(--jet-theme-text-secondary); font-weight: 400; text-align: left; }
-.sms-editor__mapping td { padding: var(--space-3) var(--space-2); border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 </style>

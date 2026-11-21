@@ -71,26 +71,28 @@
                       @fill="templateSetup.fill()" @view="viewMessageTemplates" />
                   </div>
                   <div v-else-if="entry" class="notification-channels__editor">
-                    <ChannelConfiguration :entry="entry" :disabled="!canEdit || sending || fillingTemplates" :busy="busy" :submit="saveFields" @field="workspace.changeField" @focus="focusField" />
+                    <ChannelConfiguration :entry="entry" :disabled="!canEdit || sending || fillingTemplates || workRecipients.busy.value" :busy="busy" :submit="saveFields" @field="workspace.changeField" @focus="focusField" />
                     <ChannelTemplateSetup v-if="templateSetupModel.available" :model="templateSetupModel"
-                      @change="templateSetup.change" @focus="focusField" @fill="templateSetup.fill()" @view="viewMessageTemplates" />
-                    <section v-if="channelId === 'weixin:corpMessage'" class="notification-channels__members" :aria-label="t('messageNotification.members.section')">
+                      @change="templateSetup.change" @focus="focusField" @retry-options="templateSetup.reloadSmsOptions" @fill="templateSetup.fill()" @view="viewMessageTemplates" />
+                    <section v-if="workChannel" class="notification-channels__members" :aria-label="t('messageNotification.members.section')">
                       <h3>{{ t('messageNotification.members.section') }}</h3>
                       <p>{{ t('messageNotification.members.sectionHelp') }}</p>
                       <WechatMembersSummary v-if="canSyncMembers" :model="memberDrawer" @match="autoMatchMembers" @reload="reloadMembers">
-                        <j-permission-button size="small" :has-permission="[notificationPermissions.channels.bind]" :disabled="operationBusy || memberDrawer.state === 'loading'" @click="showMembers()">{{ t('messageNotification.members.manage') }} ›</j-permission-button>
+                        <j-permission-button size="small" :has-permission="[notificationPermissions.channels.bind]" :disabled="operationBusy || workRecipients.open.value || memberDrawer.state === 'loading'" @click="showMembers()">{{ t('messageNotification.members.manage') }} ›</j-permission-button>
                       </WechatMembersSummary>
                       <div v-else class="notification-page__actions">
                         <a-button size="small" disabled>{{ t('messageNotification.members.autoMatch') }}</a-button>
                         <j-permission-button size="small" :has-permission="[notificationPermissions.channels.bind]" disabled>{{ t('messageNotification.members.manage') }} ›</j-permission-button>
                       </div>
                     </section>
+                    <WorkRecipientGroups v-if="workChannel" :work="workRecipients" :can-manage="canManageWork" :disabled="operationBusy || memberDrawer.open"
+                      @close="closeWorkRecipients" @reload="reloadWorkRecipients" />
                   </div>
                   <ChannelHelp :key="`${channelId}:${entry?.key || ''}`" :model="help" :active-section="activeHelpSection" :focus-version="helpFocusVersion" />
                 </div>
               </div>
               <StickyActionBar v-if="!isRobot && entry && canEdit" position="inline" class="notification-page__footer notification-channels__footer">
-                <j-permission-button type="primary" :has-permission="[entry.isNew ? notificationPermissions.channels.add : notificationPermissions.channels.update]" :loading="busy || fillingTemplates" :disabled="(!entry.isNew && !dirty) || !canEdit || operationBusy" @click="save">{{ t('messageNotification.common.save') }}</j-permission-button>
+                <j-permission-button type="primary" :has-permission="[entry.isNew ? notificationPermissions.channels.add : notificationPermissions.channels.update]" :loading="busy || fillingTemplates" :disabled="(!entry.isNew && !dirty) || !canEdit || operationBusy" @click="save">{{ t(templateSetupModel.saveCredentialsFirst ? 'messageNotification.channels.templateSetup.saveCredentials' : 'messageNotification.common.save') }}</j-permission-button>
               </StickyActionBar>
             </template>
             <CloudEmpty v-else-if="multipleConfigurations && state === 'empty'" class="notification-page__feedback" :description="t('messageNotification.channels.empty')">
@@ -107,7 +109,7 @@
       </template>
     </RobotConfigurationModal>
     <ChannelTestModal :model="testModel" @close="trial.close()" @recipient="trial.selectRecipient" @address="trial.setAddress" @validate="trial.validateRecipient" @retry-identity="trial.loadIdentity" @retry-members="trial.loadMembers" @send="trial.send" @again="trial.again" @fix="fixTestConfiguration" @closed="afterTestClosed" />
-    <WechatMembersDrawer :model="memberDrawer" @close="closeMembers" @reload="reloadMembers" @save="members.save" @unbind="members.unbind" @assign="members.assign" @filter="updateMemberFilters" @match="members.autoMatch" @status="updateMemberStatus" @reset-filters="resetMemberFilters" />
+    <WechatMembersDrawer :model="memberDrawer" @close="closeMembers" @reload="reloadMembers" @save="saveMembers" @unbind="unbindMember" @assign="members.assign" @filter="updateMemberFilters" @match="members.autoMatch" @status="updateMemberStatus" @reset-filters="resetMemberFilters" />
     <JlConfirmDialog :open="memberDiscardOpen" :title="t('messageNotification.members.discardTitle')" :message="t('messageNotification.members.discardMessage')" :confirm-text="t('messageNotification.channels.leave')" :cancel-text="t('messageNotification.channels.stay')" @confirm="decideMemberDiscard(true)" @cancel="decideMemberDiscard(false)" @update:open="!$event && decideMemberDiscard(false)" />
     <JlConfirmDialog :open="leaveOpen" :title="t('messageNotification.channels.leaveTitle')" :message="t('messageNotification.channels.confirmLeave')" :confirm-text="t('messageNotification.channels.leave')" :cancel-text="t('messageNotification.channels.stay')" @confirm="decideLeave(true)" @cancel="decideLeave(false)" @update:open="!$event && decideLeave(false)" />
   </FullPage>
@@ -124,6 +126,7 @@ import ChannelTestModal from './testing/ChannelTestModal.vue'
 import ChannelHelp from './configuration/ChannelHelp.vue'
 import WechatMembersDrawer from './members/WechatMembersDrawer.vue'
 import WechatMembersSummary from './members/WechatMembersSummary.vue'
+import WorkRecipientGroups from './members/WorkRecipientGroups.vue'
 import RobotConfigurationList from './robot/RobotConfigurationList.vue'
 import RobotConfigurationModal from './robot/RobotConfigurationModal.vue'
 const ChannelTemplateSetup = defineAsyncComponent(() => import('./templateSetup/ChannelTemplateSetup.vue'))
@@ -138,6 +141,7 @@ const {
   busy, dirty, canEdit, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave,
   workspace, trial, testModel, fixTestConfiguration, afterTestClosed, refresh, save, showSend, configurationVisible,
   catalog, directoryState, providerFeedback, channelTitle, help, saveFields, focusField, activeHelpSection, helpFocusVersion, sending,
+  workChannel, canManageWork, workRecipients, closeWorkRecipients, reloadWorkRecipients, saveMembers, unbindMember,
   members, memberDrawer, canSyncMembers, showMembers, autoMatchMembers, closeMembers, reloadMembers, memberDiscardOpen, decideMemberDiscard, updateMemberFilters, updateMemberStatus, resetMemberFilters,
 } = useChannelsPage()
 </script>
@@ -160,9 +164,9 @@ const {
 .notification-channels__selector { flex: 1 1 15rem; min-width: 0; max-width: 28rem; }
 .notification-channels__body { display: flex; flex-direction: column; overflow: hidden; }
 .notification-channels__editor { min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.notification-channels__members { margin-top: var(--space-6); padding-top: var(--space-4); border-top: 1px solid var(--line); }
-.notification-channels__members h3 { margin: 0 0 var(--space-2); font-size: var(--fs-14); font-weight: 500; }
-.notification-channels__members p { margin: 0 0 var(--space-3); color: var(--text-color-secondary); font-size: var(--fs-12); }
+.notification-channels__editor :deep(.notification-channels__members) { margin-top: var(--space-6); padding-top: var(--space-4); border-top: 1px solid var(--line); }
+.notification-channels__editor :deep(.notification-channels__members h3) { margin: 0 0 var(--space-2); font-size: var(--fs-14); font-weight: 500; }
+.notification-channels__editor :deep(.notification-channels__members p) { margin: 0 0 var(--space-3); color: var(--text-color-secondary); font-size: var(--fs-12); }
 .notification-channels__content { display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: var(--space-6); flex: 1; min-height: 0; }
 .notification-channels__content--help { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .notification-channels__alert { flex-shrink: 0; margin-bottom: var(--space-4); }

@@ -1,4 +1,4 @@
-import { beginChannelEdit, saveChannelDraft, cancelChannelEdit } from './channelEditing.mjs'
+import { beginChannelEdit, saveChannelDraft, cancelChannelEdit, channelField } from './channelEditing.mjs'
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -258,6 +258,7 @@ try {
   assert.deepEqual(await voicePage.evaluate(() => window.__notificationSmoke.configs.find(row => row.id === 'trial-aliyun').configuration), trialRecords[5].configuration)
   await beginChannelEdit(voicePage)
   await voicePage.getByRole('textbox', { name: 'AccessKey ID', exact: true }).fill('updated-voice-fixture-key')
+  await voicePage.getByRole('textbox', { name: '语音模板编号', exact: true }).fill('TTS_BUSINESS')
   await saveChannelDraft(voicePage)
   await voicePage.locator('.notification-channels__footer .ant-btn-primary:disabled:not(.ant-btn-loading)').waitFor()
   assert.deepEqual(await voicePage.evaluate(() => window.__notificationSmoke.configs.find(row => row.id === 'trial-aliyun').configuration.testTemplate), trialRecords[5].configuration.testTemplate)
@@ -327,6 +328,11 @@ try {
   await beginChannelEdit(smsPage)
   const accessKey = smsPage.getByRole('textbox', { name: 'AccessKey ID', exact: true })
   await accessKey.fill('updated-fixture-key')
+  await button(smsPage, '保存凭据').click()
+  for (const [label, option] of [['短信模板编号', 'SMS_FIXTURE'], ['短信签名', '测试签名']]) {
+    await channelField(smsPage, label).getByRole('combobox').click()
+    await smsPage.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: option }).click()
+  }
   await saveChannelDraft(smsPage)
   await smsPage.locator('.notification-channels__footer .ant-btn-primary:disabled:not(.ant-btn-loading)').waitFor()
   const savedSettings = await smsPage.evaluate(() => window.__notificationSmoke.configs.find(row => row.id === 'trial-aliyunSms').configuration.testTemplate)
