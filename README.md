@@ -7,6 +7,9 @@
 - 接口封装：`api/notice/messageNotification.ts`；旧页面及 `api/notice-center.ts` 保留兼容使用
 - 后端接口：`/notifier/config/**`、`/notifier/template/**`、`/notify/channel/**`、`/notify/history/**`、`/notifier/**`
 
+消息模板的通用变量为顶层 `message`、`notifyTime`；后端 Provider 声明的业务字段统一归入 `detail.*`，可用变量区按完整表达式去重。设备告警的产品、属性、显示值、单位及事件文案取决于属性通知上下文，悬停可查看字段适用说明；`detail.relieveTime` 仅在设备告警解除模板中推荐。告警发生预览不生成解除时间，也不为旧的无前缀详情表达式编造示例。既有模板正文、变量格式与声明保持原文，旧表达式需在编辑器中替换为正确变量并保存。
+
+场景模板固定使用 `detail.sceneId`、`detail.sceneName`、`detail.triggerType`；多条件场景的实际触发方式由后端提供，前端样例仅用于展示，不会写入保存参数。
 ## 钉钉与企业微信收件人对应
 
 归属 `runtime-ui/modules/notify-manager-ui`。钉钉及企业微信工作通知的接收范围在「通知渠道」管理，按当前项目中的通知配置保存。消息模板继续维护标题、正文和消息参数。既有业务触发和个人订阅决定何时发起通知，渠道对应关系决定每次发送的接收范围。实现复用现有接口，钉钉群机器人继续通过 Webhook 投递。

@@ -26,12 +26,13 @@ const dependencies = {
   vue, 'vue-i18n': { useI18n: () => ({ t: (key, args) => args?.name ? `Example ${args.name}` : key }) },
   '@notify-manager-ui/api/notice-center': remoteApi,
   '@jetlinks-web/core': { request: {} },
+  '@jetlinks-web-core/components/DocumentHelp': { __esModule: true, default: () => null },
 }
 const cache = new Map()
 
 // Execute the real presentation and form adapters; all I/O and sample data stay inside this fixture.
 function load(filename) {
-  if (filename.endsWith('/definition/templateDefaults.ts')) return { prototypePreviewExamples: () => samples }
+  if (filename.replaceAll('\\', '/').endsWith('/definition/templateDefaults.ts')) return { prototypePreviewExamples: () => samples }
   if (cache.has(filename)) return cache.get(filename)
   let source = readFileSync(filename, 'utf8')
   if (filename.endsWith('.vue')) source = compileScript(parse(source, { filename }).descriptor, { id: filename, inlineTemplate: true }).content
@@ -68,6 +69,33 @@ function editor(draft, overrides = {}) {
   return { props, value, stop: () => scope.stop() }
 }
 const flush = async () => { await Promise.resolve(); await Promise.resolve(); await vue.nextTick() }
+
+test('business preview leaves unavailable recovery time and legacy detail aliases empty without rewriting saved declarations', () => {
+  const draft = draftFor('email', 'embedded', { subject: 'Alarm', text: '${targetName}|${detail.targetName}|${detail.relieveTime}' })
+  draft.variables.push({ id: 'targetName', name: '设备名称', defaultValue: 'invented' },
+    { id: 'detail.relieveTime', name: '解除时间', type: 'date', defaultValue: '2026-01-01', expands: { mockValue: '2026-01-01' } })
+  const original = JSON.stringify(draft)
+  const preview = useTemplatePreview({ draft, business: { provider: 'alarm-device' } })
+  assert.equal(preview.text.value, '|Camera 218|')
+  assert.equal(JSON.stringify(draft), original)
+})
+
+test('business variable panel hides duplicate legacy aliases and recovery-only fields, and exposes optional descriptions', async () => {
+  const Panel = load(resolve(templateRoot, 'components/TemplateVariablePanel.vue')).default
+  const draft = draftFor('email', 'embedded', { subject: 'Alarm', text: '${targetName}' })
+  draft.variables[0].name = '设备名称'
+  draft.variables.push({ id: 'targetName', name: '设备名称' }, { id: 'detail.relieveTime', name: '解除时间' })
+  const props = { draft, business: { provider: 'alarm-device' }, variables: [
+    { id: 'detail.targetName', name: '设备名称' },
+    { id: 'detail.propertyUnit', name: '属性单位', description: '仅配置物模型单位时可用' },
+  ] }
+  const original = JSON.stringify(draft)
+  const html = await renderToString(vue.createSSRApp({ render: () => vue.h(Panel, props) }))
+  assert.equal((html.match(/class="template-variables__name"[^>]*>\{设备名称\}/g) || []).length, 1)
+  assert.ok(!html.includes('${targetName}') && !html.includes('解除时间'))
+  assert.ok(html.includes('仅配置物模型单位时可用'))
+  assert.equal(JSON.stringify(draft), original)
+})
 
 test('attachment actions declare real variables without persisting preview defaults or duplicating metadata', () => {
   const variable = { id: 'detail.imageUrl', name: '图片', type: 'file', defaultValue: 'https://example.test/sample.png', expands: { businessType: 'image', mockValue: 'preview' } }
@@ -350,6 +378,24 @@ test('panel and body preserve explicit samples, zero and false while empty sampl
   })
   assert.equal(useTemplatePreview({ draft }).text.value, 'Explicit sample|Camera 218|0|false|Fallback sample|Example Custom value')
   assert.equal(JSON.stringify({ draft, payload: buildTemplatePayload(draft) }), before)
+})
+
+test('business preview fills missing date metadata while preserving explicit timestamp and custom formats', () => {
+  const timestamp = new Date(2026, 0, 1, 12, 0, 0).getTime()
+  for (const [metadata, expected] of [
+    [{}, '2026-01-01 12:00:00'],
+    [{ type: '' }, '2026-01-01 12:00:00'],
+    [{ type: 'date', format: 'timestamp' }, String(timestamp)],
+    [{ type: 'date', expands: { format: 'yyyy/MM/dd HH:mm' } }, '2026/01/01 12:00'],
+    [{ type: 'long' }, String(timestamp)],
+  ]) {
+    const draft = draftFor('email', 'embedded', { text: '${detail.alarmTime}' })
+    draft.variables = [{ id: 'detail.alarmTime', ...metadata, expands: { ...metadata.expands, mockValue: timestamp } }]
+    const before = JSON.stringify(draft)
+    const preview = useTemplatePreview({ draft, business: { provider: 'alarm-device' } })
+    assert.equal(preview.text.value, expected)
+    assert.equal(JSON.stringify(draft), before)
+  }
 })
 
 test('sender requires the exact configuration and previews never read credentials', () => {

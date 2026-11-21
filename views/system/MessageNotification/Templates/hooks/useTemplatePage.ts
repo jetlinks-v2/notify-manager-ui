@@ -33,7 +33,7 @@ export function useTemplatePage() {
   const { hasPerm: canQueryConfig } = usePermission(ref(notificationPermissions.channels.query))
   const canManage = computed(() => canQuery.value && (canAdd.value || canUpdate.value))
   const directory = useTemplateBusinessDirectory(canManage)
-  const workspace = useTemplateWorkspace({ query: canQuery, add: canAdd, update: canUpdate })
+  const workspace = useTemplateWorkspace({ query: canQuery, add: canAdd, update: canUpdate }, messageNotificationApi, t)
   const { channelId, templates, draft, business, channels, detailState, listState, saving } = workspace
   const businessNavigation = useTemplateBusinessNavigation(computed(() => route.query), directory.businessTypes, directory.directoryState, channels)
   const configurationNavigation = useNotificationConfigNavigation(() => workspace.refreshConfigs(), 'system/MessageNotification/Channels')

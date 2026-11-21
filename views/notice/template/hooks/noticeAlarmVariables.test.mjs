@@ -19,7 +19,7 @@ function load(path) {
   new Function('require', 'module', 'exports', code)(localRequire, module, module.exports)
   return module.exports
 }
-const { getRecommendedVariables, mergeRecommendedVariables, normalizeGroupList } = load(resolve(directory, 'noticeTemplateModel.ts'))
+const { getRecommendedVariables, mergeRecommendedVariables, mergeTemplateVariableDeclarations, normalizeGroupList } = load(resolve(directory, 'noticeTemplateModel.ts'))
 const { syncVariableDefinitions } = load(resolve(directory, 'noticeTemplateFormModel.ts'))
 const { alarmPreviewValues, formatPreviewValue } = load(resolve(directory, 'noticeAlarmPreview.ts'))
 const { useTemplatePreviewSegments } = load(resolve(directory, 'useTemplatePreviewSegments.ts'))
@@ -44,12 +44,13 @@ test('recommendations use root notification fields and detail property fields wi
   for (const locale of ['zh', 'en']) {
     const t = translate(locale)
     const variables = getRecommendedVariables('alarm-device', t)
-    assert.deepEqual(getRecommendedVariables('alarm-device-relieve', t), variables)
+    assert.ok(!variables.some(variable => variable.id === 'detail.relieveTime'))
+    assert.ok(getRecommendedVariables('alarm-device-relieve', t).some(variable => variable.id === 'detail.relieveTime'))
     const ids = variables.map(item => item.id)
     assert.equal(new Set(ids).size, ids.length)
     assert.ok(ids.includes('message') && ids.includes('notifyTime'))
     assert.ok(!ids.includes('detail.message') && !ids.includes('detail.notifyTime'))
-    for (const id of ['targetId', 'targetName', 'productId', 'productName', 'property', 'propertyName', 'propertyValue', 'propertyValueText', 'propertyUnit', 'event', 'eventText', 'levelText', 'alarmTime', 'relieveTime']) {
+    for (const id of ['targetId', 'targetName', 'productId', 'productName', 'property', 'propertyName', 'propertyValue', 'propertyValueText', 'propertyUnit', 'event', 'eventText', 'levelText', 'alarmTime']) {
       const variable = variables.find(item => item.id === `detail.${id}`)
       assert.ok(variable, id)
       assert.notEqual(variable.name, variable.i18nName)
@@ -60,7 +61,7 @@ test('recommendations use root notification fields and detail property fields wi
 })
 
 test('metadata merge keeps date defaults, and saved definitions keep user names and formats', () => {
-  const recommended = mergeRecommendedVariables(getRecommendedVariables('alarm-device', translate('en')), [
+  const recommended = mergeRecommendedVariables(getRecommendedVariables('alarm-device-relieve', translate('en')), [
     { id: 'alarmTime', type: 'long', name: '服务端名称' },
     { id: 'propertyValueText', name: '服务端名称' },
     { id: 'extraField', name: 'Extra field' },
@@ -75,6 +76,34 @@ test('metadata merge keeps date defaults, and saved definitions keep user names 
   assert.equal(definitions.find(item => item.id === 'detail.alarmTime').format, 'yyyy')
   assert.equal(definitions.find(item => item.id === 'detail.relieveTime').format, 'yyyy-MM-dd HH:mm:ss')
   assert.equal(definitions.find(item => item.id === 'notifyTime').type, 'date')
+})
+
+test('declaration merge fills placeholder names and date metadata without replacing user choices', () => {
+  const recommended = getRecommendedVariables('alarm-device-relieve', translate('zh'))
+  const declared = [
+    { id: 'detail.sourceType', name: 'detail.sourceType' },
+    { id: 'detail.sourceName', name: 'NoticeCenter.template.variable.recommend.sourceName' },
+    { id: 'detail.alarmTime', name: '', i18nName: '', expands: { mockValue: 1767240000000 } },
+    { id: 'detail.relieveTime', name: '我的解除时间', type: 'date', format: 'timestamp', expands: { format: 'timestamp', keep: true } },
+    { id: 'detail.targetName', name: '我的设备', type: 'string' },
+    { id: 'targetName', name: '旧声明' },
+  ]
+  const before = JSON.stringify({ recommended, declared })
+  const merged = new Map(mergeTemplateVariableDeclarations(recommended, declared, true).map(variable => [variable.id, variable]))
+  assert.equal(merged.get('detail.sourceType').name, '告警源类型')
+  assert.equal(merged.get('detail.sourceName').name, '告警源名称')
+  assert.equal(merged.get('detail.alarmTime').name, '告警时间')
+  assert.equal(merged.get('detail.alarmTime').i18nName, 'NoticeCenter.template.variable.recommend.alarmTime')
+  assert.equal(merged.get('detail.alarmTime').type, 'date')
+  assert.equal(merged.get('detail.alarmTime').expands.format, 'yyyy-MM-dd HH:mm:ss')
+  assert.equal(merged.get('detail.alarmTime').expands.mockValue, 1767240000000)
+  assert.equal(merged.get('detail.relieveTime').name, '我的解除时间')
+  assert.equal(merged.get('detail.relieveTime').format, 'timestamp')
+  assert.equal(merged.get('detail.relieveTime').expands.format, 'timestamp')
+  assert.equal(merged.get('detail.relieveTime').expands.keep, true)
+  assert.equal(merged.get('detail.targetName').name, '我的设备')
+  assert.equal(merged.has('targetName'), false)
+  assert.equal(JSON.stringify({ recommended, declared }), before)
 })
 
 test('trigger and recovery samples preserve raw types and render event, dates and missing fields consistently', () => {

@@ -152,6 +152,7 @@ const recommendedVariablesByProvider: Record<string, NoticeTemplateVariable[]> =
 }
 
 const unsupportedRecommendedVariableIdsByProvider: Record<string, string[]> = {
+  'alarm-device': ['detail.relieveTime'],
   aiSecurityAlarm: [
     'detail.spaceId',
     'detail.spaceName',
@@ -193,11 +194,11 @@ export const getRecommendedVariables = (
   providerCode?: string,
   resolveName: (key: string) => string = key => key,
 ): NoticeTemplateVariable[] =>
-  [
+  filterUnsupportedRecommendedVariables(providerCode, [
     { id: 'message', i18nName: 'NoticeCenter.template.variable.recommend.message' },
     { id: 'notifyTime', i18nName: 'NoticeCenter.template.variable.recommend.notifyTime', type: 'date', expands: { format: 'yyyy-MM-dd HH:mm:ss' } },
     ...normalizeDetailVariables(recommendedVariablesByProvider[providerCode === 'alarm-device-relieve' ? 'alarm-device' : providerCode || ''] || []),
-  ]
+  ])
     .map((variable: NoticeTemplateVariable) => ({
       ...variable,
       name: variable.i18nName ? resolveName(variable.i18nName) : variable.name,
@@ -229,8 +230,37 @@ export const filterUnsupportedRecommendedVariables = (
   if (!unsupportedIds) {
     return variables
   }
-  // 安全告警的复判结果不能稳定提供这些上下文字段，避免在模板编辑器中推荐。
+  // 按实际发送范围过滤：告警发生没有解除时间，安全告警复判没有通道上下文。
   return variables.filter(variable => !unsupportedIds.includes(variable.id))
+}
+
+/** 推荐信息补全空白/占位名称及缺失类型，保留自定义名称和格式；旧详情别名不重复推荐。 */
+export const mergeTemplateVariableDeclarations = (
+  available: NoticeTemplateVariable[],
+  declared: NoticeTemplateVariable[],
+  businessMode = false,
+): NoticeTemplateVariable[] => {
+  const variables = new Map(available.filter(variable => variable.id).map(variable => [variable.id, variable]))
+  const rootIds = new Set(['message', 'notifyTime', 'code', 'subscriber', 'topic', 'detailJson'])
+  for (const variable of declared) {
+    if (!variable.id || businessMode && !rootIds.has(variable.id) && variables.has(`detail.${variable.id}`)) continue
+    const fallback = variables.get(variable.id)
+    if (!fallback) {
+      variables.set(variable.id, variable)
+      continue
+    }
+    const name = variable.name?.trim()
+    const placeholderNames = [variable.id, variable.i18nName, fallback.i18nName]
+    variables.set(variable.id, {
+      ...fallback,
+      ...variable,
+      name: name && !placeholderNames.includes(name) ? variable.name : fallback.name || variable.name,
+      i18nName: variable.i18nName || fallback.i18nName,
+      type: variable.type || fallback.type,
+      expands: { ...fallback.expands, ...variable.expands },
+    })
+  }
+  return [...variables.values()]
 }
 
 export const getDisplayName = (item?: { i18nName?: string; name?: string; id?: string }) =>
