@@ -1,21 +1,26 @@
 import { computed, inject, provide, type ComputedRef, type InjectionKey } from 'vue'
 import type { NotificationVariable } from '../../shared'
 import type { TemplateCustomCaret } from '../hooks/useTemplateEditor'
-import { getRecommendedVariables } from '../../../../notice/template/hooks/noticeTemplateModel'
+import { getRecommendedVariables, mergeTemplateVariableDeclarations } from '../../../../notice/template/hooks/noticeTemplateModel'
 
 /** 面板与编辑节点共用名称解析；仅生成展示副本，草稿声明保留原始元数据。 */
-export function resolveTemplateVariables(available: NotificationVariable[], declared: NotificationVariable[], provider: string | undefined, t: (key: string) => string) {
-  const variables = new Map(available.filter(item => item.id).map(item => [item.id, item]))
-  for (const item of declared) {
-    if (!item.id) continue
-    const choice = variables.get(item.id)
-    variables.set(item.id, { ...item, name: item.name || choice?.name, i18nName: item.i18nName || choice?.i18nName })
-  }
+export function resolveTemplateVariables(available: NotificationVariable[], declared: NotificationVariable[], provider: string | undefined, t: (key: string) => string, businessMode = false) {
+  const availableById = new Map(available.filter(item => item.id).map(item => [item.id, item]))
+  const declaredById = new Map(declared.filter(item => item.id).map(item => [item.id, item]))
+  const variables = mergeTemplateVariableDeclarations(available, declared, businessMode)
   const recommended = new Map(getRecommendedVariables(provider).map(item => [item.id, item]))
-  return [...variables.values()].map(item => {
-    const nameKey = item.i18nName || recommended.get(item.id)?.i18nName
+  return variables.map(item => {
+    // 历史无前缀字段只借用对应 detail 字段的展示名称，不重写表达式、类型或格式。
+    const detailId = item.id.startsWith('detail.') ? item.id : `detail.${item.id}`
+    const fallback = availableById.get(item.id) || availableById.get(detailId)
+    const nameKey = item.i18nName || recommended.get(item.id)?.i18nName || recommended.get(detailId)?.i18nName
     const translated = nameKey ? t(nameKey) : ''
-    return { ...item, name: translated && translated !== nameKey ? translated : item.name || item.id }
+    const identifiers = [item.id, detailId, detailId.slice(7), nameKey]
+    const declaredName = declaredById.get(item.id)?.name
+    const customName = declaredName?.trim() && !identifiers.includes(declaredName) ? declaredName : undefined
+    const savedName = item.name?.trim() && !identifiers.includes(item.name) ? item.name : undefined
+    const fallbackName = fallback?.name?.trim() && !identifiers.includes(fallback.name) ? fallback.name : undefined
+    return { ...item, name: customName || (translated && translated !== nameKey ? translated : savedName || fallbackName || item.id) }
   })
 }
 

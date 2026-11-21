@@ -2,7 +2,7 @@ import type { NoticeChannelConfig } from '@notify-manager-ui/api/notice-center'
 import {
   extractVariableIds,
 } from '../../../../notice/template/hooks/noticeTemplateFormModel'
-import { getRecommendedVariables } from '../../../../notice/template/hooks/noticeTemplateModel'
+import { filterUnsupportedRecommendedVariables, getRecommendedVariables, mergeRecommendedVariables } from '../../../../notice/template/hooks/noticeTemplateModel'
 import { cloneNotificationValue, type NotificationChannel, type NotificationObject, type NotificationTemplate, type NotificationVariable } from '../../shared'
 import { alarmPreviewValues, formatPreviewValue } from '../../../../notice/template/hooks/noticeAlarmPreview'
 
@@ -185,7 +185,7 @@ export function prototypePreviewExamples(business?: NoticeChannelConfig): Record
     }
   } else if (code === 'scene') selected = {
     message: '场景 闭店后有人进入 已执行', notifyTime: values.notifyTime,
-    'detail.sceneName': '闭店后有人进入', 'detail.triggerType': '自动',
+    'detail.sceneId': 'scene-001', 'detail.sceneName': '闭店后有人进入', 'detail.triggerType': '设备触发',
   }
   else if (code === 'SystemBulletin') selected = {
     message: '平台升级期间，设备接入、数据上报与告警不中断。', notifyTime: values.notifyTime,
@@ -209,8 +209,11 @@ const channels: Record<string, string> = {
 
 const variableNames: Record<string, string> = {
   message: '通知正文', notifyTime: '发送时间',
+  'detail.targetType': '告警类型', 'detail.sourceType': '告警源类型',
   'detail.alarmConfigName': '告警名称', 'detail.level': '告警级别', 'detail.levelText': '级别名称',
   'detail.targetName': '设备名称', 'detail.targetId': '设备 ID', 'detail.productName': '产品名称',
+  'detail.productId': '产品 ID', 'detail.property': '属性标识', 'detail.propertyName': '属性名称',
+  'detail.event': '事件标识', 'detail.eventText': '事件名称',
   'detail.propertyValue': '属性原始值', 'detail.propertyValueText': '属性显示值', 'detail.propertyUnit': '属性单位',
   'detail.alarmTime': '告警时间', 'detail.relieveTime': '解除时间', 'detail.sourceName': '来源名称',
   'detail.sceneName': '场景名称', 'detail.triggerType': '触发方式',
@@ -240,14 +243,16 @@ function availableVariables(code: PrototypeBusiness, variables: NotificationVari
   if (code === 'SystemBulletin') {
     for (const id of ['title', 'summary', 'type']) entries.set(`detail.${id}`, { id: `detail.${id}`, name: variableNames[`detail.${id}`], type: 'string' })
   }
-  for (const variable of variables) entries.set(variable.id, { ...entries.get(variable.id), ...cloneNotificationValue(variable) })
-  return entries
+  // Provider 声明的是 detail 内字段；复用统一归一化，避免出现同名的有前缀/无前缀变量。
+  return new Map(filterUnsupportedRecommendedVariables(code,
+    mergeRecommendedVariables([...entries.values()], variables),
+  ).map(variable => [variable.id, variable]))
 }
 
 /** 未持久化的已知业务复用确证推荐字段；未知业务只展示后端声明，不扩展默认匹配。 */
 export function prototypeAvailableVariables(business: NoticeChannelConfig, variables: NotificationVariable[], translate?: PrototypeTranslate): NotificationVariable[] {
   const code = businessCode(business)
-  return code ? [...availableVariables(code, variables, translate).values()] : cloneNotificationValue(variables)
+  return code ? [...availableVariables(code, variables, translate).values()] : mergeRecommendedVariables([], variables)
 }
 
 function mappedTokens(code: PrototypeBusiness, variables: Map<string, NotificationVariable>): PrototypeTokens {
