@@ -5,13 +5,20 @@ import { getRecommendedVariables } from '../../../../notice/template/hooks/notic
 
 /** 面板与编辑节点共用名称解析；仅生成展示副本，草稿声明保留原始元数据。 */
 export function resolveTemplateVariables(available: NotificationVariable[], declared: NotificationVariable[], provider: string | undefined, t: (key: string) => string) {
-  const variables = new Map(available.filter(item => item.id).map(item => [item.id, item]))
+  const availableById = new Map(available.filter(item => item.id).map(item => [item.id, item]))
+  const variables = new Map(availableById)
   for (const item of declared) if (item.id) variables.set(item.id, item)
   const recommended = new Map(getRecommendedVariables(provider).map(item => [item.id, item]))
   return [...variables.values()].map(item => {
-    const nameKey = item.i18nName || recommended.get(item.id)?.i18nName
+    // 历史无前缀字段只借用对应 detail 字段的展示名称，不重写表达式、类型或格式。
+    const detailId = item.id.startsWith('detail.') ? item.id : `detail.${item.id}`
+    const fallback = availableById.get(item.id) || availableById.get(detailId)
+    const nameKey = item.i18nName || recommended.get(item.id)?.i18nName || recommended.get(detailId)?.i18nName
     const translated = nameKey ? t(nameKey) : ''
-    return { ...item, name: translated && translated !== nameKey ? translated : item.name || item.id }
+    const identifiers = [item.id, detailId, detailId.slice(7), nameKey]
+    const savedName = item.name?.trim() && !identifiers.includes(item.name) ? item.name : undefined
+    const fallbackName = fallback?.name?.trim() && !identifiers.includes(fallback.name) ? fallback.name : undefined
+    return { ...item, name: translated && translated !== nameKey ? translated : savedName || fallbackName || item.id }
   })
 }
 

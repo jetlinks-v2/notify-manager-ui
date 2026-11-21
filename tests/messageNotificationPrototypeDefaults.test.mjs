@@ -35,6 +35,42 @@ const create = (provider, id = 'email:embedded', variables = [], translate) => d
 const usedVariables = record => [...JSON.stringify(record.template).matchAll(/\$\{([^}]+)\}/g)].map(match => match[1])
 const supportedBusinesses = ['alarm-device', 'alarm-device-relieve', 'aiComplianceAlarm', 'aiSecurityAlarm', 'scene', 'SystemBulletin']
 
+test('设备告警及解除的完整默认变量目录都有名称，不回退为字段路径', () => {
+  for (const provider of ['alarm-device', 'alarm-device-relieve']) {
+    const available = defaults.prototypeAvailableVariables(business(provider), [])
+    for (const variable of available) {
+      assert.ok(variable.name?.trim(), variable.id)
+      assert.notEqual(variable.name, variable.id, variable.id)
+      assert.notEqual(variable.name, variable.i18nName, variable.id)
+    }
+    for (const id of ['targetType', 'sourceType', 'sourceName', 'productId', 'property', 'propertyName', 'event', 'eventText']) {
+      assert.ok(available.some(variable => variable.id === `detail.${id}`), id)
+    }
+  }
+})
+
+test('旧模板详情字段名称按当前业务翻译，缺失翻译时保留目录名称和自定义名称', () => {
+  const { resolveTemplateVariables } = load(resolve(templates, 'variables/catalog.ts'))
+  const available = defaults.prototypeAvailableVariables(business('alarm-device'), [])
+  const declared = [
+    { id: 'propertyName', name: 'propertyName', type: 'string', expands: { retained: true } },
+    { id: 'detail.productId', name: 'detail.productId' },
+    { id: 'custom', name: '用户自定义字段', type: 'date', format: 'yyyy' },
+  ]
+  const before = structuredClone(declared)
+  for (const locale of ['zh', 'en', 'ja']) {
+    const messages = JSON.parse(readFileSync(resolve(root, `locales/lang/${locale}.json`), 'utf8'))
+    const variables = resolveTemplateVariables(available, declared, 'alarm-device', key => messages[key] || key)
+    assert.equal(variables.find(variable => variable.id === 'propertyName').name, messages['NoticeCenter.template.variable.recommend.propertyName'])
+    assert.equal(variables.find(variable => variable.id === 'custom').name, '用户自定义字段')
+  }
+  const fallback = resolveTemplateVariables(available, declared, 'alarm-device', key => key)
+  assert.equal(fallback.find(variable => variable.id === 'detail.productId').name, '产品 ID')
+  assert.equal(fallback.find(variable => variable.id === 'propertyName').name, '属性名称')
+  assert.deepEqual(declared, before)
+  assert.deepEqual(fallback.find(variable => variable.id === 'custom'), declared[2])
+})
+
 test('未持久化的已知业务按精确渠道生成独立原型默认，不依赖主题变量接口', () => {
   for (const provider of supportedBusinesses) {
     for (const target of notificationChannels) {

@@ -209,8 +209,11 @@ const channels: Record<string, string> = {
 
 const variableNames: Record<string, string> = {
   message: '通知正文', notifyTime: '发送时间',
+  'detail.targetType': '告警类型', 'detail.sourceType': '告警源类型',
   'detail.alarmConfigName': '告警名称', 'detail.level': '告警级别', 'detail.levelText': '级别名称',
   'detail.targetName': '设备名称', 'detail.targetId': '设备 ID', 'detail.productName': '产品名称',
+  'detail.productId': '产品 ID', 'detail.property': '属性标识', 'detail.propertyName': '属性名称',
+  'detail.event': '事件标识', 'detail.eventText': '事件名称',
   'detail.propertyValue': '属性原始值', 'detail.propertyValueText': '属性显示值', 'detail.propertyUnit': '属性单位',
   'detail.alarmTime': '告警时间', 'detail.relieveTime': '解除时间', 'detail.sourceName': '来源名称',
   'detail.sceneName': '场景名称', 'detail.triggerType': '触发方式',
