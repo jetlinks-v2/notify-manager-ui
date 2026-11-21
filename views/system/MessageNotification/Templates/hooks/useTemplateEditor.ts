@@ -4,6 +4,7 @@ import { cloneNotificationValue, type NotificationLoadState, type NotificationVa
 import { createTemplateDraft, insertTemplateVariable, isEmailDraft } from '../model'
 import { builtinEmailTemplates } from '../../shared/builtinEmailTemplates'
 import { matchesTemplateConfiguration } from './templatePresentation'
+import { mergeTemplateVariableDeclarations } from '../../../../notice/template/hooks/noticeTemplateModel'
 import { useTemplateProviderEditor, type ProviderEditorProps } from './useTemplateProviderEditor'
 import type { NoticeChannelConfig } from '../../../../../api/notice-center'
 import { resolveTemplateVariables, templateVariableNames } from '../variables/catalog'
@@ -39,10 +40,8 @@ export function useTemplateEditor(props: EditorProps, emit: (event: 'uploading',
       template: { ...definition.payload.template, sendTo: draft.sendTo } }), { builtinKey: key })
   }
   const insertableVariables = computed(() => {
-    const variables = new Map((props.availableVariables ?? []).filter(item => item.id).map(item => [item.id, item]))
     // A saved declaration retains its type and format even when the available catalog is refreshed.
-    for (const variable of props.draft.variables) if (variable.id) variables.set(variable.id, variable)
-    return [...variables.values()]
+    return mergeTemplateVariableDeclarations(props.availableVariables ?? [], props.draft.variables, props.businessMode)
   })
   const displayVariables = computed(() => resolveTemplateVariables(props.availableVariables ?? [], props.draft.variables, props.business?.provider, t))
   const variableNames = templateVariableNames(() => displayVariables.value)

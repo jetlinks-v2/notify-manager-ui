@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path'
 import test from 'node:test'
 import { transformSync } from 'esbuild'
 import * as vue from 'vue'
+import { createI18n } from 'vue-i18n'
 import { channelProviders, channelTypes } from './messageNotificationChannelFixtures.mjs'
 
 const require = createRequire(import.meta.url)
@@ -281,6 +282,35 @@ test('template setup requires DingTalk AgentId and mode-specific robot fields wi
   assert.deepEqual(Object.keys(issues('dingTalk:dingTalkRobotWebHook', { messageTemplateDefaults: { messageType: 'link', title: '', message: '   ', messageUrl: 'invalid' } })), ['messageUrl'])
   assert.deepEqual(issues('dingTalk:dingTalkRobotWebHook', { messageTemplateDefaults: { messageType: 'text', title: '', messageUrl: '' } }), {})
   assert.deepEqual(issues('webhook:http', {}), {})
+})
+
+test('business variables reuse localized recommendation labels with absent metadata and incomplete saved declarations', async () => {
+  const i18n = createI18n({ legacy: false, locale: 'zh', messages: Object.fromEntries(['zh', 'en'].map(locale => [
+    locale, JSON.parse(readFileSync(resolve(root, `locales/lang/${locale}.json`), 'utf8')),
+  ])) })
+  const ids = ['targetType', 'sourceType', 'sourceName', 'productId', 'property', 'propertyName', 'event', 'eventText']
+  const io = mockApi()
+  io.api.queryBusinessVariables = async () => []
+  const workspace = useTemplateWorkspace(permissions(), io.api, i18n.global.t)
+  // 未持久化主题没有变量接口，也应能显示完整名称。
+  await workspace.loadBusiness(business(null), 'email:embedded')
+  const labels = () => new Map(workspace.availableVariables.value.map(value => [value.id, value.name]))
+  for (const id of ids) assert.equal(labels().get(`detail.${id}`), i18n.global.t(`NoticeCenter.template.variable.recommend.${id}`))
+  const definitions = ids.map((id, index) => ({
+    id: `detail.${id}`,
+    name: index % 3 === 0 ? `detail.${id}` : index % 3 === 1 ? '' : `NoticeCenter.template.variable.recommend.${id}`,
+  }))
+  definitions.push({ id: 'detail.targetName', name: '我的设备名称', type: 'string' })
+  io.records.set('actual-topic/notifier-email', item('actual-topic', template({ variableDefinitions: definitions })))
+  await workspace.loadBusiness(business(), 'email:embedded')
+  const before = JSON.stringify(workspace.draft.value)
+  for (const locale of ['zh', 'en']) {
+    i18n.global.locale.value = locale
+    for (const id of ids) assert.equal(labels().get(`detail.${id}`), i18n.global.t(`NoticeCenter.template.variable.recommend.${id}`))
+    assert.equal(labels().get('detail.targetName'), '我的设备名称')
+  }
+  assert.equal(JSON.stringify(workspace.draft.value), before)
+  assert.equal(workspace.dirty.value, false)
 })
 
 test('business drafts use the backend directory and reuse one exact-provider config snapshot', async () => {
@@ -691,7 +721,7 @@ test('available variables include unused backend fields without adding them to s
   io.api.queryBusinessVariables = async () => [{ id: 'unusedField', name: '后端未使用字段', type: 'date', required: true }, { id: 'message', name: '后端名称' }]
   const workspace = useTemplateWorkspace(permissions(), io.api)
   await workspace.loadBusiness(business(), 'email:embedded')
-  assert.equal(workspace.availableVariables.value.find(value => value.id === 'unusedField').required, true)
+  assert.equal(workspace.availableVariables.value.find(value => value.id === 'detail.unusedField').required, true)
   assert.equal(workspace.availableVariables.value.find(value => value.id === 'message').name, '消息')
   assert.equal(workspace.draft.value.variables.some(value => value.id === 'unusedField'), false)
   workspace.draft.value.variables[0].name = '当前编辑名称'

@@ -55,6 +55,7 @@ test('旧模板详情字段名称按当前业务翻译，缺失翻译时保留�
   const declared = [
     { id: 'propertyName', name: 'propertyName', type: 'string', expands: { retained: true } },
     { id: 'detail.productId', name: 'detail.productId' },
+    { id: 'detail.sourceType', name: '用户告警源类型' },
     { id: 'custom', name: '用户自定义字段', type: 'date', format: 'yyyy' },
   ]
   const before = structuredClone(declared)
@@ -63,12 +64,36 @@ test('旧模板详情字段名称按当前业务翻译，缺失翻译时保留�
     const variables = resolveTemplateVariables(available, declared, 'alarm-device', key => messages[key] || key)
     assert.equal(variables.find(variable => variable.id === 'propertyName').name, messages['NoticeCenter.template.variable.recommend.propertyName'])
     assert.equal(variables.find(variable => variable.id === 'custom').name, '用户自定义字段')
+    assert.equal(variables.find(variable => variable.id === 'detail.sourceType').name, '用户告警源类型')
   }
   const fallback = resolveTemplateVariables(available, declared, 'alarm-device', key => key)
   assert.equal(fallback.find(variable => variable.id === 'detail.productId').name, '产品 ID')
   assert.equal(fallback.find(variable => variable.id === 'propertyName').name, '属性名称')
   assert.deepEqual(declared, before)
-  assert.deepEqual(fallback.find(variable => variable.id === 'custom'), declared[2])
+  assert.deepEqual(fallback.find(variable => variable.id === 'custom'), declared[3])
+})
+
+test('后端详情字段归一到 detail，仅解除主题推荐解除时间且保持日期格式', () => {
+  const properties = [
+    { id: 'targetName', name: '设备名称', type: 'string' },
+    { id: 'alarmTime', name: '告警时间', type: 'long' },
+    { id: 'relieveTime', name: '解除时间', type: 'date' },
+  ]
+  const before = structuredClone(properties)
+  for (const provider of ['alarm-device', 'alarm-device-relieve']) {
+    const variables = defaults.prototypeAvailableVariables(business(provider), properties)
+    assert.ok(!variables.some(value => ['targetName', 'alarmTime', 'relieveTime'].includes(value.id)))
+    assert.equal(variables.filter(value => value.id === 'detail.targetName').length, 1)
+    assert.equal(variables.find(value => value.id === 'detail.alarmTime').type, 'date')
+    assert.equal(variables.some(value => value.id === 'detail.relieveTime'), provider === 'alarm-device-relieve')
+  }
+  assert.deepEqual(properties, before)
+})
+
+test('场景样例包含场景 ID 和真实触发方式分类', () => {
+  const examples = defaults.prototypePreviewExamples(business('scene'))
+  assert.equal(examples['detail.sceneId'], 'scene-001')
+  assert.equal(examples['detail.triggerType'], '设备触发')
 })
 
 test('未持久化的已知业务按精确渠道生成独立原型默认，不依赖主题变量接口', () => {
@@ -118,7 +143,7 @@ test('保留原型标题和邮件段落，删除无依据的接收人、空间�
 })
 
 test('AI 原型只使用确证字段，不把识别集合、文件集合或不稳定安全告警上下文猜成单值', () => {
-  const incoming = ['mediaChannelName', 'spaceName', 'confidence', 'image', 'video', 'item'].map(id => ({ id: `detail.${id}`, name: id }))
+  const incoming = ['sourceName', 'mediaChannelName', 'spaceName', 'confidence', 'image', 'video', 'item'].map(id => ({ id: `detail.${id}`, name: id }))
   const safety = create('aiSecurityAlarm', 'email:embedded', incoming)
   const compliance = create('aiComplianceAlarm', 'email:embedded', incoming)
   assert.doesNotMatch(JSON.stringify(safety), /detail\.(?:mediaChannelName|spaceName|confidence|image|video|item)/)

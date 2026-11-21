@@ -4,7 +4,7 @@
     <div class="template-variables__list">
       <section v-for="group in groups" :key="group.key">
         <div class="template-variables__group">{{ group.title }}</div>
-        <button v-for="variable in group.rows" :key="variable.id" type="button" :disabled="disabled" :title="'${' + variable.id + '} · ' + variable.sample" @mousedown.prevent @click="$emit('insert', variable.id)">
+        <button v-for="variable in group.rows" :key="variable.id" type="button" :disabled="disabled" :title="['${' + variable.id + '}', variable.sample, variable.description].filter(Boolean).join(' · ')" @mousedown.prevent @click="$emit('insert', variable.id)">
           <span class="template-variables__name">{{ '{' + (variable.name || variable.id) + '}' }}</span><span class="template-variables__sample">{{ variable.sample }}</span>
         </button>
       </section>

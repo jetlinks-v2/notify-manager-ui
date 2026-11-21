@@ -2,7 +2,7 @@ import type { NoticeChannelConfig } from '@notify-manager-ui/api/notice-center'
 import {
   extractVariableIds,
 } from '../../../../notice/template/hooks/noticeTemplateFormModel'
-import { getRecommendedVariables } from '../../../../notice/template/hooks/noticeTemplateModel'
+import { filterUnsupportedRecommendedVariables, getRecommendedVariables, mergeRecommendedVariables } from '../../../../notice/template/hooks/noticeTemplateModel'
 import { cloneNotificationValue, type NotificationChannel, type NotificationObject, type NotificationTemplate, type NotificationVariable } from '../../shared'
 import { alarmPreviewValues, formatPreviewValue } from '../../../../notice/template/hooks/noticeAlarmPreview'
 
@@ -185,7 +185,7 @@ export function prototypePreviewExamples(business?: NoticeChannelConfig): Record
     }
   } else if (code === 'scene') selected = {
     message: '场景 闭店后有人进入 已执行', notifyTime: values.notifyTime,
-    'detail.sceneName': '闭店后有人进入', 'detail.triggerType': '自动',
+    'detail.sceneId': 'scene-001', 'detail.sceneName': '闭店后有人进入', 'detail.triggerType': '设备触发',
   }
   else if (code === 'SystemBulletin') selected = {
     message: '平台升级期间，设备接入、数据上报与告警不中断。', notifyTime: values.notifyTime,
@@ -243,14 +243,16 @@ function availableVariables(code: PrototypeBusiness, variables: NotificationVari
   if (code === 'SystemBulletin') {
     for (const id of ['title', 'summary', 'type']) entries.set(`detail.${id}`, { id: `detail.${id}`, name: variableNames[`detail.${id}`], type: 'string' })
   }
-  for (const variable of variables) entries.set(variable.id, { ...entries.get(variable.id), ...cloneNotificationValue(variable) })
-  return entries
+  // Provider 声明的是 detail 内字段；复用统一归一化，避免出现同名的有前缀/无前缀变量。
+  return new Map(filterUnsupportedRecommendedVariables(code,
+    mergeRecommendedVariables([...entries.values()], variables),
+  ).map(variable => [variable.id, variable]))
 }
 
 /** 未持久化的已知业务复用确证推荐字段；未知业务只展示后端声明，不扩展默认匹配。 */
 export function prototypeAvailableVariables(business: NoticeChannelConfig, variables: NotificationVariable[], translate?: PrototypeTranslate): NotificationVariable[] {
   const code = businessCode(business)
-  return code ? [...availableVariables(code, variables, translate).values()] : cloneNotificationValue(variables)
+  return code ? [...availableVariables(code, variables, translate).values()] : mergeRecommendedVariables([], variables)
 }
 
 function mappedTokens(code: PrototypeBusiness, variables: Map<string, NotificationVariable>): PrototypeTokens {

@@ -7,7 +7,8 @@ import {
   type NotificationLoadState, type NotificationTemplate, type NotificationVariable,
 } from '../shared'
 import { buildTemplatePayload, createTemplateDraft, newTemplateDraft, templateDraftFingerprint, type TemplateDraft } from './model'
-import { createPrototypeTemplate, hasPrototypeTemplate, prototypeAvailableVariables } from './definition/templateDefaults'
+import { createPrototypeTemplate, hasPrototypeTemplate, prototypeAvailableVariables, type PrototypeTranslate } from './definition/templateDefaults'
+import { filterUnsupportedRecommendedVariables, mergeTemplateVariableDeclarations } from '../../../notice/template/hooks/noticeTemplateModel'
 import { useTemplateCatalog } from './hooks/useTemplateCatalog'
 import {
   buildBusinessTemplateItem, businessDraftKey, businessIdentity, channelProviderFor,
@@ -17,7 +18,7 @@ import {
 interface WorkspaceAccess { query: Ref<boolean>; add: Ref<boolean>; update: Ref<boolean> }
 
 /** Own business/provider drafts and legacy standalone links; late responses never replace the current selection. */
-export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotificationApi = messageNotificationApi) {
+export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotificationApi = messageNotificationApi, translate?: PrototypeTranslate) {
   const channelId = ref('email:embedded')
   const templates = ref<NotificationTemplate[]>([])
   const business = ref<NoticeChannelConfig>()
@@ -54,11 +55,11 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
   const saveOutcomeUnknown = computed(() => Boolean(business.value && uncertainBusinesses.has(businessIdentity(business.value))))
   const availableVariables = computed<NotificationVariable[]>(() => {
     const selected = business.value
-    const values = selected ? prototypeAvailableVariables(selected, variablePools.get(businessIdentity(selected)) || []) : []
-    const merged = new Map(values.map(value => [value.id, cloneNotificationValue(value)]))
-    // Stored and currently edited definitions own their metadata; the insertion pool never becomes saved declarations by itself.
-    for (const value of draft.value?.variables || []) merged.set(value.id, cloneNotificationValue(value))
-    return [...merged.values()]
+    const values = selected ? prototypeAvailableVariables(selected, variablePools.get(businessIdentity(selected)) || [], translate) : []
+    // 推荐元数据只补全缺失项，不把可用变量池自动写入已保存声明。
+    return filterUnsupportedRecommendedVariables(selected?.provider,
+      mergeTemplateVariableDeclarations(values, draft.value?.variables || [], Boolean(selected)),
+    ).map(cloneNotificationValue)
   })
   const isDefault = computed(() => Boolean(entry.value?.prototype && !entry.value.existing))
   const hasContent = computed(() => Boolean(entry.value?.existing || entry.value?.prototype
@@ -200,7 +201,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
       ])
       if (revision !== detailRevision || !access.query.value) return
       const stored = readBusinessTemplate(resolved, channel, item)
-      const prototype = createPrototypeTemplate(resolved, channel, fields)
+      const prototype = createPrototypeTemplate(resolved, channel, fields, translate)
       const value = stored.template ? createTemplateDraft(stored.template)
         : prototype ? createTemplateDraft(prototype) : newTemplateDraft(channel)
       if (!stored.template && !value.name) value.name = resolved.name || channel.name || channel.type
@@ -414,7 +415,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     const selected = business.value
     const channel = currentChannel.value
     if (!current || !selected || !channel || !canRestoreDefault.value) return
-    const prototype = createPrototypeTemplate(selected, channel, variables.get(businessIdentity(selected)) || [])
+    const prototype = createPrototypeTemplate(selected, channel, variables.get(businessIdentity(selected)) || [], translate)
     if (!prototype) return
     current.prototype = prototype
     current.draft = restoreBusinessDefaultDraft(current.draft, prototype)

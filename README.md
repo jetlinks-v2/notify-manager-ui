@@ -7,6 +7,10 @@
 - 接口封装：`api/notice/messageNotification.ts`；旧页面及 `api/notice-center.ts` 保留兼容使用
 - 后端接口：`/notifier/config/**`、`/notifier/template/**`、`/notify/channel/**`、`/notify/history/**`、`/notifier/**`
 
+消息模板的通用变量为顶层 `message`、`notifyTime`；后端 Provider 声明的业务字段统一归入 `detail.*`，可用变量区按完整表达式去重。设备告警的产品、属性、显示值、单位及事件文案取决于属性通知上下文，悬停可查看字段适用说明；`detail.relieveTime` 仅在设备告警解除模板中推荐。告警发生预览不生成解除时间，也不为旧的无前缀详情表达式编造示例。既有模板正文、变量格式与声明保持原文，旧表达式需在编辑器中替换为正确变量并保存。
+
+场景模板固定使用 `detail.sceneId`、`detail.sceneName`、`detail.triggerType`；多条件场景的实际触发方式由后端提供，前端样例仅用于展示，不会写入保存参数。
+
 ## 消息渠道图文说明与常驻编辑
 
 企业微信渠道 `weixin:corpMessage` 的右侧说明按 `CorpID`、`Secret`、`AgentId` 排列。`Channels/configuration/channelHelpGuides.ts` 提供 AgentId 获取路径和企业微信自建应用截图。聚焦 `Channels/templateSetup/ChannelTemplateSetup.vue` 的 AgentId 输入框时，桌面滚动到对应章节，窄屏高亮该章节。渠道载荷保留已有扩展配置和未修改的已知密钥。AgentId 的填写和保存参见 [企业微信消息模板自动生成](#企业微信消息模板自动生成)。

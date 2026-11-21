@@ -8,6 +8,7 @@ import { builtinEmailTemplates } from '../../shared/builtinEmailTemplates'
 import { formatPreviewValue } from '../../../../notice/template/hooks/noticeAlarmPreview'
 import { hasKnownTemplatePresentation, matchesTemplateConfiguration, readPresentationTemplate, safePreviewStructure } from './templatePresentation'
 import { templateTextBlocks } from './useTemplateMessageText'
+import { getRecommendedVariables, mergeTemplateVariableDeclarations } from '../../../../notice/template/hooks/noticeTemplateModel'
 
 export type TemplatePreviewKind = 'email' | 'dingTalk' | 'robot' | 'wechat' | 'voice' | 'sms' | 'webhook' | 'generic'
 interface PreviewProps { draft: TemplateDraft; business?: NoticeChannelConfig; channel?: NotificationChannel; config?: NotifierConfig }
@@ -48,13 +49,22 @@ export function useTemplatePreview(props: PreviewProps) {
     const builtin = props.business ? undefined : builtinEmailTemplates(t).find(item => item.key === props.draft.builtinKey)
     return builtin ? builtin.examples : prototypePreviewExamples(props.business)
   })
-  /** 历史变量可能没有 detail 前缀；只借用当前业务已有的示例，不改变插入或保存的 ID。 */
+  const recommended = computed(() => props.business ? getRecommendedVariables(
+    props.business.provider === 'alarm-device' ? 'alarm-device-relieve' : props.business.provider, t,
+  ) : [])
+  const detailIds = computed(() => new Set(recommended.value.filter(variable => variable.id.startsWith('detail.')).map(variable => variable.id.slice(7))))
+  /** 面板和正文复用同一示例解析；业务详情必须使用真实的 detail 前缀。 */
   function variableExample(variable: NotificationVariable): string | undefined {
+    // 已保存的错误表达式保留供用户修正，但不编造示例；告警发生时也没有解除时间。
+    if (detailIds.value.has(variable.id)
+      || props.business?.provider === 'alarm-device' && variable.id === 'detail.relieveTime') return ''
     const values = exampleValues.value
     const source = [variable.expands?.mockValue, values[variable.id],
       variable.id.startsWith('detail.') ? undefined : values[`detail.${variable.id}`], variable.defaultValue]
       .find(value => value != null && (typeof value !== 'string' || value.trim() !== ''))
-    return source === undefined ? undefined : templatePreviewExample(source, variable)
+    // 缺少类型的历史声明沿用推荐元数据，不修改用户已指定的类型和格式。
+    const definition = mergeTemplateVariableDeclarations(recommended.value, [variable]).find(item => item.id === variable.id)
+    return source === undefined ? undefined : templatePreviewExample(source, definition)
   }
   const examples = computed(() => {
     const values = { ...exampleValues.value }
