@@ -2,15 +2,16 @@
   <section v-if="showFields || showFeedback" class="channel-template-setup" :aria-label="t(showFields ? prefix + 'title' : 'messageNotification.templates.title')">
     <h3 v-if="showFields && model.fields[0]?.key !== 'agentId'" class="channel-template-setup__title">{{ t(prefix + 'title') }}</h3>
     <p v-if="showFields && model.saveCredentialsFirst" class="channel-template-setup__hint">{{ t(prefix + 'saveCredentialsHint') }}</p>
-    <a-alert v-else-if="showFields && smsOptionsFeedback" type="warning" show-icon :message="smsOptionsFeedback">
+    <a-alert v-else-if="showFields && smsOptionsFeedback.length" type="warning" show-icon>
+      <template #message><div v-for="message in smsOptionsFeedback" :key="message">{{ message }}</div></template>
       <template #action><a-button size="small" :disabled="model.disabled" @click="emit('retryOptions')">{{ t('messageNotification.common.retry') }}</a-button></template>
     </a-alert>
     <InlineEditForm v-if="showFields" :groups="groups" :messages="formMessages"
       mode="form" :disabled="model.disabled" @change="(key, value) => emit('change', key, value)" @focus="emit('focus', $event)">
       <template #editor="{ field, value, inputId, disabled, update }">
         <a-select v-if="field.key === 'code' || field.key === 'signName'" :id="inputId" show-search option-filter-prop="label"
-          :value="value ? String(value) : undefined" :options="field.options" :loading="model.smsOptionsState === 'loading'"
-          :disabled="disabled || model.smsOptionsState !== 'ready'" :aria-label="field.label" aria-required="true"
+          :value="value ? String(value) : undefined" :options="field.options" :loading="model.smsOptionsState?.[field.key] === 'loading'"
+          :disabled="disabled || model.smsOptionsState?.[field.key] !== 'ready'" :aria-label="field.label" aria-required="true"
           :placeholder="t(field.key === 'code' ? 'NoticeCenter.template.placeholder.smsTemplate' : 'NoticeCenter.template.placeholder.signName')"
           :status="field.error ? 'error' : undefined" @update:value="update" />
         <a-input v-else :id="inputId" :value="String(value ?? '')" :disabled="disabled" :maxlength="field.maxLength" inputmode="numeric"
@@ -48,10 +49,19 @@ const canFill = computed(() => props.model.canFill && (props.mode !== 'feedback'
 const canView = computed(() => !!(props.model.result?.created || props.model.result?.skipped))
 const showFields = computed(() => props.mode !== 'feedback' && !!props.model.fields.length)
 const smsOptionsFeedback = computed(() => {
-  const state = props.model.smsOptionsState
-  if (state === 'empty') return t(prefix + 'smsOptionsEmpty')
-  if (state === 'error' || state === 'forbidden' || state === 'unavailable') return t(`messageNotification.state.${state}`)
-  return ''
+  const states = props.model.smsOptionsState
+  if (!states) return []
+  const fields = [
+    { state: states.code, item: t('NoticeCenter.template.field.smsTemplate') },
+    { state: states.signName, item: t('NoticeCenter.template.field.signName') },
+  ]
+  return fields.flatMap(({ state, item }) => {
+    if (state === 'empty') return [t(prefix + 'smsOptionsEmpty', { item })]
+    if (state === 'error' || state === 'forbidden' || state === 'unavailable') {
+      return [t(prefix + 'smsOptionsFailed', { item, reason: t(`messageNotification.state.${state}`) })]
+    }
+    return []
+  })
 })
 const showFeedback = computed(() => props.mode !== 'fields' && !!(props.model.result || props.model.noPermission || canFill.value))
 const groups = computed<InlineEditGroup[]>(() => [{

@@ -99,6 +99,18 @@ const alarmVariables: NoticeTemplateVariable[] = [
   { id: 'sourceName', i18nName: 'NoticeCenter.template.variable.recommend.sourceName' },
 ]
 
+const aiAlarmVariables: NoticeTemplateVariable[] = [
+  ...alarmVariables,
+  { id: 'targetId', i18nName: 'NoticeCenter.template.variable.recommend.targetId', type: 'string' },
+  { id: 'sourceId', i18nName: 'NoticeCenter.template.variable.recommend.sourceId', type: 'string' },
+  ...['spaceId', 'spaceName', 'mediaChannelId'].map(id => ({
+    id,
+    i18nName: `NoticeCenter.template.variable.recommend.${id}`,
+    type: 'string',
+    expands: { descriptionKey: 'NoticeCenter.template.variable.aiAlarmContextOptional' },
+  })),
+]
+
 const recommendedVariablesByProvider: Record<string, NoticeTemplateVariable[]> = {
   'alarm-device': [
     ...alarmVariables.filter(item => item.id !== 'targetName'),
@@ -147,18 +159,13 @@ const recommendedVariablesByProvider: Record<string, NoticeTemplateVariable[]> =
     { id: 'targetId', i18nName: 'NoticeCenter.template.variable.recommend.flowPoolId' },
     { id: 'targetName', i18nName: 'NoticeCenter.template.variable.recommend.flowPoolName' },
   ],
-  aiComplianceAlarm: alarmVariables.filter(item => !['sourceType', 'sourceName'].includes(item.id)),
-  aiSecurityAlarm: alarmVariables.filter(item => !['sourceType', 'sourceName'].includes(item.id)),
+  aiComplianceAlarm: aiAlarmVariables,
+  aiSecurityAlarm: aiAlarmVariables,
 }
 
 const unsupportedRecommendedVariableIdsByProvider: Record<string, string[]> = {
   'alarm-device': ['detail.relieveTime'],
-  aiSecurityAlarm: [
-    'detail.spaceId',
-    'detail.spaceName',
-    'detail.mediaDeviceName',
-    'detail.mediaChannelName',
-  ],
+  aiSecurityAlarm: ['detail.mediaDeviceName', 'detail.mediaChannelName'],
 }
 
 export const toListResult = <T>(response: any): T[] => {
@@ -230,7 +237,7 @@ export const filterUnsupportedRecommendedVariables = (
   if (!unsupportedIds) {
     return variables
   }
-  // 按实际发送范围过滤：告警发生没有解除时间，安全告警复判没有通道上下文。
+  // 告警发生没有解除时间，安全告警的旧媒体名称不在当前 Provider 声明中。
   return variables.filter(variable => !unsupportedIds.includes(variable.id))
 }
 

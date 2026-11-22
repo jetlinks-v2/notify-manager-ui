@@ -37,21 +37,6 @@
       <a-button type="primary" :loading="work.busy.value" :disabled="!work.canSave.value" @click="work.requestSave()">{{ t('messageNotification.members.save') }}</a-button>
     </StickyActionBar></template>
   </JlDrawerShell>
-  <a-modal :open="!!work.firstSync.value" :title="t('messageNotification.recipients.preview')" :confirm-loading="work.busy.value" :closable="!work.busy.value"
-    :mask-closable="false" :cancel-button-props="{ disabled: work.busy.value }" :ok-text="t('messageNotification.recipients.apply')" :cancel-text="t('messageNotification.common.cancel')" @ok="work.confirmFirstSync()" @cancel="work.firstSync.value = undefined">
-    <p>{{ t('messageNotification.recipients.previewHelp') }}</p>
-    <ul v-if="work.firstSync.value">
-      <li v-for="item in newTargets" :key="item.label">{{ item.label }} · {{ item.ids.join('、') }}</li>
-    </ul>
-    <div v-if="work.firstSync.value?.rows.length" class="recipient-groups__preview">
-      <div v-for="row in work.firstSync.value.rows" :key="row.id">
-        <strong>{{ row.name }}</strong>
-        <span v-if="row.previous"> · {{ row.previous }}</span>
-        <span v-if="row.dynamic"> · {{ t('messageNotification.recipients.dynamic') }}</span>
-      </div>
-    </div>
-    <a-alert v-if="work.error.value" type="error" show-icon :message="failure" />
-  </a-modal>
 </template>
 
 <script setup lang="ts">
@@ -76,22 +61,8 @@ const failure = computed(() => {
   if (error === 'conflict') return t('messageNotification.members.error.conflict')
   return t(`messageNotification.state.${error}`)
 })
-const newTargets = computed(() => {
-  const recipients = props.work.firstSync.value?.recipients
-  if (!recipients) return []
-  const names = props.work.recipientNames.value
-  const targets = [
-    { kind: 'user', label: 'messageNotification.members.section', ids: recipients.memberIds },
-    { kind: 'department', label: 'messageNotification.recipients.departmentExternal', ids: recipients.departments.map(pair => pair.externalId) },
-    { kind: 'tag', label: 'messageNotification.recipients.tagExternal', ids: recipients.tags.map(pair => pair.externalId) },
-  ] as const
-  return targets.filter(item => item.ids.length).map(({ kind, label, ids }) => ({
-    label: t(label), ids: ids.map(id => names[kind].get(id) ?? id),
-  }))
-})
 </script>
 
 <style scoped>
 .recipient-groups__feedback { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
-.recipient-groups__preview { max-height: 14rem; overflow-y: auto; }
 </style>

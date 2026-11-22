@@ -219,7 +219,8 @@ notificationRequest.get = async (path, params) => {
       ? { templateCode: 'SMS_ROTATED', templateName: '新账号通知', templateContent: '新账号通知 ${message}' }
       : { templateCode: 'SMS_FIXTURE', templateName: '设备告警', templateContent: '设备 ${detail.targetName} 发生告警：${detail.alarmConfigName}' }
     const item = smsRoute[2] === 'templates' ? template : { signName: rotated ? '新账号签名' : '测试签名' }
-    return { success: true, result: [{ ...item, auditStatus: 'AUDIT_STATE_PASS' }] }
+    const auditStatus = smsRoute[2] === 'signs' && failures.has('pendingSmsSign') ? 'AUDIT_STATE_INIT' : 'AUDIT_STATE_PASS'
+    return { success: true, result: [{ ...item, auditStatus }] }
   }
   if (flags.has('workRecipients') && path.endsWith('/tags')) return { success: true, result: [
     { id: 'tag-duty', name: '值班员' },
@@ -393,15 +394,19 @@ Object.assign(wechatMemberApi, {
   unbind: async id => { record('unbindMember', id); const index = memberBindings.findIndex(binding => binding.id === id); if (index >= 0) memberBindings.splice(index, 1) },
 })
 
-if (flags.has('workRecipients')) Object.assign(dingTalkMemberApi, {
-  departments: async () => {
-    const children = [{ id: 'ding-team', name: '研发组' }, { id: 'ding-other', name: '运营组' }]
-    return flags.has('departmentTree') ? [{ id: 'ding-root', name: '钉钉通讯录', children }] : children
-  },
-  members: async () => [{ id: 'ding-zhang', name: '张三' }],
-  users: wechatMemberApi.users,
-  bindings: async () => [],
-})
+if (flags.has('workRecipients')) {
+  const dingTalkMembers = [{ id: 'ding-zhang', name: '张三' }]
+  Object.assign(dingTalkMemberApi, {
+    departments: async () => {
+      const children = [{ id: 'ding-team', name: '研发组' }, { id: 'ding-other', name: '运营组' }]
+      return flags.has('departmentTree') ? [{ id: 'ding-root', name: '钉钉通讯录', children }] : children
+    },
+    members: async () => clone(dingTalkMembers),
+    users: wechatMemberApi.users,
+    bindings: async () => clone(memberBindings.filter(binding => dingTalkMembers.some(member => member.id === binding.thirdPartyUserId))),
+    bind: wechatMemberApi.bind,
+  })
+}
 
 const historyAdapter = {
   available: flags.get('history') !== 'unavailable',
