@@ -196,7 +196,7 @@ export function prototypePreviewExamples(business?: NoticeChannelConfig): Record
       'detail.mediaChannelId': security ? '01' : '03',
     }
   } else if (code === 'scene') selected = {
-    message: '场景 闭店后有人进入 已执行', notifyTime: values.notifyTime,
+    message: '场景 闭店后有人进入 已触发', notifyTime: values.notifyTime,
     'detail.sceneId': 'scene-001', 'detail.sceneName': '闭店后有人进入', 'detail.triggerType': '设备触发',
   }
   else if (code === 'SystemBulletin') selected = {

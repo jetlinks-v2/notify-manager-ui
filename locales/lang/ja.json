@@ -872,7 +872,7 @@
   "messageNotification.builtin.system-event": "システム運用",
   "messageNotification.builtin.footer": "このメールは自動送信されています。返信はご遠慮ください。",
   "messageNotification.builtin.sceneSample": "閉店後の入場",
-  "messageNotification.builtin.sceneMessage": "シーンが通知送信ステップに到達しました。",
+  "messageNotification.builtin.sceneMessage": "シーンがトリガーされました。",
   "messageNotification.builtin.systemMessage": "アプリケーションサーバーの CPU 使用率が高くなっています。稼働状態を確認してください。",
   "messageNotification.templates.selectBusiness": "メッセージの種類を選択",
   "messageNotification.templates.selectExactBusiness": "ディレクトリで業務と資産範囲を選択してください。該当レコードが見つからないか、複数存在します",

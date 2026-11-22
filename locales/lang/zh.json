@@ -872,7 +872,7 @@
   "messageNotification.builtin.system-event": "系统运维",
   "messageNotification.builtin.footer": "这封邮件由系统自动发送，请勿直接回复。",
   "messageNotification.builtin.sceneSample": "闭店后有人进入",
-  "messageNotification.builtin.sceneMessage": "场景已执行到发送通知步骤。",
+  "messageNotification.builtin.sceneMessage": "场景已触发。",
   "messageNotification.builtin.systemMessage": "应用服务器 CPU 使用率过高，请检查运行状态。",
   "messageNotification.templates.selectBusiness": "请选择消息类型",
   "messageNotification.templates.selectExactBusiness": "请在目录中选择具体业务及资产范围；当前记录不可用或存在多个匹配项",
