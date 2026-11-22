@@ -1,10 +1,12 @@
 import { extractVariableIds, getByPath } from '../../../../notice/template/hooks/noticeTemplateFormModel'
 import { isReceiverVariable } from '../../../../notice/template/hooks/noticeTemplateChannelVariables'
+import { defaultTemplateDateFormat, explicitTemplateVariableFormat } from '../../../../notice/template/hooks/noticeAlarmPreview'
+import { templateVariableType } from '../../../../notice/template/hooks/noticeTemplateModel'
 import type { NotificationObject, NotificationVariable } from '../../shared'
 import { hasKnownTemplatePresentation, readPresentationTemplate, resolveProviderTemplateForm, templateContentFields } from '../hooks/templatePresentation'
 import type { TemplateDraft } from '../model'
 
-export const variableTypeFormats = { string: '%s', date: 'timestamp', double: '%.2f' } as const
+export const variableTypeFormats = { string: '%s', date: defaultTemplateDateFormat, double: '%.2f' } as const
 export type TemplateVariableType = keyof typeof variableTypeFormats
 export type UsedTemplateVariable = NotificationVariable & { name: string; type: string }
 
@@ -12,11 +14,10 @@ export function isTemplateVariableType(value: unknown): value is TemplateVariabl
   return typeof value === 'string' && Object.hasOwn(variableTypeFormats, value)
 }
 
-/** 存量日期和数值缺省格式沿用服务端 convertValue 的输出，新选类型按编辑器预设初始化。 */
+/** 日期统一默认到秒，缺省的存量数值保留服务端原始精度。 */
 export function templateVariableFormat(variable: NotificationVariable, stored = false): string | undefined {
-  const format = variable.format ?? variable.expands?.format
-  if (format != null) return String(format)
-  if (stored && variable.type === 'date') return 'yyyy-MM-dd HH:mm:ss'
+  const format = explicitTemplateVariableFormat(variable)
+  if (format !== undefined) return format
   if (stored && variable.type === 'double') return '%s'
   const type = variable.type || 'string'
   return isTemplateVariableType(type) ? variableTypeFormats[type] : undefined
@@ -46,7 +47,7 @@ export function usedTemplateVariables(draft: TemplateDraft, available: Notificat
     const declaration = saved.get(id)
     const choice = catalog.get(id)
     const source = declaration ?? choice
-    const type = source?.type || choice?.type || 'string'
+    const type = templateVariableType(declaration, choice) || 'string'
     const variable = { ...source, id, name: declaration?.name || choice?.name || id, type }
     const format = templateVariableFormat(variable, !!declaration)
     if (format !== undefined) variable.format = format

@@ -377,6 +377,15 @@ test('configuration failures keep the backend message and suppress duplicate glo
   assert.deepEqual(calls[0], { method: 'remove', url: '/notifier/config/smtp%2Fid', data: undefined, options: { hiddenError: true } })
 })
 
+test('deletion cleanup reuses the existing template and delivery binding endpoints', async () => {
+  await api.deleteBusinessChannel('binding/id')
+  await api.deleteTemplate('template/id')
+  assert.deepEqual(calls, [
+    { method: 'remove', url: '/notify/channel/binding%2Fid', data: undefined, options: { hiddenError: true } },
+    { method: 'remove', url: '/notifier/template/template%2Fid', data: undefined, options: { hiddenError: true } },
+  ])
+})
+
 test('inline send reuses content endpoint and current email follows personal-center identity precedence', async () => {
   const template = { name: 'Selected built-in', type: 'email', provider: 'embedded', template: { subject: 'subject', text: 'body', sendTo: [] } }
   const context = { sendTo: ['recipient@example.test'] }

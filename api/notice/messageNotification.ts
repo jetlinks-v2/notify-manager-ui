@@ -109,6 +109,9 @@ export const messageNotificationApi = {
   saveBusinessChannel(providerId: string, channel: NoticeChannelConfig): Promise<unknown> {
     return checked(request.patch(`/notify/channel/${idSegment(providerId)}`, [channel], { hiddenError: true }))
   },
+  deleteBusinessChannel(id: string): Promise<unknown> {
+    return checked(request.remove(`/notify/channel/${idSegment(id)}`, undefined, { hiddenError: true }))
+  },
   async queryTypes(): Promise<NotificationProvider[]> {
     return directory(await checked<unknown>(request.get('/notifier/config/types')))
   },
@@ -241,7 +244,7 @@ export const messageNotificationApi = {
     return checked<unknown>(request.patch('/notifier/template', payload))
   },
   deleteTemplate(id: string): Promise<unknown> {
-    return checked<unknown>(request.remove(`/notifier/template/${idSegment(id)}`))
+    return checked<unknown>(request.remove(`/notifier/template/${idSegment(id)}`, undefined, { hiddenError: true }))
   },
   send(configId: string, templateId: string, variables: NotificationObject): Promise<unknown> {
     return checked<unknown>(request.post(`/notifier/${idSegment(configId)}/${idSegment(templateId)}/_send`, variables))

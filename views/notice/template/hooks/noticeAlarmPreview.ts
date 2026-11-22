@@ -3,6 +3,7 @@ import type { NoticeTemplateVariable } from '@notify-manager-ui/api/notice-cente
 
 export type AlarmPreviewEvent = 'trigger' | 'relieve'
 type Translate = (key: string, values?: Record<string, unknown>) => string
+export const defaultTemplateDateFormat = 'yyyy-MM-dd HH:mm:ss'
 
 /** 与属性通知字段约定一致的本地样例，不读取真实设备或发送通知。 */
 export function alarmPreviewValues(t: Translate, event: AlarmPreviewEvent): Record<string, unknown> {
@@ -35,15 +36,23 @@ export function alarmPreviewValues(t: Translate, event: AlarmPreviewEvent): Reco
   }
 }
 
+/** 模板格式优先于旧版扩展字段，空白格式按缺省处理。 */
+export function explicitTemplateVariableFormat(variable?: NoticeTemplateVariable & { format?: string }): string | undefined {
+  const format = String(variable?.format ?? '')
+  if (format.trim()) return format
+  const legacy = String(variable?.expands?.format ?? '')
+  return legacy.trim() ? legacy : undefined
+}
+
 export function formatPreviewValue(value: unknown, variable?: NoticeTemplateVariable & { format?: string }): string {
   if (value == null) return ''
-  const format = String(variable?.format || variable?.expands?.format || '')
+  const format = explicitTemplateVariableFormat(variable)
   if (variable?.type === 'date') {
     if (format === 'timestamp') return String(value)
     // 编辑器提供的日期格式采用 Java 标记，预览转换为 dayjs 的对应标记。
-    return dayjs(Number(value)).format((format || 'yyyy-MM-dd HH:mm:ss').replace(/yyyy/g, 'YYYY').replace(/dd/g, 'DD'))
+    return dayjs(Number(value)).format((format ?? defaultTemplateDateFormat).replace(/yyyy/g, 'YYYY').replace(/dd/g, 'DD'))
   }
-  const precision = variable?.type === 'double' && /^%\.(\d+)f$/.exec(format)
+  const precision = variable?.type === 'double' && format && /^%\.(\d+)f$/.exec(format)
   if (precision && Number.isFinite(Number(value))) return Number(value).toFixed(Math.min(Number(precision[1]), 100))
   return String(value)
 }

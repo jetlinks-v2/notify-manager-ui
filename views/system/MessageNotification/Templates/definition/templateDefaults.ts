@@ -4,7 +4,7 @@ import {
 } from '../../../../notice/template/hooks/noticeTemplateFormModel'
 import { filterUnsupportedRecommendedVariables, getRecommendedVariables, mergeRecommendedVariables } from '../../../../notice/template/hooks/noticeTemplateModel'
 import { cloneNotificationValue, type NotificationChannel, type NotificationObject, type NotificationTemplate, type NotificationVariable } from '../../shared'
-import { alarmPreviewValues, formatPreviewValue } from '../../../../notice/template/hooks/noticeAlarmPreview'
+import { alarmPreviewValues, defaultTemplateDateFormat, formatPreviewValue } from '../../../../notice/template/hooks/noticeAlarmPreview'
 
 /**
  * 通知默认模板的唯一维护入口：默认文案、业务正文、预览样例与真实渠道字段适配。
@@ -205,7 +205,7 @@ export function prototypePreviewExamples(business?: NoticeChannelConfig): Record
   }
   else selected = { message: '通知正文示例', notifyTime: values.notifyTime }
   return Object.fromEntries(Object.entries(selected).filter(([, value]) => value !== undefined).map(([id, value]) => [
-    id, formatPreviewValue(value, /(?:^notifyTime$|\.(?:alarmTime|relieveTime)$)/.test(id) ? { id, type: 'date', format: 'yyyy-MM-dd HH:mm:ss' } : undefined),
+    id, formatPreviewValue(value, /(?:^notifyTime$|\.(?:alarmTime|relieveTime)$)/.test(id) ? { id, type: 'date' } : undefined),
   ]))
 }
 
@@ -253,6 +253,16 @@ export function hasPrototypeTemplate(business: NoticeChannelConfig, channel: Not
   return Boolean(businessCode(business) && Object.hasOwn(channels, `${channel.type}:${channel.provider}`))
 }
 
+/** Provider 的输入格式（含 date 默认的 timestamp）不决定模板的默认输出。 */
+function businessVariableDefaults(recommended: NotificationVariable[], variables: NotificationVariable[]): NotificationVariable[] {
+  const merged: NotificationVariable[] = mergeRecommendedVariables(recommended, variables)
+  return merged.map(variable => {
+    if (variable.type !== 'date') return variable
+    const { format, ...definition } = variable
+    return { ...definition, expands: { ...definition.expands, format: defaultTemplateDateFormat } }
+  })
+}
+
 function availableVariables(code: PrototypeBusiness, variables: NotificationVariable[], translate?: PrototypeTranslate): Map<string, NotificationVariable> {
   const recommended = getRecommendedVariables(code, key => translate?.(key) || key)
   const entries = new Map<string, NotificationVariable>()
@@ -269,14 +279,16 @@ function availableVariables(code: PrototypeBusiness, variables: NotificationVari
   }
   // Provider 声明的是 detail 内字段；复用统一归一化，避免出现同名的有前缀/无前缀变量。
   return new Map(filterUnsupportedRecommendedVariables(code,
-    mergeRecommendedVariables([...entries.values()], variables),
+    businessVariableDefaults([...entries.values()], variables),
   ).map(variable => [variable.id, variable]))
 }
 
-/** 未持久化的已知业务复用确证推荐字段；未知业务只展示后端声明，不扩展默认匹配。 */
+/** 原型外的业务也使用通用时间及已知业务时间元数据。 */
 export function prototypeAvailableVariables(business: NoticeChannelConfig, variables: NotificationVariable[], translate?: PrototypeTranslate): NotificationVariable[] {
   const code = businessCode(business)
-  return code ? [...availableVariables(code, variables, translate).values()] : mergeRecommendedVariables([], variables)
+  if (code) return [...availableVariables(code, variables, translate).values()]
+  const recommendedDates = getRecommendedVariables(business.provider, translate).filter(variable => variable.type === 'date')
+  return businessVariableDefaults(recommendedDates, variables)
 }
 
 function mappedTokens(code: PrototypeBusiness, variables: Map<string, NotificationVariable>): PrototypeTokens {

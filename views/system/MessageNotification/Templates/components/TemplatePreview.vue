@@ -19,7 +19,7 @@
 <script setup lang="ts">
 import { computed, type Component, type PropType } from 'vue'
 import type { NoticeChannelConfig } from '../../../../../api/notice-center'
-import type { NotificationChannel, NotifierConfig } from '../../shared'
+import type { NotificationChannel, NotificationVariable, NotifierConfig } from '../../shared'
 import type { TemplateDraft } from '../model'
 import { useTemplatePreview } from '../hooks/useTemplatePreview'
 import TemplateMessageText from './TemplateMessageText.vue'
@@ -36,6 +36,7 @@ const props = defineProps({
   business: { type: Object as PropType<NoticeChannelConfig>, default: undefined },
   channel: { type: Object as PropType<NotificationChannel>, default: undefined },
   config: { type: Object as PropType<NotifierConfig>, default: undefined },
+  availableVariables: { type: Array as PropType<NotificationVariable[]>, default: undefined },
 })
 const preview = useTemplatePreview(props)
 const { t, parsed, emailDraft, subject, text, providerContent, channelName, summary } = preview

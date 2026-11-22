@@ -387,7 +387,8 @@ test('business preview fills missing date metadata while preserving explicit tim
     [{ type: '' }, '2026-01-01 12:00:00'],
     [{ type: 'date', format: 'timestamp' }, String(timestamp)],
     [{ type: 'date', expands: { format: 'yyyy/MM/dd HH:mm' } }, '2026/01/01 12:00'],
-    [{ type: 'long' }, String(timestamp)],
+    [{ type: 'long' }, '2026-01-01 12:00:00'],
+    [{ type: 'long', format: '%s' }, String(timestamp)],
   ]) {
     const draft = draftFor('email', 'embedded', { text: '${detail.alarmTime}' })
     draft.variables = [{ id: 'detail.alarmTime', ...metadata, expands: { ...metadata.expands, mockValue: timestamp } }]
@@ -396,6 +397,41 @@ test('business preview fills missing date metadata while preserving explicit tim
     assert.equal(preview.text.value, expected)
     assert.equal(JSON.stringify(draft), before)
   }
+})
+
+test('time defaults match across variable samples, preview and save without editing existing formats', () => {
+  const timestamp = new Date(2026, 10, 22, 15, 30, 47).getTime()
+  const dateFormat = 'yyyy-MM-dd HH:mm:ss'
+  const availableVariables = [
+    { id: 'detail.eventTime', type: 'date', expands: { mockValue: timestamp, format: dateFormat } },
+    { id: 'detail.timestamp', type: 'date', expands: { mockValue: timestamp, format: dateFormat } },
+    { id: 'detail.completedAt', type: 'date' },
+    { id: 'detail.explicit', type: 'date', expands: { format: dateFormat } },
+  ]
+  const ids = ['detail.eventTime', 'detail.timestamp', 'detail.completedAt', 'detail.explicit']
+  const draft = draftFor('email', 'embedded', { subject: 'Time', text: ids.map(id => '${' + id + '}').join('|') })
+  draft.variables = [
+    { id: 'detail.timestamp', type: 'long' },
+    { id: 'detail.explicit', type: 'date', format: '', expands: { mockValue: timestamp, format: 'timestamp' } },
+  ]
+  const before = structuredClone(draft)
+  const business = { provider: 'system-event' }
+  const panel = useTemplateVariablePanel({ draft, business, variables: availableVariables })
+  const rows = new Map(panel.groups.value.flatMap(group => group.rows).map(item => [item.id, item.sample]))
+  assert.equal(rows.get('detail.eventTime'), '2026-11-22 15:30:47')
+  assert.equal(rows.get('detail.timestamp'), rows.get('detail.eventTime'))
+  assert.equal(rows.get('detail.completedAt'), '2026-01-01 12:00:00')
+  assert.equal(rows.get('detail.explicit'), String(timestamp))
+  const preview = useTemplatePreview({ draft, business, availableVariables })
+  assert.equal(preview.text.value, ids.map(id => rows.get(id)).join('|'))
+  const payload = buildTemplatePayload(draft, undefined, { baseline: before, available: availableVariables })
+  assert.deepEqual(new Map(payload.variableDefinitions.map(({ id, type, format }) => [id, [type, format]])), new Map([
+    ['detail.eventTime', ['date', dateFormat]],
+    ['detail.timestamp', ['date', dateFormat]],
+    ['detail.completedAt', ['date', dateFormat]],
+    ['detail.explicit', ['date', 'timestamp']],
+  ]))
+  assert.deepEqual(draft, before)
 })
 
 test('sender requires the exact configuration and previews never read credentials', () => {
@@ -568,8 +604,9 @@ test('all channel editors list only referenced variables in the active template 
   for (const [type, provider, content, ids] of cases) {
     const draft = draftFor(type, provider, content)
     const before = JSON.stringify(draft)
-    const item = editor(draft)
+    const item = editor(draft, { availableVariables: ids.slice(0, 1).map(id => ({ id, type: 'date' })) })
     assert.deepEqual(item.value.usedVariables.value.map(row => row.id), ids, provider)
+    if (ids.length) assert.equal(item.value.usedVariables.value[0].format, 'yyyy-MM-dd HH:mm:ss', provider)
     assert.equal(JSON.stringify(draft), before)
     item.stop()
   }
@@ -590,15 +627,15 @@ test('format edits follow the selected ID and persist independently of labels, s
   item.value.changeVariableFormat('two', '%.3f')
   item.value.changeVariableType('one', 'string')
   item.value.changeVariableType('one', 'date')
-  assert.equal(item.value.usedVariables.value[0].format, 'timestamp')
-  item.value.changeVariableFormat('one', 'yyyy-MM-dd HH:mm:ss')
+  assert.equal(item.value.usedVariables.value[0].format, 'yyyy-MM-dd HH:mm:ss')
+  item.value.changeVariableFormat('one', 'timestamp')
   item.props.draft.text = 'body'
   assert.deepEqual(item.value.usedVariables.value.map(row => row.id), ['one', 'two'])
   item.props.draft.subject += ' ${typed}'
   const declarations = () => buildTemplatePayload(item.props.draft, undefined, { baseline, available }).variableDefinitions
   const saved = declarations()
   const date = saved.find(row => row.id === 'one')
-  assert.deepEqual(date.expands, { format: 'yyyy-MM-dd HH:mm:ss', keep: true })
+  assert.deepEqual(date.expands, { format: 'timestamp', keep: true })
   assert.equal(date.defaultValue, 'original')
   assert.deepEqual(saved.find(row => row.id === 'two'), { id: 'two', name: '同名', type: 'double', format: '%.3f' })
   assert.deepEqual(saved.find(row => row.id === 'typed'), { id: 'typed', name: 'typed', type: 'string', format: '%s' })

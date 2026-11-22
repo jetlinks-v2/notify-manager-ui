@@ -19,6 +19,7 @@ import { useChannelLeaveGuard } from './useChannelLeaveGuard'
 import { channelHelp, channelHelpSection } from './configuration/channelHelp'
 import { classifyNotificationFailure, notificationFailureMessage } from '../../../../api/notice/messageNotificationState'
 import { useChannelConfigurations } from './configuration/useChannelConfigurations'
+import { ChannelDeletionError } from './configuration/deleteChannelConfiguration'
 import { dingTalkWorkChannel } from './templateSetup/templateDefaults'
 import { useChannelTemplateSetup } from './templateSetup/useChannelTemplateSetup'
 import { wechatCorpChannel } from './wechat/templateDefaults'
@@ -83,10 +84,17 @@ export function useChannelsPage() {
   const recipientsBusy = ref(false)
   const workspaceBlocked = computed(() => sending.value || members.busy.value || fillingTemplates.value)
   const externalBusy = computed(() => workspaceBlocked.value || recipientsBusy.value)
+  const canDeleteTemplates = computed(() => auth.hasPermission(notificationPermissions.templates.query)
+    && auth.hasPermission(notificationPermissions.templates.delete))
   const workspace = useChannelWorkspace({
-    permissions, navigate, blocked: workspaceBlocked, channels: catalog.channels, loadConfigs: catalog.loadConfigs,
+    permissions, navigate, blocked: workspaceBlocked, canDeleteTemplates, channels: catalog.channels, loadConfigs: catalog.loadConfigs,
     loadDefinition: catalog.loadDefinition, channelName: channelTitle,
-    onMutationError: error => onlyMessage(notificationFailureMessage(error) || t(`messageNotification.state.${classifyNotificationFailure(error)}`), 'error'),
+    onMutationError: error => {
+      const cause = error instanceof ChannelDeletionError ? error.cause : error
+      const reason = notificationFailureMessage(cause) || t(`messageNotification.state.${classifyNotificationFailure(cause)}`)
+      const message = error instanceof ChannelDeletionError ? t(error.message, { reason }) : reason
+      onlyMessage(message, 'error')
+    },
   })
   const { channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId, busy, dirty, hasUnsavedChanges, canEdit, editing } = workspace
   const configurationPending = ref(false)
@@ -110,6 +118,11 @@ export function useChannelsPage() {
     prepareTemplates: templateSetup.prepareForSave,
     saved: fillSavedTemplates,
     fillTemplates: id => templateSetup.fill(id),
+  })
+  const configurationDeleteMessage = computed(() => {
+    const key = workspace.canCleanTemplates.value ? 'messageNotification.channels.deleteCleanup.confirm'
+      : configurationList.isRobot.value ? 'messageNotification.channels.robot.deleteMessage' : 'messageNotification.channels.webhook.deleteMessage'
+    return t(key, { name: configurationList.deleteTarget.value?.name ?? '' })
   })
   const canFillConfigurationTemplates = computed(() => canFillTemplates.value && permissions.update.value)
   const selectChannel: TreeProps['onSelect'] = (_keys, { node }) => {
@@ -307,6 +320,7 @@ export function useChannelsPage() {
     templateSetup, templateSetupModel: templateSetup.model, fillingTemplates, viewMessageTemplates, canFillConfigurationTemplates,
     configurationList, isRobot: configurationList.isRobot, configurationRows: configurationList.rows, configurationModal: configurationList.modal,
     configurationCanAdd: configurationList.canAdd, configurationCanDelete: permissions.delete, configurationDeleteTarget: configurationList.deleteTarget,
+    configurationDeleteMessage,
     t, notificationPermissions, isNarrow, channelOptions, channelSearch, filteredChannelTree, openChannelKeys, selectChannel,
     canQuery, channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId,
     busy, dirty, canEdit, editing, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave,

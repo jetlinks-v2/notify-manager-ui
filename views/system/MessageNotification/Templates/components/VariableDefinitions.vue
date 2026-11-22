@@ -46,7 +46,7 @@ const columns = computed(() => Object.entries(widths).map(([dataIndex, width]) =
 const typeOptions = computed(() => Object.keys(variableTypeFormats).map(value => ({
   value, label: t(`NoticeCenter.template.variable.type.${value}`),
 })))
-const dateOptions = ['timestamp', 'yyyy-MM-dd', 'yyyy-MM-dd HH:mm:ss'].map(value => ({ value, label: value }))
+const dateOptions = [variableTypeFormats.date, 'yyyy-MM-dd', 'timestamp'].map(value => ({ value, label: value }))
 </script>
 
 <style scoped>
