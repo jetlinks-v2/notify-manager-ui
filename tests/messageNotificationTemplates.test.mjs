@@ -26,6 +26,7 @@ const dependencies = {
   '@jetlinks-web/utils': { downloadFileByUrl() {}, onlyMessage() {} },
   '@jetlinks-web-core/utils': { getImageUrl: id => `/files/${encodeURIComponent(id)}` },
   '@jetlinks-web-core/store/menu': { useMenuStore: () => ({ jumpPage() {} }) },
+  '@jetlinks-web-core/store/auth': {},
   // 页面守卫用例不渲染子组件，AutoTree 的真实布局由浏览器验证。
   '@jetlinks-web-core/components/AutoTree': { __esModule: true, default: () => null },
   '@jetlinks-web-core/components/Upload/File/index.vue': { __esModule: true, default: () => null },
@@ -75,7 +76,7 @@ function mockApi() {
     queryTemplateDirectory: async () => [],
     getBusinessTemplate: async (owner, type) => type === 'notifier-email' ? { channel: { id: 'binding', providerId: owner, channelProvider: type, state: 'enabled', channelConfiguration: { templateId: 'second', notifierId: 'smtp-one' } }, template: record('second', { type: 'email' }) } : undefined,
     saveBusinessTemplate: async (owner, type, payload) => { calls.push(['saveBusinessTemplate', owner, type, structuredClone(payload)]); return { channel: { ...payload.channel, id: 'binding', providerId: owner, channelConfiguration: { ...payload.channel.channelConfiguration, templateId: 'stpl_binding' } }, template: { ...payload.template, id: 'stpl_binding' } } },
-    setBusinessEnabled: async (...args) => { calls.push(['setBusinessEnabled', ...args]) },
+    updateBusinessChannelState: async (...args) => { calls.push(['updateBusinessChannelState', ...args]); return args[2].state },
     queryInsideMailChannel: async () => undefined,
     queryTypes: async () => channelTypes,
     queryProviders: async type => channelProviders[type] || [],
@@ -463,6 +464,7 @@ async function mountTemplatePage(query = {}, permission = () => true, options = 
     const saved = clone(value)
     const { channelProvider, channelKey } = saved.channel
     const suffix = channelKey ? `-${channelKey}` : ''
+    saved.channel.state ??= records.get(bindingKey(providerId, channelProvider, channelKey))?.channel.state ?? 'enabled'
     saved.channel.id ||= `channel-${providerId}-${channelProvider}${suffix}`
     saved.channel.providerId = providerId
     saved.template.id ||= `template-${providerId}-${channelProvider}${suffix}`
@@ -503,6 +505,7 @@ async function mountTemplatePage(query = {}, permission = () => true, options = 
   })
   dependencies['@jetlinks-web/hooks'] ||= {}
   dependencies['@jetlinks-web/hooks'].usePermission = code => ({ hasPerm: vue.ref(permission(code.value)) })
+  dependencies['@jetlinks-web-core/store/auth'].useAuthStore = () => ({ hasPermission: permission })
   const Page = load(resolve(templatesRoot, 'index.vue'), false).default
   let page
   const renderer = vue.createRenderer({
@@ -949,7 +952,8 @@ test('first save adopts actual topic and template IDs, preserves the sibling dra
     const created = current.api.calls.find(([name]) => name === 'saveBusinessTemplates')
     assert.equal(created[1], 'aiComplianceAlarm')
     assert.equal(created[2].provider.state, 'enabled')
-    assert.equal(page.businessEnabled.value, true)
+    assert.equal(page.business.value.state, 'enabled')
+    assert.equal(page.channelStateTarget.value.enabled, true)
     assert.equal(created[2].channels.length, 1)
     assert.equal(created[2].channels[0].channel.channelProvider, 'notifier-email')
     assert.equal(page.business.value.id, 'saved-aiComplianceAlarm')
@@ -1259,71 +1263,101 @@ test('business directory ignores late responses after refresh, permission loss a
   assert.deepEqual(directory.businessTypes.value, [])
 })
 
-test('explicit activation keeps the prototype draft and adopts the real business record', async () => {
-  let directory = [{ provider: 'scene', name: 'Scene', state: 'disabled', channels: [] }]
+test('an unsaved prototype has no channel state action and retains its draft', async () => {
+  const directory = [{ provider: 'scene', name: 'Scene', state: 'disabled', channels: [] }]
   const current = await mountTemplatePage({ topicProvider: 'scene' }, () => true, {
     queryTemplateDirectory: async () => directory,
     getBusinessTemplate: async () => undefined,
-    setBusinessEnabled: async (id, enabled) => { assert.equal(id, 'scene'); assert.equal(enabled, true); directory = [{ ...directory[0], id: 'actual-scope-id', state: 'enabled' }] },
   })
   try {
     assert.equal(current.page.isDefault.value, true)
     current.page.startEditing()
-    current.page.draft.value.subject = 'Unsaved before activation'
-    assert.equal(current.api.calls.some(call => call[0].startsWith('saveBusiness')), false)
-    await current.page.toggleBusiness()
-    await settlePage()
-    assert.equal(current.route.query.topicProvider, 'actual-scope-id')
-    assert.equal((current.page.business.value?.id || current.page.business.value?.provider || ''), 'actual-scope-id')
-    assert.equal(current.page.draft.value.type, 'email')
-    assert.equal(current.page.draft.value.subject, 'Unsaved before activation')
-    assert.equal(current.page.businessEnabled.value, true)
-    assert.equal(current.page.businessActionState.value, 'ready')
-    assert.deepEqual(current.messages, [['messageNotification.templates.enableBusinessSucceeded', 'success']])
+    current.page.draft.value.subject = 'Unsaved default'
+    assert.equal(current.page.channelStateTarget.value, undefined)
+    await current.page.toggleChannel()
+    assert.equal(current.route.query.topicProvider, 'scene')
+    assert.equal(current.page.draft.value.subject, 'Unsaved default')
+    assert.equal(current.api.calls.some(([name]) => name.startsWith('saveBusiness') || name === 'updateBusinessChannelState'), false)
   } finally { current.close() }
 })
 
-test('explicit disable turns off an enabled business without confirmation and reports failures without a success hint', async () => {
-  let directory = [{ id: 'actual-scope-id', provider: 'scene', name: 'Scene', state: 'enabled', channels: [] }]
+test('channel buttons toggle one credential, respect failures and read back the persisted state', async () => {
+  const topicId = 'alarm-scope'
+  const configIds = ['hook-one', 'hook-two']
+  const bindings = configIds.map(configId => ({ id: `binding-${configId}`, channelProvider: 'notifier-webhook',
+    channelKey: configId, state: { value: 'enabled' }, channelConfiguration: { templateId: `template-${configId}` } }))
   let fail = false
+  const canUpdate = vue.ref(true)
   const writes = []
-  const current = await mountTemplatePage({ topicProvider: 'actual-scope-id' }, () => true, {
-    queryTemplateDirectory: async () => directory,
-    getBusinessTemplate: async () => undefined,
-    setBusinessEnabled: async (id, enabled) => {
-      writes.push([id, enabled])
-      if (fail) throw { status: 500 }
-      directory = [{ ...directory[0], state: enabled ? 'enabled' : 'disabled' }]
+  const current = await mountTemplatePage({ business: topicId, channel: 'webhook:http', configId: configIds[0] },
+    code => !code.endsWith(':update') || canUpdate.value, {
+    businessTypes: [{ id: topicId, provider: 'alarm-device', name: 'Device alarm', state: 'enabled', channels: bindings }],
+    queryAllConfigs: async () => configIds.map(id => ({ id, name: id, type: 'webhook', provider: 'http', configuration: {} })),
+    configureApi(api, records) {
+      for (const { channel, template } of records.values()) {
+        Object.assign(template, { type: 'webhook', provider: 'http', configId: channel.channelKey, template: { body: template.id } })
+        channel.channelConfiguration.notifierId = template.configId
+      }
+      api.updateBusinessChannelState = async (id, channelId, change) => {
+        writes.push([id, channelId, change])
+        if (fail) throw { status: 500 }
+        const binding = [...records.values()].find(item => item.channel.id === channelId)
+        binding.channel.state = change.state
+        return change.state
+      }
     },
   })
   try {
-    assert.equal(current.page.businessEnabled.value, true)
-    await current.page.toggleBusiness()
+    assert.equal(current.page.business.value.state, 'enabled')
+    assert.equal(current.page.channelStateTarget.value.enabled, true)
+    await current.page.toggleChannel()
+    assert.deepEqual(writes, [[topicId, 'binding-hook-one', { templateId: 'template-hook-one', configId: 'hook-one', state: 'disabled' }]])
+    assert.equal(current.page.business.value.state, 'enabled')
+    assert.equal(current.page.channelStateTarget.value.enabled, false)
+    assert.equal(current.route.query.configId, 'hook-one')
+    assert.deepEqual(current.messages, [['messageNotification.templates.disableChannelSucceeded', 'success']])
+
+    current.page.changeChannel('webhook:http', 'hook-two')
     await settlePage()
-    assert.deepEqual(writes, [['actual-scope-id', false]])
-    assert.equal(current.page.businessEnabled.value, false)
-    assert.equal(current.page.confirmation.open, false)
-    assert.deepEqual(current.messages, [['messageNotification.templates.disableBusinessSucceeded', 'success']])
+    assert.equal(current.page.channelStateTarget.value.enabled, true)
+    current.page.changeChannel('webhook:http', 'hook-one')
+    await settlePage()
+    assert.equal(current.page.channelStateTarget.value.enabled, false)
+    await current.page.reload()
+    await settlePage()
+    assert.equal(current.page.channelStateTarget.value.enabled, false)
+
     fail = true
-    await current.page.toggleBusiness()
-    await settlePage()
-    assert.deepEqual(writes.at(-1), ['actual-scope-id', true])
-    assert.equal(current.page.businessEnabled.value, false)
-    assert.equal(current.page.businessActionState.value, 'error')
+    await current.page.toggleChannel()
+    assert.deepEqual(writes.at(-1), [topicId, 'binding-hook-one', { templateId: 'template-hook-one', configId: 'hook-one', state: 'enabled' }])
+    assert.equal(current.page.channelStateTarget.value.enabled, false)
+    assert.equal(current.page.channelActionFailure.value, true)
     assert.equal(current.messages.length, 1)
+    await current.page.toggleChannel()
+    assert.equal(writes.length, 2)
+    fail = false
+    await current.page.reload()
+    await settlePage()
+    await current.page.toggleChannel()
+    assert.equal(current.page.channelStateTarget.value.enabled, true)
+    assert.deepEqual(current.messages.at(-1), ['messageNotification.templates.enableChannelSucceeded', 'success'])
+    canUpdate.value = false
+    assert.equal(current.page.canToggleChannel.value, false)
+    await current.page.toggleChannel()
+    assert.equal(writes.length, 3)
   } finally { current.close() }
 })
 
-test('read-only template users query independent templates without requesting all-for-save or enabling businesses', async () => {
+test('read-only template users query independent templates without requesting all-for-save or toggling channels', async () => {
   let reads = 0, writes = 0
   const current = await mountTemplatePage({ templateId: 'first', channel: 'email:embedded' }, code => code.endsWith(':query'), {
-    queryTemplateDirectory: async () => { reads++; return [business()] }, setBusinessEnabled: async () => { writes++ },
+    queryTemplateDirectory: async () => { reads++; return [business()] }, updateBusinessChannelState: async () => { writes++ },
   })
   try {
     assert.equal(current.page.draft.value.id, 'first')
     assert.equal(current.page.canManage.value, false)
     assert.equal(current.page.canSave.value, false)
-    await current.page.toggleBusiness()
+    await current.page.toggleChannel()
     assert.equal(reads, 0)
     assert.equal(writes, 0)
   } finally { current.close() }
@@ -1431,9 +1465,9 @@ test('five business channels save single bindings, preserve states and receiver 
       const second = api.calls.filter(call => call[0] === 'saveBusinessTemplate')[1][3]
       assert.equal(second.template.id, 'stpl_binding')
       assert.equal(second.template.name, 'Updated template name')
-      assert.equal(second.channel.state, 'enabled')
+      assert.equal(second.channel.state, undefined)
       assert.equal(workspace.dirty.value, false)
-      assert.equal(api.calls.some(call => ['createTemplate', 'updateTemplate', 'setBusinessEnabled'].includes(call[0])), false)
+      assert.equal(api.calls.some(call => ['createTemplate', 'updateTemplate', 'updateBusinessChannelState'].includes(call[0])), false)
     } finally { scope.stop() }
   }
 })
@@ -1468,7 +1502,7 @@ test('business drafts survive channel, vendor and asset-scope switches, failed s
     assert.equal(await workspace.saveTemplate(), true)
     const payload = api.calls.find(call => call[0] === 'saveBusinessTemplate')[3]
     assert.equal(payload.template.id, 'old-independent')
-    assert.equal(payload.channel.state, 'disabled')
+    assert.equal(payload.channel.state, undefined)
     assert.deepEqual(payload.channel.grant, original.grant)
     assert.equal(payload.channel.channelConfiguration.variables.custom, 'keep')
     assert.equal(original.channelConfiguration.templateId, 'old-independent')
@@ -1592,7 +1626,7 @@ test('first-alarm entry supports AI alarm placeholders without fabricating a sav
     assert.equal(current.page.channelId.value, 'webhook:http')
     assert.equal(current.page.draft.value.type, 'webhook')
     assert.equal(current.page.isDefault.value, true)
-    assert.equal(current.page.businessEnabled.value, false)
+    assert.equal(current.page.channelStateTarget.value, undefined)
   } finally { current.close() }
 })
 

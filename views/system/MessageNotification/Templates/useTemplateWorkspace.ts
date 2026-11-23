@@ -30,6 +30,8 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
   const listState = ref<NotificationLoadState>('idle')
   const detailState = ref<NotificationLoadState>('idle')
   const saveState = ref<NotificationLoadState>('idle')
+  const changingChannelState = ref(false)
+  const channelActionState = ref<NotificationLoadState>('idle')
   const activeKey = ref('')
   const drafts = reactive(new Map<string, TemplateDraftEntry>())
   const variables = new Map<string, NotificationVariable[]>()
@@ -52,6 +54,19 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
       ? candidate : undefined
   })
   const draft = computed(() => entry.value?.draft)
+  const channelStateTarget = computed(() => {
+    const providerId = business.value?.id
+    const saved = entry.value
+    const channel = saved?.channel
+    const templateId = saved?.baselineDraft.id
+    const configId = saved?.baselineDraft.configId
+    if (detailState.value !== 'ready' || !saved?.existing || !providerId || !channel?.id || channel.providerId !== providerId
+      || !templateId || !configId || channel.channelConfiguration?.templateId !== templateId) return
+    const state = typeof channel.state === 'string' ? channel.state : channel.state?.value
+    return { providerId, channel, channelId: channel.id, templateId, configId, enabled: state === 'enabled' }
+  })
+  const channelActionFailure = computed(() => ['error', 'forbidden', 'unavailable'].includes(channelActionState.value))
+  const canToggleChannel = computed(() => !!channelStateTarget.value && access.update.value && !channelActionFailure.value)
   const entryDirty = (item: TemplateDraftEntry) => item.baseline !== templateDraftFingerprint(item.draft)
   const dirty = computed(() => Boolean(entry.value && entryDirty(entry.value)))
   const hasDirtyDrafts = computed(() => [...drafts.values()].some(entryDirty))
@@ -186,6 +201,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     activeKey.value = ''
     templates.value = templateLists.get(id) || []
     saveState.value = 'idle'
+    channelActionState.value = 'idle'
     detailState.value = 'loading'
     listState.value = templateListStates.get(id) || 'idle'
     if (!access.query.value) { catalog.clear(); listState.value = detailState.value = 'forbidden'; return }
@@ -246,11 +262,36 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     }
   }
 
+  /** 只接收当前详情的响应，保留草稿及路由中的凭证选择。 */
+  async function toggleChannel(): Promise<boolean> {
+    const target = channelStateTarget.value
+    if (!target || !canToggleChannel.value || changingChannelState.value) return false
+    const revision = detailRevision
+    changingChannelState.value = true
+    channelActionState.value = 'loading'
+    const active = () => revision === detailRevision && access.query.value
+    try {
+      const state = await api.updateBusinessChannelState(target.providerId, target.channelId, {
+        templateId: target.templateId, configId: target.configId, state: target.enabled ? 'disabled' : 'enabled',
+      })
+      if (!active()) return false
+      target.channel.state = state
+      channelActionState.value = 'ready'
+      return true
+    } catch (error) {
+      if (active()) channelActionState.value = classifyNotificationFailure(error)
+      return false
+    } finally {
+      changingChannelState.value = false
+    }
+  }
+
   /** Explicit template IDs keep their independent storage semantics and never fall back to business defaults. */
   async function selectTemplate(id: string) {
     const revision = ++detailRevision
     business.value = undefined
     saveState.value = 'idle'
+    channelActionState.value = 'idle'
     activeKey.value = id
     if (!access.query.value) { detailState.value = 'forbidden'; return }
     if (!id) { detailState.value = 'idle'; return }
@@ -276,6 +317,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     channelId.value = id
     activeKey.value = ''
     detailState.value = 'idle'
+    channelActionState.value = 'idle'
     templates.value = templateLists.get(id) || []
     if (!access.query.value) { catalog.clear(); listState.value = 'forbidden'; return }
     listState.value = 'loading'
@@ -505,6 +547,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
 
   return { channelId, currentChannel, channels, catalogState, metadata, metadataState, business, templates,
     configs, configurationsByChannel, listState, configState, channelConfigurationStates, detailState, saveState, activeKey, draft, dirty, hasDirtyDrafts, saving,
+    channelStateTarget, channelActionFailure, canToggleChannel, changingChannelState, toggleChannel,
     canSave, entry, isDefault, hasContent, availableVariables, canRestoreDefault, saveOutcomeUnknown, loadCatalog, reloadCatalog, loadBusiness, loadChannel,
     selectTemplate, refreshConfigs, refreshUnboundTemplates, createTemplate, saveTemplate, discardDraft, discardBusinessDrafts,
     restoreDefault, resetBusinessIdentity, importTemplate }

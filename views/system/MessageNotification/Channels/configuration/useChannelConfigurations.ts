@@ -3,7 +3,7 @@ import { useI18n } from 'vue-i18n'
 import { onlyMessage } from '@jetlinks-web/utils'
 import { dingTalkRobotChannelId } from '../../shared'
 import type { ChannelPermissions, useChannelWorkspace } from '../useChannelWorkspace'
-import { configurationAddressSummary, type ChannelConfigurationAction, type ChannelConfigurationRow } from './configurationPresentation'
+import { configurationAddress, type ChannelConfigurationAction, type ChannelConfigurationRow } from './configurationPresentation'
 
 interface ChannelConfigurationsOptions {
   workspace: ReturnType<typeof useChannelWorkspace>
@@ -42,7 +42,7 @@ export function useChannelConfigurations(options: ChannelConfigurationsOptions) 
   const open = computed(() => multipleConfigurations.value && !!editorKey.value && workspace.entry.value?.key === editorKey.value)
   let actionVersion = 0
   const rows = computed<ChannelConfigurationRow[]>(() => workspace.configs.value.map(record => ({
-    id: record.id, name: record.name, address: configurationAddressSummary(record.configuration?.url, isRobot.value),
+    id: record.id, name: record.name, address: configurationAddress(record.configuration?.url, isRobot.value),
   })))
   const canAdd = computed(() => permissions.query.value && permissions.add.value && ['ready', 'empty'].includes(workspace.state.value) && !options.blocked.value)
   const modal = computed<ChannelConfigurationModalModel>(() => {
@@ -54,7 +54,8 @@ export function useChannelConfigurations(options: ChannelConfigurationsOptions) 
     const hiddenIssue = isRobot.value && entry?.issues.find(item => !['name', 'url'].includes(item.path))
     return {
       open: open.value, isRobot: isRobot.value, isNew: !!entry?.isNew, name: entry?.draft.name || '',
-      url: String(entry?.draft.configuration.url || ''), savedUrl: configurationAddressSummary(entry?.baseline?.configuration?.url, isRobot.value),
+      url: String(entry?.draft.configuration.url || ''),
+      savedUrl: isRobot.value ? configurationAddress(entry?.baseline?.configuration?.url, true) : '',
       nameError: issue('name'), urlError: issue('url'),
       error: hiddenIssue ? t(hiddenIssue.key === 'secretRequired' ? 'messageNotification.channels.robot.protectedCredential' : 'messageNotification.channels.validation.invalidValue') : undefined,
       busy: options.blocked.value, disabled: !workspace.canEdit.value || options.blocked.value,

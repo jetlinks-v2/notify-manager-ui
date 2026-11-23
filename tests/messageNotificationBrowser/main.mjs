@@ -6,7 +6,7 @@ import { useSystemStore } from '@jetlinks-web-core/store/system'
 import { trialRecords, officialWireMetadata } from './trialFixtures.mjs'
 import { useMenuStore } from '@jetlinks-web-core/store/menu'
 import AntDesign from 'ant-design-vue'
-import { AIcon, BadgeStatus, ProTable, PermissionButton, ConfigProvider } from '@jetlinks-web/components'
+import { AIcon, BadgeStatus, ProTable, PermissionButton, ConfigProvider, Ellipsis } from '@jetlinks-web/components'
 import { usePermissionContext } from '@jetlinks-web/hooks'
 import { request as notificationRequest } from '@jetlinks-web/core'
 import i18n from '@jetlinks-web-core/locales'
@@ -283,7 +283,7 @@ function persistBusinessChannel(providerId, value) {
   const index = business.channels.findIndex(row => matchesBusinessChannel(row, value.channelProvider, value.channelKey))
   const suffix = value.channelKey ? `-${value.channelKey}` : ''
   const id = business.channels[index]?.id || `fixture-channel-${providerId}-${value.channelProvider}${suffix}`
-  const channel = { ...clone(value), providerId, id }
+  const channel = { ...clone(value), providerId, id, state: value.state ?? business.channels[index]?.state ?? 'enabled' }
   if (index >= 0) business.channels[index] = channel
   else business.channels.push(channel)
   return channel
@@ -315,12 +315,13 @@ Object.assign(messageNotificationApi, {
     return flags.has('noBinding') ? [] : configs.filter(config => ['dingTalkMessage', 'corpMessage', 'officialMessage'].includes(config.provider)).map(config => ({ type: `${config.type}_${config.provider}`, provider: config.id, thirdPartyUserId: `self_${config.provider}`, providerName: '测试用户' }))
   },
   sendInline: async (configId, template, context) => { if (writeDelay) await new Promise(resolve => setTimeout(resolve, writeDelay)); record('sendInline', { configId, template, context }) },
-  setBusinessEnabled: async (id, enabled) => {
-    record('setBusinessEnabled', { id, enabled })
-    const business = businessTypes.find(item => item.id === id || item.provider === id)
-    if (!business) throw { status: 404 }
-    if (!business.id) business.id = `actual-${business.provider}`
-    business.state = enabled ? 'enabled' : 'disabled'
+  updateBusinessChannelState: async (providerId, channelId, change) => {
+    record('updateBusinessChannelState', { providerId, channelId, ...change })
+    const channel = businessTypes.find(item => item.id === providerId)?.channels?.find(item => item.id === channelId)
+    const template = templates.find(item => item.id === change.templateId)
+    if (channel?.channelConfiguration?.templateId !== change.templateId || template?.configId !== change.configId) throw { status: 400 }
+    channel.state = change.state
+    return channel.state
   },
   queryTemplateDirectory: async () => { record('queryTemplateDirectory', {}); return clone(businessTypes) },
   queryInsideMailChannel: async () => {
@@ -461,7 +462,7 @@ if (flags.has('unifiedTests')) useSystemStore().layout.title = '隔离验证平�
 useMenuStore().jumpPage = (name, options) => router.push({ name, ...options })
 for (const [name, component] of Object.entries({ AIcon, FullPage, ContentPanel, SwitchGroup, TableActions, TableActionsItem,
   CloudEmpty, JlDrawerShell, KvGrid, CodeBlock, EqualHeightColumns, DetailHeader, Editable, StatusPill, StickyActionBar, JlConfirmDialog, FileUpload, MetadataValueItem, MonacoEditor,
-  'j-pro-table': ProTable, 'j-permission-button': PermissionButton, 'j-badge-status': BadgeStatus })) app.component(name, component)
+  'j-pro-table': ProTable, 'j-permission-button': PermissionButton, 'j-badge-status': BadgeStatus, 'j-ellipsis': Ellipsis })) app.component(name, component)
 app.provide(notificationHistoryAdapterKey, historyAdapter)
 i18n.global.locale.value = 'zh'
 window.__notificationSmoke = { calls, router, configs, templates, businessTypes, failures, i18n, memberBindings, deniedPermissions }

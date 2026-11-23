@@ -84,6 +84,7 @@ function mockApi(initialConfigs = [config()]) {
       calls.push(['saveBusinessTemplate', id, channel, clone(value)])
       const saved = clone(value)
       const key = saved.channel.channelKey
+      saved.channel.state ??= records.get(bindingKey(id, channel, key))?.channel.state ?? 'enabled'
       saved.channel.id ||= key ? `channel-${key}` : 'channel-saved'
       saved.channel.providerId = id
       saved.template.id ||= key ? `stpl_channel-${key}` : 'stored-template'
@@ -356,10 +357,11 @@ test('saving a multi-config channel updates only the matching named and legacy b
     const writes = () => io.calls.filter(([method]) => method === 'saveBusinessTemplate' || method === 'saveBusinessTemplates')
     const expected = [selected, legacy].map(record => [
       'saveBusinessTemplate', record.channel.providerId, channelProvider,
-      { ...record, channel: { ...record.channel, name: `${typeName}·新的名称` } },
+      { ...record, channel: clone({ ...record.channel, name: `${typeName}·新的名称`, state: undefined }) },
     ])
     assert.deepEqual(await fill(), { created: 0, skipped: 2, failed: [], unknown: false })
     assert.deepEqual(writes(), expected)
+    assert.equal(io.records.get(bindingKey(currentTopic.id, channelProvider, 'custom-key')).channel.state, 'disabled')
     assert.deepEqual(io.records.get(bindingKey(currentTopic.id, channelProvider, 'another-key')), sibling)
     assert.deepEqual(await fill(), { created: 0, skipped: 2, failed: [], unknown: false })
     assert.deepEqual(writes(), expected)
@@ -561,7 +563,8 @@ test('a real business template wins over prototypes and single-channel saving pr
   assert.equal(await workspace.saveTemplate(), true)
   const call = io.calls.find(([name]) => name === 'saveBusinessTemplate')
   assert.deepEqual(call.slice(1, 3), ['actual-topic', 'notifier-email'])
-  assert.equal(call[3].channel.state, 'disabled')
+  assert.equal(call[3].channel.state, undefined)
+  assert.equal(workspace.entry.value.channel.state, 'disabled')
   assert.deepEqual(call[3].channel.grant, { role: { idList: ['role-kept'] } })
   assert.deepEqual(call[3].channel.channelConfiguration.variables.message, { source: 'fixed', value: 'keep' })
   assert.equal(call[3].channel.channelConfiguration.extra, 'kept')

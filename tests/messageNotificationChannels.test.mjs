@@ -66,7 +66,7 @@ const { useChannelConfiguration } = load(resolve(root, 'useChannelConfiguration.
 const { useChannelWorkspace } = load(resolve(root, 'useChannelWorkspace.ts'))
 const { ChannelDeletionError, deleteChannelConfiguration } = load(resolve(root, 'configuration/deleteChannelConfiguration.ts'))
 const { useChannelConfigurations } = load(resolve(root, 'configuration/useChannelConfigurations.ts'))
-const { configurationAddressSummary } = load(resolve(root, 'configuration/configurationPresentation.ts'))
+const { configurationAddress } = load(resolve(root, 'configuration/configurationPresentation.ts'))
 const { createChannelConfigDraft, channelConfigPayload, validateChannelDraft } = load(resolve(root, 'channelSchema.ts'))
 const { useChannelLeaveGuard } = load(resolve(root, 'useChannelLeaveGuard.ts'))
 const { useChannelsPage } = load(resolve(root, 'useChannelsPage.ts'))
@@ -1649,15 +1649,16 @@ function robotDialogFixture(records, navigate) {
   return { io, workspace, dialog, perms, pending, actions, dispose() { app.unmount(); pageContext = undefined } }
 }
 
-test('configuration rows redact URL credentials and show only the origin for Webhook', () => {
-  assert.equal(configurationAddressSummary('https://user:password@oapi.dingtalk.com/robot/send?access_token=secret-1234&sign=signature#private', true),
+test('configuration rows show the full Webhook address and redact robot credentials', () => {
+  assert.equal(configurationAddress('https://user:password@oapi.dingtalk.com/robot/send?access_token=secret-1234&sign=signature#private', true),
     'https://oapi.dingtalk.com/robot/send?access_token=…1234&sign=…')
-  assert.equal(configurationAddressSummary('https://oapi.dingtalk.com/robot/send?access_token=1234', true), 'https://oapi.dingtalk.com/robot/send?access_token=…')
-  assert.equal(configurationAddressSummary('https://oapi.dingtalk.com/robot/send?access_token=********1234', true), 'https://oapi.dingtalk.com/robot/send?access_token=…')
-  assert.equal(configurationAddressSummary('https://user:password@fixture.example.test:8080/private-path?key=token#fragment', false), 'https://fixture.example.test:8080')
-  assert.equal(configurationAddressSummary('invalid secret URL', true), '••••••••')
-  assert.equal(configurationAddressSummary('javascript:secret', false), '••••••••')
-  assert.equal(configurationAddressSummary(undefined, true), '')
+  assert.equal(configurationAddress('https://oapi.dingtalk.com/robot/send?access_token=1234', true), 'https://oapi.dingtalk.com/robot/send?access_token=…')
+  assert.equal(configurationAddress('https://oapi.dingtalk.com/robot/send?access_token=********1234', true), 'https://oapi.dingtalk.com/robot/send?access_token=…')
+  const webhook = 'https://user:password@fixture.example.test:8080/private-path?key=token%2Fvalue#fragment'
+  assert.equal(configurationAddress(` ${webhook} `, false), webhook)
+  assert.equal(configurationAddress('invalid secret URL', true), '••••••••')
+  assert.equal(configurationAddress('javascript:secret', false), '••••••••')
+  assert.equal(configurationAddress(undefined, true), '')
 })
 
 test('canceling a new robot dialog removes its draft and reopening creates a fresh identity', async () => {

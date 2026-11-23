@@ -6,6 +6,7 @@ import { usePermission } from '@jetlinks-web/hooks'
 import { onlyMessage } from '@jetlinks-web/utils'
 import { useMediaQuery } from '@vueuse/core'
 import { useNotificationConfigNavigation } from '@jetlinks-web-core/hooks/useNotificationConfigNavigation'
+import { useAuthStore } from '@jetlinks-web-core/store/auth'
 import { messageNotificationApi } from '../../../../../api/notice/messageNotification'
 import type { NoticeChannelConfig } from '../../../../../api/notice-center'
 import {
@@ -27,22 +28,21 @@ export function useTemplatePage() {
   const compact = useMediaQuery('(max-width: 768px)')
   const route = useRoute()
   const router = useRouter()
+  const auth = useAuthStore()
   const { hasPerm: canQuery } = usePermission(ref(notificationPermissions.templates.query))
   const { hasPerm: canAdd } = usePermission(ref(notificationPermissions.templates.add))
-  const { hasPerm: canUpdate } = usePermission(ref(notificationPermissions.templates.update))
+  const canUpdate = computed(() => auth.hasPermission(notificationPermissions.templates.update))
   const { hasPerm: canQueryConfig } = usePermission(ref(notificationPermissions.channels.query))
   const canManage = computed(() => canQuery.value && (canAdd.value || canUpdate.value))
   const directory = useTemplateBusinessDirectory(canManage)
   const workspace = useTemplateWorkspace({ query: canQuery, add: canAdd, update: canUpdate }, messageNotificationApi, t)
-  const { channelId, templates, draft, business, channels, detailState, listState, saving } = workspace
+  const { channelId, templates, draft, business, channels, detailState, listState, saving, changingChannelState } = workspace
   const businessNavigation = useTemplateBusinessNavigation(computed(() => route.query), directory.businessTypes, directory.directoryState, channels)
   const configurationNavigation = useNotificationConfigNavigation(() => workspace.refreshConfigs(), 'system/MessageNotification/Channels')
   const canConfigure = computed(() => canQueryConfig.value && configurationNavigation.available.value)
-  const changingBusiness = ref(false)
   const fillingInsideMail = ref(false)
   const businessActionState = ref('idle')
   const selectedBusinessId = computed(() => identity(business.value))
-  const businessEnabled = computed(() => !!business.value?.id && (typeof business.value.state === 'string' ? business.value.state : business.value.state?.value) !== 'disabled')
   const canFillInsideMail = computed(() => Boolean(canQuery.value && canUpdate.value && directory.insideMailChannel.value
     && business.value?.id && !hasInsideMailChannel(business.value)))
   const uploading = ref(false)
@@ -51,7 +51,7 @@ export function useTemplatePage() {
   const selectionUnavailable = ref(false)
   const validationMessage = ref('')
   const confirmation = reactive({ open: false })
-  const busy = computed(() => saving.value || uploading.value || changingBusiness.value || fillingInsideMail.value)
+  const busy = computed(() => saving.value || uploading.value || changingChannelState.value || fillingInsideMail.value)
   const pendingChannelRefresh = ref('')
   const navigation = computed(() => normalizeNotificationNavigation(route.query, channels.value))
   const activeConfigId = computed(() => workspace.entry.value?.businessConfigId === '' ? undefined
@@ -97,7 +97,7 @@ export function useTemplatePage() {
 
   /** 显式旧 templateId 优先解析真实业务绑定；没有显式选择时取树中的首个业务。 */
   async function synchronizeSelection() {
-    if (!initialized.value || directory.directoryState.value === 'loading' || changingBusiness.value || fillingInsideMail.value) return
+    if (!initialized.value || directory.directoryState.value === 'loading' || fillingInsideMail.value) return
     const current = ++revision
     const requested = businessNavigation.requested.value
     const channel = requested ? businessNavigation.channel.value : queryText(route.query.channel) || navigation.value.channel || channels.value[0]?.id || ''
@@ -258,28 +258,12 @@ export function useTemplatePage() {
     if (busy.value || !canConfigure.value) return
     configurationNavigation.open(identity(business.value), undefined, { channel: channelId.value, configId: draft.value?.configId })
   }
-  /** 显式启停与模板保存分离；占位业务启用后只接受唯一的实际记录，目录回读一致后才提示成功。 */
-  async function toggleBusiness() {
-    const selected = business.value
-    if (!selected || !canManage.value || busy.value) return
-    const enable = !businessEnabled.value
-    changingBusiness.value = true
-    businessActionState.value = 'loading'
-    try {
-      await messageNotificationApi.setBusinessEnabled(identity(selected), enable)
-      await directory.reloadDirectory()
-      const matches = directory.businessTypes.value.filter(item => selected.id ? item.id === selected.id : item.provider === selected.provider && !!item.id)
-      if (matches.length === 1) {
-        workspace.resetBusinessIdentity(matches[0], selected)
-        changingBusiness.value = false
-        await router.replace({ query: selectionQuery(channelId.value, matches[0]) })
-      }
-      businessActionState.value = directory.directoryState.value === 'ready' && matches.length !== 1 ? 'unavailable' : directory.directoryState.value
-      if (businessActionState.value === 'ready' && !disposed) {
-        onlyMessage(t(enable ? 'messageNotification.templates.enableBusinessSucceeded' : 'messageNotification.templates.disableBusinessSucceeded'), 'success')
-      }
-    } catch (error) { businessActionState.value = classifyNotificationFailure(error) }
-    finally { changingBusiness.value = false }
+  async function toggleChannel() {
+    if (busy.value || editing.value || workspace.dirty.value) return
+    const enabled = workspace.channelStateTarget.value?.enabled
+    if (await workspace.toggleChannel() && !disposed) {
+      onlyMessage(t(enabled ? 'messageNotification.templates.disableChannelSucceeded' : 'messageNotification.templates.enableChannelSucceeded'), 'success')
+    }
   }
   async function fillInsideMail() {
     const selected = business.value
@@ -307,7 +291,8 @@ export function useTemplatePage() {
     editing.value = true
   }
   onBeforeRouteUpdate(() => !busy.value)
-  onBeforeRouteLeave(async () => !saving.value && !fillingInsideMail.value && (!workspace.hasDirtyDrafts.value && !uploading.value || await confirmDiscard()))
+  onBeforeRouteLeave(async () => !saving.value && !changingChannelState.value && !fillingInsideMail.value
+    && (!workspace.hasDirtyDrafts.value && !uploading.value || await confirmDiscard()))
   function beforeUnload(event: BeforeUnloadEvent) {
     if (workspace.hasDirtyDrafts.value || busy.value) { event.preventDefault(); event.returnValue = '' }
   }
@@ -321,13 +306,13 @@ export function useTemplatePage() {
   })
 
   return {
-    canManage, selectedBusiness: business, selectedBusinessId, businessEnabled, changingBusiness, businessActionState, toggleBusiness,
+    canManage, selectedBusiness: business, selectedBusinessId, businessActionState,
     businessLinkPending: businessNavigation.requested, businessLinkState: businessNavigation.state, importOptions,
     t, compact, workspace, ...workspace, ...directory, canQuery, canAdd, canEdit, canConfigure, busy, uploading,
     canFillInsideMail, fillingInsideMail, fillInsideMail,
     editing, title, description, activeConfig, activeConfigId, directoryConfigId, templateStatus, selectedDirectoryKey, selectedTemplateId, templateOptions,
     validationMessage, channelOptions, listFailure, detailFailure, feedbackState, saveFailure,
     missingConfiguration, confirmation, setUploading, reload, changeChannel, selectConfiguration, selectTemplate, createTemplate,
-    startEditing, save, restoreDefault, requestDiscard, goConfigure, resolveConfirmation, importTemplate,
+    startEditing, save, restoreDefault, requestDiscard, goConfigure, resolveConfirmation, importTemplate, toggleChannel,
   }
 }
