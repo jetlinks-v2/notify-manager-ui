@@ -111,7 +111,7 @@ export async function fillMessageTemplates(
           if (!active()) break
           if (!business.id || !existing.channel.id) throw new NotificationRequestError('error', existing)
           // 随通道提交回读的原始模板，避免把编辑器的默认值写入已有模板。
-          const item = { ...existing, channel: { ...existing.channel, name: channelName } }
+          const item = { ...existing, channel: { ...existing.channel, name: channelName, state: undefined } }
           writing = true
           const saved = await api.saveBusinessTemplate(business.id, channelProvider, item)
           readSavedBusinessTemplate(business, channel, item, saved)

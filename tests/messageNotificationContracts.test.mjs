@@ -409,14 +409,18 @@ test('business template endpoints encode opaque record IDs and save only the sel
   response = { success: true, result: payload }
   assert.deepEqual(await api.getBusinessTemplate('scope/id', 'notifier-email'), payload)
   assert.deepEqual(await api.saveBusinessTemplate('scope/id', 'notifier-email', payload), payload)
-  await api.setBusinessEnabled('business/code', true)
-  await api.setBusinessEnabled('scope/id', false)
+  const change = { templateId: 'stored-exact', configId: 'smtp-exact', state: 'disabled' }
+  response.result = { ...change, channelId: 'binding/id', state: { value: 'disabled', text: '禁用' } }
+  assert.equal(await api.updateBusinessChannelState('scope/id', 'binding/id', change), 'disabled')
   assert.deepEqual(calls.map(call => [call.method, call.url]), [
     ['get', '/notify/channel/scope%2Fid/notifier-email/_query-with-template'],
     ['put', '/notify/channel/scope%2Fid/notifier-email/_save-with-template'],
-    ['post', '/notify/channel/business%2Fcode/enable'], ['post', '/notify/channel/scope%2Fid/disable'],
+    ['put', '/notify/channel/scope%2Fid/channels/binding%2Fid/state'],
   ])
   assert.deepEqual(calls[1].data, payload)
+  assert.deepEqual(calls[2].data, change)
+  response.result.channelId = 'other-binding'
+  await assert.rejects(api.updateBusinessChannelState('scope/id', 'binding/id', change), { kind: 'error' })
   response = { success: false, status: 403 }
   await assert.rejects(api.saveBusinessTemplate('scope/id', 'notifier-email', payload))
 })

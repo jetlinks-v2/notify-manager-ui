@@ -30,9 +30,10 @@
                 <a-button v-if="canFillInsideMail" :disabled="busy" :loading="fillingInsideMail" :aria-label="t('messageNotification.templates.fillInsideMail')" @click="fillInsideMail">
                   <AIcon type="InboxOutlined" aria-hidden="true" /> {{ t('messageNotification.templates.fillInsideMail') }}
                 </a-button>
-                <a-button :disabled="!canManage || busy" :aria-label="t(businessEnabled ? 'messageNotification.templates.disableBusiness' : 'messageNotification.templates.enableBusiness')" @click="toggleBusiness">
-                  <AIcon :type="businessEnabled ? 'StopOutlined' : 'CheckCircleOutlined'" aria-hidden="true" />
-                  {{ t(businessEnabled ? 'messageNotification.templates.disableBusiness' : 'messageNotification.templates.enableBusiness') }}
+                <a-button v-if="channelStateTarget" :disabled="!canToggleChannel || busy || editing || dirty" :loading="changingChannelState"
+                  :aria-label="t(channelStateTarget.enabled ? 'messageNotification.templates.disableChannel' : 'messageNotification.templates.enableChannel')" @click="toggleChannel">
+                  <AIcon :type="channelStateTarget.enabled ? 'StopOutlined' : 'CheckCircleOutlined'" aria-hidden="true" />
+                  {{ t(channelStateTarget.enabled ? 'messageNotification.templates.disableChannel' : 'messageNotification.templates.enableChannel') }}
                 </a-button>
               </template>
               <a-button v-if="draft && !editing && detailState === 'ready'" type="primary" :disabled="!canEdit || busy" @click="startEditing">
@@ -63,6 +64,9 @@
             <a-alert v-if="canQuery" type="info" show-icon :message="t('messageNotification.templates.businessForbidden')" />
           </div>
           <a-alert v-if="['error', 'forbidden', 'unavailable'].includes(businessActionState)" type="error" show-icon :message="t(`messageNotification.templates.${businessActionState}`)" />
+          <a-alert v-if="channelActionFailure" type="error" show-icon :message="t('messageNotification.templates.channelStateFailed')">
+            <template #action><a-button size="small" :disabled="busy" @click="reload">{{ t('messageNotification.templates.reload') }}</a-button></template>
+          </a-alert>
           <div class="message-templates__channels">
             <TemplateChannelNavigation :value="channelId" :channels="channels" :configuration-states="channelConfigurationStates"
               :configurations-by-channel="configurationsByChannel" :active-config-id="activeConfigId" :disabled="busy" @change="changeChannel" />
@@ -112,7 +116,7 @@ import TemplateChannelNavigation from './components/TemplateChannelNavigation.vu
 const TemplateEditor = defineAsyncComponent(() => import('./components/TemplateEditor.vue'))
 const contentEditor = ref<{ insertVariable(id: string): Promise<void>; canInsertVariable: boolean }>()
 const {
-  canManage, selectedTemplateId, businessEnabled, changingBusiness, businessActionState, toggleBusiness,
+  canManage, selectedTemplateId, businessEnabled, businessActionState, channelStateTarget, canToggleChannel, changingChannelState, channelActionFailure, toggleChannel,
   canFillInsideMail, fillingInsideMail, fillInsideMail,
   businessLinkPending, businessLinkState, importOptions,
   t, compact, workspace, channels, channelId, templates, configs, listState, configState, channelConfigurationStates, businessTypes, directoryState,

@@ -120,7 +120,7 @@ export function readSavedBusinessTemplate(business: NoticeChannelConfig, channel
   return template
 }
 
-/** New bindings start enabled. Existing bindings keep their saved state, grant and variable expressions. */
+/** 正文写入省略已有绑定的状态，服务端按字段更新。新绑定沿用默认状态。 */
 export function buildBusinessTemplateItem(business: NoticeChannelConfig, channel: NotificationChannel,
   entry: TemplateDraftEntry, payload: NotificationTemplatePayload): NoticeChannelTemplateItem {
   const original = cloneNotificationValue(entry.channel || {})
@@ -132,7 +132,8 @@ export function buildBusinessTemplateItem(business: NoticeChannelConfig, channel
       ...original, providerId: business.id,
       ...(channelKey ? { channelKey } : {}),
       name: original.name || channel.name || channel.typeName || channel.type,
-      channelProvider: channelProviderFor(channel), state: state === 'disabled' ? 'disabled' : 'enabled',
+      channelProvider: channelProviderFor(channel),
+      state: entry.existing && original.id ? undefined : state === 'disabled' ? 'disabled' : 'enabled',
       channelConfiguration: {
         ...original.channelConfiguration, notifierId: payload.configId,
         variables: buildNoticeTemplateChannelVariables({

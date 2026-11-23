@@ -97,6 +97,8 @@ export async function syncRecipientTemplates(api: RecipientSyncApi, configId: st
       await verifySetting?.()
       if (!active()) break
       if (target.businessId) {
+        // 收件人同步沿用数据库中的启停状态。
+        next.channel.state = undefined
         const saved = await api.saveBusinessTemplate(target.businessId, providerFor(channelId), next)
         if (saved.template?.id !== target.id || saved.template.configId !== configId
           || valuesChanged(saved, next, channelId)) throw new NotificationRequestError('error', saved)

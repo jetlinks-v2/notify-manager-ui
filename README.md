@@ -92,11 +92,11 @@ AgentId 说明验证（2026-11-19）：模块目录执行 `node --test tests/mes
 1. 在 `views/system/MessageNotification/Channels/` 添加必填的企业微信 AgentId，与企业 ID、Secret 一次保存。AgentId 保存到 `configuration.alarmTemplateDefaults.agentId`，已有配置可从历史 `configuration.agentId` 回显。接收部门、用户、标签和内容细节在消息模板中编辑。
 2. 保存成功后，从 `GET /notify/channel/all-for-save` 读取当前账号可管理的消息类型。设备告警、场景联动、设备告警解除、系统公告及其他有专用定义的类型复用 `Templates/definition/templateDefaults.ts`。扩展类型使用通用通知正文变量 `${message}`，每份模板均带入当前 `configId` 和 AgentId。新建企业微信绑定默认启用。已有类型使用单渠道保存接口，首次落库使用聚合保存，将消息类型设为启用并提交 `defaultSubscribed: false`，个人订阅由用户勾选。
 3. 补齐前复查消息类型与微信绑定，跳过已有绑定。保存响应确认状态为启用后计入创建成功。表单反馈模板创建、跳过和失败，结果不明时停止本轮写入，重试从重新校对已保存配置和消息类型目录开始。
-4. 消息模板页统一通过页头「启用 / 禁用」管理消息类型。企业微信模板可编辑内容，保存时沿用已有渠道绑定的状态。个人中心从 `/notify/channel/all` 获取已启用且可访问的消息类型和渠道绑定，按需引导用户绑定微信接收账号。
+4. 消息模板页通过页头「启用 / 禁用」管理当前已保存的模板绑定。企业微信模板内容可单独编辑，保存时沿用渠道绑定的状态。个人中心从 `/notify/channel/all` 获取已启用且可访问的消息类型和渠道绑定，按需引导用户绑定微信接收账号。
 
 现有保存接口采用更新式保存，跨会话的读写期间仍可能发生竞态，不同业务也可能部分成功。
 
-运行时前端复用 `views/system/MessageNotification/Channels/templateSetup/` 的模板表单和补齐流程，`Channels/wechat/templateDefaults.ts` 读取既有企业微信 AgentId。`Templates/index.vue` 使用页头消息类型启停，模板保存由 `Templates/useTemplateWorkspace.ts` 和 `Templates/workspace/businessTemplates.ts` 组装现有绑定。已打开的模板页在渠道保存成功后刷新消息类型目录与无修改的默认草稿。
+运行时前端复用 `views/system/MessageNotification/Channels/templateSetup/` 的模板表单和补齐流程，`Channels/wechat/templateDefaults.ts` 读取既有企业微信 AgentId。模板保存由 `Templates/useTemplateWorkspace.ts` 和 `Templates/workspace/businessTemplates.ts` 组装现有绑定。已打开的模板页在渠道保存成功后刷新消息类型目录与无修改的默认草稿。参见[按凭证启停消息模板](#按凭证启停消息模板)。
 
 模块目录执行 `node --test tests/messageNotification*.test.mjs`，397 项通过。用 `SMOKE_CHROMIUM_CHANNEL=chrome SMOKE_BASE_URL=http://127.0.0.1:9201 SMOKE_PLAYWRIGHT_MODULE="$PWD/../../../ui/node_modules/playwright" node tests/messageNotificationBrowser/wechatTemplates.mjs` 通过桌面和 390px 窄屏验证，覆盖四项默认启用、补齐缺失项、页头启停、移除独立开关及正文保存回显。同样运行 `tests/messageNotificationBrowser/navigation.mjs`，10 项通过，页面错误和业务网络请求均为 0。
 
@@ -414,15 +414,14 @@ Commit：`79bbbea`（本地 `2.20`，未推送）。提交快照验证（2026-11
 
 ### 按凭证启停消息模板
 
-方案待确认。管理员在左侧选消息类型，在右侧选渠道和凭证，直接控制这份模板是否参与投递。复用已有渠道和凭证页签。钉钉群机器人、Webhook 可逐个切换凭证，单配置渠道显示当前绑定的凭证名。
+页头现有按钮控制当前已保存的外部渠道绑定。目标由左侧消息类型和右侧选中的渠道凭证共同确定。「设备告警 → 钉钉 → 群机器人·小黑2」对应一条独立绑定，钉钉群机器人和 Webhook 按各自凭证选择。
 
-1. 在 `views/system/MessageNotification/Templates/index.vue` 的模板预览上方，凭证名称旁显示「模板投递」开关。只有成功读取已保存的外部业务模板及其实际绑定后才显示开关，有编辑权限时可操作。未配置凭证时显示「去配置」，已配置但未保存模板时显示「未保存」，读取失败时提示重试。
-2. 页头保留消息类型状态，把类型操作放进「更多」，明确写成「启用消息类型」或「禁用消息类型」。类型禁用时提示该类型暂停投递，仍可设置单个模板的开关。重新启用消息类型时恢复符合授权和订阅条件的已启用模板。站内信继续由消息类型控制。
-3. `Templates/hooks/useTemplatePage.ts` 和 `Templates/useTemplateWorkspace.ts` 使用已读到的绑定 ID、模板 ID 和凭证 ID 发起状态请求，保留当前 `business`、`channel`、`configId` 选择。写入期间锁定当前开关，按服务端确认结果更新，读写失败时提示并允许重新读取。迟到响应只更新原绑定。模板编辑、恢复默认、渠道补齐和收件人同步沿用当前绑定的状态，已禁用模板仍计为已配置。
+1. `views/system/MessageNotification/Templates/index.vue` 的按钮根据绑定状态显示「禁用」或「启用」，有消息模板编辑权限且正在查看已保存的外部渠道绑定时可操作。页头显示消息类型状态，当前凭证的启停可单独保存。
+2. `Templates/hooks/useTemplatePage.ts` 和 `Templates/useTemplateWorkspace.ts` 使用实际绑定 ID、模板 ID 和凭证 ID 发起状态请求，保留当前 `business`、`channel`、`configId` 选择。写入期间锁定按钮，按服务端结果回显，失败时提供重新读取入口。模板编辑和收件人同步按当前已存状态保留渠道启停，已禁用模板仍计为已配置。
 
-以「设备告警 → Webhook → 值班 A」和「值班 B」验收。关闭 A 后，B、短信和同凭证下的「设备告警解除」仍按各自的订阅与授权投递。刷新后 A 仍显示关闭，编辑正文和补齐模板后仍关闭。关闭再开启「设备告警」总开关，B 恢复其投递资格，A 按已保存的关闭状态显示。
+以「设备告警 → Webhook → 值班 A」和「值班 B」验收。关闭 A 后，B、短信和同凭证下的「设备告警解除」仍按各自的订阅与授权投递。刷新后 A 仍显示关闭，编辑正文和补齐模板后仍关闭。
 
-现有 6 项定向回归通过，覆盖多凭证切换、历史默认绑定、状态保留和收件人同步。实施后在模块目录执行 `node --test tests/messageNotification*.test.mjs`，扩展 `tests/messageNotificationBrowser/navigation.mjs` 验证桌面及 390px 下的操作、刷新、无编辑权限和请求失败。执行模块构建、`vue-tsc`、定向样式和三语资源检查。端到端验证使用已更新的运行时通知服务。
+验证（2026-11-23）。模块目录执行 `node --test tests/messageNotification*.test.mjs`，440 项通过。模块生产构建、定向 UI 样式检查和中英日语言键一致性通过。隔离 Chrome 在 9201 通过完整导航的 13 项检查，页面错误和被拦截的业务请求均为 0。定向检查覆盖桌面和 390px 的单凭证启停、相邻凭证状态、刷新、请求失败和权限撤回，也验证了企业微信旧默认绑定编辑后仍为禁用。完整企业微信浏览器脚本停在 AgentId 焦点断言。运行时目录执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，仍有 199 条既有诊断，前后输出一致。实际投递待与支持渠道状态接口的运行时通知服务联调。
 
 ### 业务节点联动与模板预览
 
