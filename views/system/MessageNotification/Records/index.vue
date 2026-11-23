@@ -63,9 +63,9 @@
       </template>
     </j-pro-table>
     <div v-if="state === 'ready' || state === 'empty'" class="notification-records__pagination">
-      <a-pagination
+      <CorePagination
         v-if="total !== undefined && total > 0" :current="pageIndex + 1" :page-size="pageSize"
-        :total="total" :show-size-changer="true" :page-size-options="['12', '24', '48']" @change="changePage"
+        :total="total" @change="changePage"
       />
       <a-space v-else-if="total === undefined">
         <a-button :disabled="pageIndex === 0" @click="changePage(pageIndex, pageSize)">{{ t('messageNotification.records.previous') }}</a-button>
@@ -78,6 +78,7 @@
 </template>
 
 <script setup lang="ts">
+import CorePagination from '@jetlinks-web-core/components/CorePagination'
 import ConditionFilter from '@jetlinks-web-core/components/ConditionFilter'
 import { notificationPermissions } from '../shared'
 import RecordDetail from './components/RecordDetail.vue'

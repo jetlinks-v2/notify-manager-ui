@@ -83,7 +83,7 @@ export function useWechatMembersDrawer(model: () => WechatMembersDrawerModel, as
   watch(() => [model().open, model().filterTerms], () => { page.value = 1; stopEditing() }, { deep: true })
   watch(() => model().rows.length, count => { page.value = Math.min(page.value, Math.max(1, Math.ceil(count / pageSize.value))) })
   watch(() => [model().state, model().busy, model().refreshRequired], stopEditing)
-  const pagination = computed(() => ({ current: page.value, pageSize: pageSize.value, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'], onChange: paginate }))
+  const pagination = computed(() => ({ size: 'default' as const, current: page.value, pageSize: pageSize.value, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'], onChange: paginate }))
   const columns = computed(() => [
     { title: t('messageNotification.members.platformUser'), key: 'user', width: 200 },
     { title: t('messageNotification.members.member'), key: 'member', width: 240 },

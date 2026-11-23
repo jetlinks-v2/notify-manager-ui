@@ -41,6 +41,7 @@ function load(filename) {
     if (name === '@jetlinks-web-core/components/DocumentHelp') return { __esModule: true, default: vue.defineComponent({
       props: ['code', 'helpKey'], setup: props => () => vue.h('span', { 'data-help-code': props.code, 'data-help-key': props.helpKey }),
     }) }
+    if (name === '@jetlinks-web-core/components/CorePagination') return { __esModule: true, default: control('CorePagination') }
     if (name === 'dompurify') return emailPurifier
     if (name === 'vue-i18n') return { useI18n: () => ({ t }) }
     if (name === 'vue-router') return {
@@ -298,7 +299,7 @@ function mount(component, props = {}, adapter) {
     if (adapter) vue.provide(queryModel.notificationHistoryAdapterKey, adapter)
     return () => vue.h(component, props)
   } })
-  for (const name of ['FullPage', 'ContentPanel', 'PageHeader', 'SwitchGroup', 'TableActions', 'TableActionsItem', 'CloudEmpty', 'AIcon', 'a-button', 'a-tooltip', 'a-tag', 'a-space', 'a-divider', 'a-descriptions', 'a-descriptions-item', 'a-pagination', 'KvGrid', 'CodeBlock', 'j-permission-button', 'j-badge-status']) app.component(name, control(name))
+  for (const name of ['FullPage', 'ContentPanel', 'PageHeader', 'SwitchGroup', 'TableActions', 'TableActionsItem', 'CloudEmpty', 'AIcon', 'a-button', 'a-tooltip', 'a-tag', 'a-space', 'a-divider', 'a-descriptions', 'a-descriptions-item', 'KvGrid', 'CodeBlock', 'j-permission-button', 'j-badge-status']) app.component(name, control(name))
   app.component('a-result', vue.defineComponent({ setup: (_, { attrs, slots }) => () => vue.h('a-result', attrs, [slots.default?.(), slots.extra?.()]) }))
   app.component('j-pro-table', vue.defineComponent({ props: ['dataSource'], setup: (props, { attrs, slots }) => () => vue.h('j-pro-table', { ...attrs, dataSource: props.dataSource }, [slots.headerLeftRender?.(), props.dataSource?.length ? props.dataSource.flatMap(row => [slots.notifyMessage?.(row), slots.action?.(row)]) : slots.emptyText?.()]) }))
   app.component('JlDrawerShell', vue.defineComponent({ setup: (_, { attrs, slots }) => () => vue.h('JlDrawerShell', attrs, [slots.default?.(), slots.foot?.()]) }))
@@ -327,7 +328,7 @@ test('the default page selects all and queries real history without a status fil
   await flush()
   assert.equal(io.calls.length, 2)
   assert.equal(io.calls[1].data.terms[0].terms[0].value, 'user@example.org')
-  const pagination = walk(mounted.rootNode, node => node.type === 'a-pagination')[0]
+  const pagination = walk(mounted.rootNode, node => node.type === 'CorePagination')[0]
   assert.equal(pagination.props.total, 25)
   pagination.props.onChange(2, 12)
   await flush()
@@ -384,7 +385,7 @@ test('real page renders unavailable HTTP feedback with zero default counts and n
   const feedback = walk(mounted.rootNode, node => node.type === 'a-result')[0]
   assert.equal(io.calls.length, 1)
   assert.equal(feedback.props.title, 'messageNotification.records.feedback.unavailable')
-  assert.equal(walk(mounted.rootNode, node => node.type === 'a-pagination').length, 0)
+  assert.equal(walk(mounted.rootNode, node => node.type === 'CorePagination').length, 0)
   const unavailableActions = walk(mounted.rootNode, node => node.type === 'a-button')
     .filter(button => walk(button, node => node.text?.includes('messageNotification.records.export') || node.text?.includes('messageNotification.records.retrySend')).length)
   assert.equal(unavailableActions.length, 1)
