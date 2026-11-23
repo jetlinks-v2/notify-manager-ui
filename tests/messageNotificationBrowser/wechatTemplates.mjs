@@ -104,7 +104,7 @@ try {
   assert.equal(bulletin.channels.find(item => item.channelProvider === 'inside-mail').state, 'enabled')
   assert.match(added.find(item => item.name.includes('场景联动')).template.message, /detail\.sceneName/)
   assert.match(added.find(item => item.name.includes('系统公告')).template.message, /detail\.title/)
-  assert.equal(stored.calls.some(([method]) => method.startsWith('send') || method === 'updateBusinessChannelState'), false)
+  assert.equal(stored.calls.some(([method]) => method.startsWith('send') || method === 'saveBusinessChannel'), false)
   await setup(existing).scrollIntoViewIfNeeded()
   await existing.screenshot({ path: join(output, 'wechat-message-templates-desktop.png') })
   await fill.click()
@@ -164,9 +164,10 @@ try {
   await existing.locator('.wechat-template__card').getByText(message, { exact: true }).waitFor()
   await existing.screenshot({ path: join(output, 'wechat-template-channel-disabled.png') })
   await existing.getByText('消息订阅已禁用', { exact: true }).waitFor()
-  assert.deepEqual((await snapshot(existing)).calls.filter(([method]) => method === 'updateBusinessChannelState').map(([, input]) => input),
-    ['enabled', 'disabled'].map(state => ({ providerId: relieve.id, channelId: relieve.channels[0].id,
-      templateId: originalTemplate.id, configId: originalTemplate.configId, state })))
+  assert.deepEqual((await snapshot(existing)).calls
+    .filter(([method, input]) => method === 'saveBusinessChannel' && input.channel.channelProvider === 'notifier-weixin')
+    .map(([, input]) => input), ['enabled', 'disabled'].map(state => ({ providerId: relieve.id,
+    channel: { ...relieve.channels[0], state } })))
   await openTemplate(existing, alarm.id)
   await existing.getByText('已保存', { exact: true }).waitFor()
   assert.equal(await inboxSetup.count(), 0)

@@ -30,6 +30,7 @@
             "owner": "iot",
             "id": "system-message-notification-channels",
             "url": "/system/notification/channels",
+            "icon": "icon-yuandian",
             "sortIndex": 10,
             "i18nMessages": {
               "name": {
@@ -212,6 +213,7 @@
             "owner": "iot",
             "id": "system-message-notification-templates",
             "url": "/system/notification/templates",
+            "icon": "icon-yuandian",
             "sortIndex": 20,
             "i18nMessages": {
               "name": {
@@ -404,6 +406,7 @@
             "owner": "iot",
             "id": "system-message-notification-records",
             "url": "/system/notification/records",
+            "icon": "icon-yuandian",
             "sortIndex": 30,
             "i18nMessages": {
               "name": {

@@ -1,6 +1,7 @@
 import { createApp, defineComponent, h, reactive } from 'vue'
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 import { createPinia } from 'pinia'
+import md5 from 'crypto-js/md5'
 import { useAuthStore } from '@jetlinks-web-core/store/auth'
 import { useSystemStore } from '@jetlinks-web-core/store/system'
 import { trialRecords, officialWireMetadata } from './trialFixtures.mjs'
@@ -103,7 +104,7 @@ if (flags.has('wechatTemplates')) {
     for (const business of businessTypes.filter(row => ['alarm-device', 'alarm-device-relieve'].includes(row.provider))) {
       business.id ??= `wechat-${business.provider}-topic`
       persistBusinessTemplate(business.id, {
-        channel: { channelProvider: 'notifier-weixin', state: 'disabled' },
+        channel: { id: md5(`${business.id}||notifier-weixin`).toString(), name: business.name, channelProvider: 'notifier-weixin', state: 'disabled' },
         template: {
           name: business.name, type: 'weixin', provider: 'corpMessage', configId: 'corp-fixture',
           template: { agentId: '1000002', message: '${message}' },
@@ -282,8 +283,9 @@ function persistBusinessChannel(providerId, value) {
   business.channels ??= []
   const index = business.channels.findIndex(row => matchesBusinessChannel(row, value.channelProvider, value.channelKey))
   const suffix = value.channelKey ? `-${value.channelKey}` : ''
-  const id = business.channels[index]?.id || `fixture-channel-${providerId}-${value.channelProvider}${suffix}`
-  const channel = { ...clone(value), providerId, id, state: value.state ?? business.channels[index]?.state ?? 'enabled' }
+  const previous = business.channels[index]
+  const id = previous?.id || value.id || `fixture-channel-${providerId}-${value.channelProvider}${suffix}`
+  const channel = { ...(previous && clone(previous)), ...clone(value), providerId, id, state: value.state ?? previous?.state ?? 'enabled' }
   if (index >= 0) business.channels[index] = channel
   else business.channels.push(channel)
   return channel
@@ -315,14 +317,6 @@ Object.assign(messageNotificationApi, {
     return flags.has('noBinding') ? [] : configs.filter(config => ['dingTalkMessage', 'corpMessage', 'officialMessage'].includes(config.provider)).map(config => ({ type: `${config.type}_${config.provider}`, provider: config.id, thirdPartyUserId: `self_${config.provider}`, providerName: '测试用户' }))
   },
   sendInline: async (configId, template, context) => { if (writeDelay) await new Promise(resolve => setTimeout(resolve, writeDelay)); record('sendInline', { configId, template, context }) },
-  updateBusinessChannelState: async (providerId, channelId, change) => {
-    record('updateBusinessChannelState', { providerId, channelId, ...change })
-    const channel = businessTypes.find(item => item.id === providerId)?.channels?.find(item => item.id === channelId)
-    const template = templates.find(item => item.id === change.templateId)
-    if (channel?.channelConfiguration?.templateId !== change.templateId || template?.configId !== change.configId) throw { status: 400 }
-    channel.state = change.state
-    return channel.state
-  },
   queryTemplateDirectory: async () => { record('queryTemplateDirectory', {}); return clone(businessTypes) },
   queryInsideMailChannel: async () => {
     record('queryInsideMailChannel', {})
@@ -330,6 +324,9 @@ Object.assign(messageNotificationApi, {
   },
   saveBusinessChannel: async (providerId, channel) => {
     record('saveBusinessChannel', { providerId, channel })
+    if (channel.state === 'enabled' && channel.channelProvider?.startsWith('notifier-') && !channel.channelConfiguration) {
+      throw { status: 400, message: 'Instance must not be null' }
+    }
     persistBusinessChannel(providerId, channel)
   },
   deleteBusinessChannel: async id => {
@@ -361,7 +358,11 @@ Object.assign(messageNotificationApi, {
     const channel = business?.channels?.find(row => matchesBusinessChannel(row, channelProvider, channelKey))
     return channel ? { channel: { ...clone(channel), providerId }, template: clone(templates.find(row => row.id === channel.channelConfiguration?.templateId) || null) } : undefined
   },
-  saveBusinessTemplate: async (providerId, channelProvider, item) => { record('saveBusinessTemplate', { providerId, channelProvider, item }); return persistBusinessTemplate(providerId, item) },
+  saveBusinessTemplate: async (providerId, channelProvider, item) => {
+    record('saveBusinessTemplate', { providerId, channelProvider, item })
+    const saved = persistBusinessTemplate(providerId, item)
+    return { ...saved, channel: { ...saved.channel, state: item.channel.state ?? 'enabled' } }
+  },
   saveBusinessTemplates: async (provider, info) => { record('saveBusinessTemplates', { provider, info });
     const business = businessTypes.find(row => !row.id && row.provider === provider)
     if (!business) throw new Error('Unsaved fixture not found')

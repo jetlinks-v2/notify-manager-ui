@@ -1,8 +1,9 @@
 import { computed, getCurrentScope, onScopeDispose, reactive, ref, type Ref } from 'vue'
+import md5 from 'crypto-js/md5'
 import { messageNotificationApi, type MessageNotificationApi } from '../../../../api/notice/messageNotification'
 import type { NoticeChannelConfig, NoticeChannelTemplateItem } from '../../../../api/notice-center'
 import {
-  classifyNotificationFailure, cloneNotificationValue, dingTalkRobotChannelId, findNotificationChannel, notificationEnumValue, usesBusinessChannelKey,
+  classifyNotificationFailure, cloneNotificationValue, findNotificationChannel, notificationEnumValue, usesBusinessChannelKey,
   NotificationRequestError, withNotificationChannel,
   type NotificationLoadState, type NotificationTemplate, type NotificationVariable,
 } from '../shared'
@@ -14,11 +15,13 @@ import { applyWorkRecipients, assertWorkConfig, emptyWorkRecipients, isWorkChann
 import { useTemplateCatalog } from './hooks/useTemplateCatalog'
 import {
   bindingConfigId, buildBusinessTemplateItem, businessChannelBindings, businessChannelKey, businessDraftKey, businessIdentity, channelProviderFor,
-  hasDefiniteSaveRejection, loadBusinessTemplateForConfig, mergeSavedBusiness, readBusinessTemplate, readSavedBusinessTemplate,
+  hasDefiniteSaveRejection, loadBusinessTemplateForConfig, mergeSavedBusiness, readBusinessChannelBinding, readBusinessTemplate, readSavedBusinessTemplate,
   restoreBusinessDefaultDraft, type TemplateDraftEntry,
 } from './workspace/businessTemplates'
 
 interface WorkspaceAccess { query: Ref<boolean>; add: Ref<boolean>; update: Ref<boolean> }
+
+const channelStateValue = (state: NoticeChannelConfig['state']) => typeof state === 'string' ? state : state?.value
 
 /** Own business/provider drafts and legacy standalone links; late responses never replace the current selection. */
 export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotificationApi = messageNotificationApi, translate?: PrototypeTranslate) {
@@ -62,8 +65,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     const configId = saved?.baselineDraft.configId
     if (detailState.value !== 'ready' || !saved?.existing || !providerId || !channel?.id || channel.providerId !== providerId
       || !templateId || !configId || channel.channelConfiguration?.templateId !== templateId) return
-    const state = typeof channel.state === 'string' ? channel.state : channel.state?.value
-    return { providerId, channel, channelId: channel.id, templateId, configId, enabled: state === 'enabled' }
+    return { providerId, channel, templateId, configId, enabled: channelStateValue(channel.state) === 'enabled' }
   })
   const channelActionFailure = computed(() => ['error', 'forbidden', 'unavailable'].includes(channelActionState.value))
   const canToggleChannel = computed(() => !!channelStateTarget.value && access.update.value && !channelActionFailure.value)
@@ -214,10 +216,10 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
       await Promise.all([catalog.loadMetadata(channel), keyed ? listRequest : undefined])
       if (revision !== detailRevision || !access.query.value) return
       const records = templateLists.get(id) ?? []
-      // 群机器人配置确认为空时加载默认预览。工作通知也使用 notifier-dingTalk，绑定可能指向另一类配置。
-      const emptyRobot = id === dingTalkRobotChannelId && configState.value === 'empty'
+      // 钉钉子渠道共用 notifier-dingTalk。当前子渠道确认为空时直接预览，避免回退到另一类配置的绑定。
+      const unconfiguredDingTalk = channel.type === 'dingTalk' && configState.value === 'empty'
       let configId = keyed ? '' : undefined
-      if (keyed && !emptyRobot) {
+      if (keyed && !unconfiguredDingTalk) {
         const knownConfigIds = businessChannelBindings(resolved, channel)
           .map(binding => bindingConfigId(binding, records) || businessChannelKey(binding))
         if (requestedConfigId && !knownConfigIds.includes(requestedConfigId) && !configs.value.some(config => config.id === requestedConfigId)) {
@@ -262,7 +264,7 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     }
   }
 
-  /** 只接收当前详情的响应，保留草稿及路由中的凭证选择。 */
+  /** 现有渠道保存接口无返回数据，保存前后均按原凭证回读，确认后才更新展示状态。 */
   async function toggleChannel(): Promise<boolean> {
     const target = channelStateTarget.value
     if (!target || !canToggleChannel.value || changingChannelState.value) return false
@@ -270,12 +272,24 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     changingChannelState.value = true
     channelActionState.value = 'loading'
     const active = () => revision === detailRevision && access.query.value
+    const { providerId, channel, templateId, configId } = target
+    const state = target.enabled ? 'disabled' : 'enabled'
     try {
-      const state = await api.updateBusinessChannelState(target.providerId, target.channelId, {
-        templateId: target.templateId, configId: target.configId, state: target.enabled ? 'disabled' : 'enabled',
-      })
+      const current = await readBusinessChannelBinding(api, providerId, channel, templateId, configId)
+      if (!active() || !access.update.value) return false
+      if (channelStateValue(current.state) !== state) {
+        const channelKey = businessChannelKey(current)
+        // 现有接口会重算默认实例 ID。详情查询可回退到旧行，写入前须核对实际 ID。
+        if (!channelKey && md5(`${providerId}||${current.channelProvider}`).toString() !== current.id) {
+          throw new NotificationRequestError('unavailable')
+        }
+        // 启用后的投递注册使用保存事件中的通道对象，需要带上最新的完整配置和授权信息。
+        await api.saveBusinessChannel(providerId, { ...current, state })
+        const saved = await readBusinessChannelBinding(api, providerId, channel, templateId, configId)
+        if (channelStateValue(saved.state) !== state) throw new NotificationRequestError('error')
+      }
       if (!active()) return false
-      target.channel.state = state
+      channel.state = state
       channelActionState.value = 'ready'
       return true
     } catch (error) {
@@ -435,6 +449,12 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
       )
     }
     const stored = readSavedBusinessTemplate(updated, channel, item, saved)
+    if (selected.id && item.channel.id && item.channel.state === undefined) {
+      // 旧保存接口的响应可能带实体默认值。详情才反映省略 state 后保留的数据库状态。
+      const confirmed = await readBusinessChannelBinding(api, selected.id, saved.channel, stored.id, stored.configId)
+      saved.channel = { ...saved.channel, state: confirmed.state }
+      updated = mergeSavedBusiness(updated, saved.channel)
+    }
     resetBusinessIdentity(updated, selected)
     applySavedBusiness(current, saved, stored, fingerprint, channel.id)
   }
