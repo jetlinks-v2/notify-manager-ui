@@ -952,7 +952,8 @@ test('first save adopts actual topic and template IDs, preserves the sibling dra
     const created = current.api.calls.find(([name]) => name === 'saveBusinessTemplates')
     assert.equal(created[1], 'aiComplianceAlarm')
     assert.equal(created[2].provider.state, 'enabled')
-    assert.equal(page.businessEnabled.value, true)
+    assert.equal(page.business.value.state, 'enabled')
+    assert.equal(page.channelStateTarget.value.enabled, true)
     assert.equal(created[2].channels.length, 1)
     assert.equal(created[2].channels[0].channel.channelProvider, 'notifier-email')
     assert.equal(page.business.value.id, 'saved-aiComplianceAlarm')
@@ -1307,11 +1308,11 @@ test('channel buttons toggle one credential, respect failures and read back the 
     },
   })
   try {
-    assert.equal(current.page.businessEnabled.value, true)
+    assert.equal(current.page.business.value.state, 'enabled')
     assert.equal(current.page.channelStateTarget.value.enabled, true)
     await current.page.toggleChannel()
     assert.deepEqual(writes, [[topicId, 'binding-hook-one', { templateId: 'template-hook-one', configId: 'hook-one', state: 'disabled' }]])
-    assert.equal(current.page.businessEnabled.value, true)
+    assert.equal(current.page.business.value.state, 'enabled')
     assert.equal(current.page.channelStateTarget.value.enabled, false)
     assert.equal(current.route.query.configId, 'hook-one')
     assert.deepEqual(current.messages, [['messageNotification.templates.disableChannelSucceeded', 'success']])
@@ -1625,7 +1626,7 @@ test('first-alarm entry supports AI alarm placeholders without fabricating a sav
     assert.equal(current.page.channelId.value, 'webhook:http')
     assert.equal(current.page.draft.value.type, 'webhook')
     assert.equal(current.page.isDefault.value, true)
-    assert.equal(current.page.businessEnabled.value, false)
+    assert.equal(current.page.channelStateTarget.value, undefined)
   } finally { current.close() }
 })
 

@@ -128,15 +128,16 @@ try {
   assert.equal(repairedAlarm.state, 'enabled')
   await openTemplate(existing, relieve.id)
   await existing.getByText('已保存', { exact: true }).waitFor()
-  await existing.getByText('消息类型已禁用', { exact: true }).waitFor()
+  await existing.getByText('消息订阅已禁用', { exact: true }).waitFor()
   const channelSwitch = wechatSwitch(existing)
   assert.equal(await channelSwitch.count(), 0)
   const enable = existing.getByRole('button', { name: '启用', exact: true })
   const disable = existing.getByRole('button', { name: '禁用', exact: true })
   await enable.click()
+  await existing.getByText('消息订阅已启用', { exact: true }).waitFor()
   await disable.click()
   await enable.waitFor()
-  await existing.getByText('消息类型已禁用', { exact: true }).waitFor()
+  await existing.getByText('消息订阅已禁用', { exact: true }).waitFor()
 
   const edit = existing.getByRole('button', { name: /编\s*辑/ })
   await edit.click()
@@ -162,7 +163,7 @@ try {
   await openTemplate(existing, relieve.id)
   await existing.locator('.wechat-template__card').getByText(message, { exact: true }).waitFor()
   await existing.screenshot({ path: join(output, 'wechat-template-channel-disabled.png') })
-  await existing.getByText('消息类型已禁用', { exact: true }).waitFor()
+  await existing.getByText('消息订阅已禁用', { exact: true }).waitFor()
   assert.deepEqual((await snapshot(existing)).calls.filter(([method]) => method === 'updateBusinessChannelState').map(([, input]) => input),
     ['enabled', 'disabled'].map(state => ({ providerId: relieve.id, channelId: relieve.channels[0].id,
       templateId: originalTemplate.id, configId: originalTemplate.configId, state })))

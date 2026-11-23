@@ -17,9 +17,8 @@
               <a-tag v-if="templateStatus" :color="templateStatus === 'unsaved' ? 'processing' : isDefault ? 'warning' : undefined">
                 {{ t(`messageNotification.templates.${templateStatus}`) }}
               </a-tag>
-              <a-tag v-if="business" class="message-templates__business-state" :color="businessEnabled ? 'success' : undefined"
-                :title="t(businessEnabled ? 'messageNotification.templates.businessEnabled' : 'messageNotification.templates.businessDisabled')">
-                {{ t(businessEnabled ? 'messageNotification.templates.businessStateEnabled' : 'messageNotification.templates.businessStateDisabled') }}
+              <a-tag v-if="channelStateTarget" class="message-templates__subscription-state" :color="channelStateTarget.enabled ? 'success' : undefined">
+                {{ t(channelStateTarget.enabled ? 'messageNotification.templates.subscriptionStateEnabled' : 'messageNotification.templates.subscriptionStateDisabled') }}
               </a-tag>
             </template>
             <template #actions>
@@ -116,7 +115,7 @@ import TemplateChannelNavigation from './components/TemplateChannelNavigation.vu
 const TemplateEditor = defineAsyncComponent(() => import('./components/TemplateEditor.vue'))
 const contentEditor = ref<{ insertVariable(id: string): Promise<void>; canInsertVariable: boolean }>()
 const {
-  canManage, selectedTemplateId, businessEnabled, businessActionState, channelStateTarget, canToggleChannel, changingChannelState, channelActionFailure, toggleChannel,
+  canManage, selectedTemplateId, businessActionState, channelStateTarget, canToggleChannel, changingChannelState, channelActionFailure, toggleChannel,
   canFillInsideMail, fillingInsideMail, fillInsideMail,
   businessLinkPending, businessLinkState, importOptions,
   t, compact, workspace, channels, channelId, templates, configs, listState, configState, channelConfigurationStates, businessTypes, directoryState,

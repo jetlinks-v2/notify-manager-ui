@@ -21,6 +21,7 @@ const templateRegion = page => page.getByRole('region', { name: '消息模板', 
 const savedConfigs = page => page.evaluate(() => window.__notificationSmoke.configs.filter(config => config.type === 'webhook'))
 const calls = (page, method) => page.evaluate(method => window.__notificationSmoke.calls.filter(([key]) => key === method).map(([, value]) => value), method)
 const empty = page => page.getByText('此渠道暂无通知配置，可新增配置', { exact: true })
+const fullAddress = `https://receiver.example.test:8443/hooks/${'x'.repeat(200)}?key=query%2Fvalue#fragment`
 async function checkChannelFields(page) {
   await address(page).waitFor()
   assert.equal(await page.locator('.webhook-preview').count(), 0)
@@ -52,13 +53,13 @@ async function open(mode = 'saved') {
   await page.goto(`${entryURL}?${mode === 'fresh' ? 'fresh' : 'clearMessages'}&directory=tree${mode === 'denied' ? '&permission=no-template' : ''}#/records`,
     { waitUntil: 'domcontentloaded', timeout: 30000 })
   await page.waitForFunction(() => document.documentElement.dataset.notificationSmoke === 'ready')
-  await page.evaluate(async () => {
+  await page.evaluate(async url => {
     const fixture = window.__notificationSmoke
     const config = fixture.configs.find(item => item.type === 'webhook')
-    if (config) config.configuration = { url: 'https://receiver.example.test/hooks/path-token?key=query-token#fragment', headers: [{ key: 'Authorization', value: 'fixture-private-token' }] }
+    if (config) config.configuration = { url, headers: [{ key: 'Authorization', value: 'fixture-private-token' }] }
     fixture.templates.splice(0)
     await fixture.router.push({ path: '/channels', query: { channel: 'webhook:http', ...(config ? { configId: config.id } : {}) } })
-  })
+  }, fullAddress)
   await (mode === 'fresh' ? empty(page) : rows(page).first()).waitFor()
   assert.equal(await page.locator('.channel-configuration').count(), 0)
   assert.equal(await page.evaluate(() => window.__notificationSmoke.calls.filter(([method]) => ['queryTemplates', 'getTemplate', 'queryTemplateDirectory', 'getBusinessTemplate'].includes(method)).length), 0)
@@ -74,9 +75,23 @@ try {
   const page = await open()
   const [initial] = await savedConfigs(page)
   assert.equal(await page.locator('.notification-channels__title-row h2').innerText(), 'Webhook')
-  assert.equal(await row(page, initial.id).locator('.channel-configurations__url').getAttribute('title'), 'https://receiver.example.test')
-  assert.doesNotMatch(await row(page, initial.id).innerText(), /path-token|query-token|fixture-private-token/)
+  const listedAddress = row(page, initial.id).locator('.channel-configurations__url .j-ellipsis')
+  assert.equal(await listedAddress.innerText(), fullAddress)
+  assert.doesNotMatch(await row(page, initial.id).innerText(), /fixture-private-token/)
   await screenshot(page, 'webhook-desktop')
+  await page.setViewportSize({ width: 390, height: 844 })
+  assert.equal(await listedAddress.innerText(), fullAddress)
+  assert.equal(await listedAddress.evaluate(element =>
+    getComputedStyle(element).webkitLineClamp === '1' && element.scrollHeight > element.offsetHeight), true)
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true)
+  await listedAddress.hover()
+  const addressTooltip = page.locator('.ant-tooltip:visible').getByText(fullAddress, { exact: true })
+  await addressTooltip.waitFor()
+  await screenshot(page, 'webhook-address-tooltip-mobile')
+  await page.mouse.move(0, 0)
+  await addressTooltip.waitFor({ state: 'hidden' })
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  report.checks.push('the Webhook address stays on one line at 390px and the tooltip shows the full address')
   await beginChannelEdit(page, initial.id)
   await checkChannelFields(page)
   await modal(page).getByText('编辑 Webhook 配置', { exact: true }).waitFor()
@@ -93,7 +108,7 @@ try {
   assert.equal(await header.inputValue(), 'fixture-private-token')
   await headerToggle.click()
   await header.and(modal(page).locator('[type="password"]')).waitFor()
-  report.checks.push('list masks credentials and the edit dialog restores the address and protected header')
+  report.checks.push('the edit dialog restores the address and protects the request header')
 
   await address(page).fill('https://receiver.example.test/updated')
   await header.fill('')

@@ -6,7 +6,7 @@ import { useSystemStore } from '@jetlinks-web-core/store/system'
 import { trialRecords, officialWireMetadata } from './trialFixtures.mjs'
 import { useMenuStore } from '@jetlinks-web-core/store/menu'
 import AntDesign from 'ant-design-vue'
-import { AIcon, BadgeStatus, ProTable, PermissionButton, ConfigProvider } from '@jetlinks-web/components'
+import { AIcon, BadgeStatus, ProTable, PermissionButton, ConfigProvider, Ellipsis } from '@jetlinks-web/components'
 import { usePermissionContext } from '@jetlinks-web/hooks'
 import { request as notificationRequest } from '@jetlinks-web/core'
 import i18n from '@jetlinks-web-core/locales'
@@ -462,7 +462,7 @@ if (flags.has('unifiedTests')) useSystemStore().layout.title = '隔离验证平�
 useMenuStore().jumpPage = (name, options) => router.push({ name, ...options })
 for (const [name, component] of Object.entries({ AIcon, FullPage, ContentPanel, SwitchGroup, TableActions, TableActionsItem,
   CloudEmpty, JlDrawerShell, KvGrid, CodeBlock, EqualHeightColumns, DetailHeader, Editable, StatusPill, StickyActionBar, JlConfirmDialog, FileUpload, MetadataValueItem, MonacoEditor,
-  'j-pro-table': ProTable, 'j-permission-button': PermissionButton, 'j-badge-status': BadgeStatus })) app.component(name, component)
+  'j-pro-table': ProTable, 'j-permission-button': PermissionButton, 'j-badge-status': BadgeStatus, 'j-ellipsis': Ellipsis })) app.component(name, component)
 app.provide(notificationHistoryAdapterKey, historyAdapter)
 i18n.global.locale.value = 'zh'
 window.__notificationSmoke = { calls, router, configs, templates, businessTypes, failures, i18n, memberBindings, deniedPermissions }

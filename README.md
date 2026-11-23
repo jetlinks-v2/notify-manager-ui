@@ -170,7 +170,7 @@ AgentId 说明验证（2026-11-19）：模块目录执行 `node --test tests/mes
 
 ### Webhook 与钉钉多份配置及独立模板
 
-- `runtime-ui/modules/notify-manager-ui` 的「通知渠道」中，Webhook 和钉钉群机器人共用配置列表及新增、编辑弹窗。每行按配置 ID 执行测试、编辑、补齐模板和删除。Webhook 弹窗填写名称、接收地址和 HTTP 请求头，列表只显示名称和脱敏地址。`views/system/MessageNotification/shared/catalog.ts` 声明两类渠道的多配置能力，`Channels/index.vue` 和 `Channels/useChannelWorkspace.ts` 负责列表入口和配置草稿。
+- `runtime-ui/modules/notify-manager-ui` 的「通知渠道」中，Webhook 和钉钉群机器人共用配置列表及新增、编辑弹窗。每行按配置 ID 执行测试、编辑、补齐模板和删除。Webhook 弹窗填写名称、接收地址和 HTTP 请求头，列表显示名称和完整接收地址。钉钉群机器人的地址按机器人配置规则脱敏。`views/system/MessageNotification/shared/catalog.ts` 声明两类渠道的多配置能力，`Channels/index.vue` 和 `Channels/useChannelWorkspace.ts` 负责列表入口和配置草稿。
 - `api/notice-center.ts` 和 `api/notice/messageNotification.ts` 接入 [notify-manager #94](https://github.com/jetlinks-v2/notify-manager/pull/94) 的 `channelKey`。单条查询传查询参数，单条保存传 `channel.channelKey`。新建时按凭证 ID 分配稳定 key。存量绑定按实际 `template.configId` 匹配，沿用服务端已有的 key、通道 ID 和模板 ID，包括无 key 的默认实例。上线依赖后端先提供该契约。
 - `Templates/useTemplateWorkspace.ts` 和 `Templates/workspace/businessTemplates.ts` 按业务记录、服务商及凭证隔离模板草稿、保存和回读。消息模板页显示工作通知、每个机器人和每份 Webhook 配置各自的模板。切换或刷新后按 `configId` 打开对应模板。保存核对返回的实例和凭证，读取失败时保持错误状态。
 - `Channels/templateSetup/fillMessageTemplates.ts` 以当前凭证的绑定判断是否需要补齐。`Channels/members/syncWorkRecipients.ts` 只更新工作通知实际绑定的模板。保留已有模板的正文、状态和通道变量。个人订阅、发送策略和独立启停功能分别沿用现有契约及对应方案。
@@ -416,12 +416,12 @@ Commit：`79bbbea`（本地 `2.20`，未推送）。提交快照验证（2026-11
 
 页头现有按钮控制当前已保存的外部渠道绑定。目标由左侧消息类型和右侧选中的渠道凭证共同确定。「设备告警 → 钉钉 → 群机器人·小黑2」对应一条独立绑定，钉钉群机器人和 Webhook 按各自凭证选择。
 
-1. `views/system/MessageNotification/Templates/index.vue` 的按钮根据绑定状态显示「禁用」或「启用」，有消息模板编辑权限且正在查看已保存的外部渠道绑定时可操作。页头显示消息类型状态，当前凭证的启停可单独保存。
+1. `views/system/MessageNotification/Templates/index.vue` 的「消息订阅」标签与「禁用 / 启用」按钮读取当前已保存的渠道绑定状态。切换凭证时显示对应绑定的状态。具备消息模板编辑权限时可操作。
 2. `Templates/hooks/useTemplatePage.ts` 和 `Templates/useTemplateWorkspace.ts` 使用实际绑定 ID、模板 ID 和凭证 ID 发起状态请求，保留当前 `business`、`channel`、`configId` 选择。写入期间锁定按钮，按服务端结果回显，失败时提供重新读取入口。模板编辑和收件人同步按当前已存状态保留渠道启停，已禁用模板仍计为已配置。
 
 以「设备告警 → Webhook → 值班 A」和「值班 B」验收。关闭 A 后，B、短信和同凭证下的「设备告警解除」仍按各自的订阅与授权投递。刷新后 A 仍显示关闭，编辑正文和补齐模板后仍关闭。
 
-验证（2026-11-23）。模块目录执行 `node --test tests/messageNotification*.test.mjs`，440 项通过。模块生产构建、定向 UI 样式检查和中英日语言键一致性通过。隔离 Chrome 在 9201 通过完整导航的 13 项检查，页面错误和被拦截的业务请求均为 0。定向检查覆盖桌面和 390px 的单凭证启停、相邻凭证状态、刷新、请求失败和权限撤回，也验证了企业微信旧默认绑定编辑后仍为禁用。完整企业微信浏览器脚本停在 AgentId 焦点断言。运行时目录执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，仍有 199 条既有诊断，前后输出一致。实际投递待与支持渠道状态接口的运行时通知服务联调。
+验证（2026-11-23）。模块目录执行 `node --test tests/messageNotification*.test.mjs`，440 项通过。模块生产构建、定向 UI 样式检查和中英日语言键一致性通过。隔离 Chrome 在 9201 通过完整导航的 13 项检查，包含订阅标签随启停和凭证切换回显。页面错误和被拦截的业务请求均为 0。定向检查覆盖桌面和 390px 的单凭证启停、相邻凭证状态、刷新、请求失败和权限撤回，也验证了企业微信旧默认绑定编辑后仍为禁用。完整企业微信浏览器脚本停在 AgentId 焦点断言。运行时目录执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，仍有 199 条既有诊断，前后输出一致。实际投递待与支持渠道状态接口的运行时通知服务联调。
 
 ### 业务节点联动与模板预览
 
@@ -732,7 +732,7 @@ AgentId 浏览器复核：9200 实际企业微信页已显示新字段和默认�
 
 ### Webhook 渠道配置列表
 
-`Channels/index.vue` 按多配置能力展示列表。首次和后续配置均从页头「新增配置」打开弹窗，已有配置从行菜单进入编辑。列表显示接收地址的协议和主机。`Channels/configuration/useChannelConfigurations.ts` 复用逐行操作和弹窗草稿。保存成功后按配置 ID 及本模块的[模板自动生成规则](#邮件钉钉与-webhook-随渠道创建消息模板)补齐模板。请求体的编辑和预览位于消息模板页。
+`Channels/index.vue` 按多配置能力展示列表。首次和后续配置均从页头「新增配置」打开弹窗，已有配置从行菜单进入编辑。`Channels/configuration/configurationPresentation.ts` 使用现有查询接口返回的完整 Webhook 接收地址，`Channels/configuration/ChannelConfigurationList.vue` 用 `j-ellipsis` 单行省略，悬停可查看完整地址。`Channels/configuration/useChannelConfigurations.ts` 复用逐行操作和弹窗草稿。保存成功后按配置 ID 及本模块的[模板自动生成规则](#邮件钉钉与-webhook-随渠道创建消息模板)补齐模板。请求体的编辑和预览位于消息模板页。
 
 Webhook 和钉钉群机器人逐行删除复用 `Channels/configuration/deleteChannelConfiguration.ts`。具备消息模板查询及删除权限时，确认框提示清理相应模板和投递配置。前端按所选配置 ID 查询专属模板，从现有业务目录核对投递绑定，依次调用 `DELETE /notify/channel/{id}`、`DELETE /notifier/template/{id}` 和 `DELETE /notifier/config/{id}`。`baseMenu.json` 的「清除配置」动作同时声明 `notifier` 和 `notify-channel` 的查询与删除权限，供菜单同步后为该动作授权。其他实例、通用模板及个人订阅保留。
 
@@ -740,7 +740,7 @@ Webhook 和钉钉群机器人逐行删除复用 `Channels/configuration/deleteCh
 
 `node --test tests/messageNotification*.test.mjs` 通过 438 项，覆盖两类渠道、其他实例和通用模板隔离、模板换绑、权限、失败重试及接口路径。隔离 Chrome 的 Webhook 9 项和钉钉群机器人 12 项断言通过。模块生产构建、定向样式检查与三语文案校验通过，`vue-tsc` 诊断与已有的 199 条完全一致。本机通知服务已恢复原有后端逻辑，实际删除使用隔离数据验证。
 
-隔离浏览器的 `tests/messageNotificationBrowser/webhook.mjs` 通过 9 组检查，覆盖空列表、新增两份配置、逐条编辑、试发与删除、取消草稿、请求头保留和 390px 布局。`channelTemplates.mjs` 验证模板补齐和请求体。群机器人、统一试发、渠道说明、渠道冒烟和模板导航回归均通过。实际服务商投递仍待联调。
+隔离浏览器的 `tests/messageNotificationBrowser/webhook.mjs` 通过 10 组检查，覆盖 390px 下长地址单行省略及悬停查看全文、空列表、新增两份配置、逐条编辑、试发与删除、取消草稿和请求头保留。通知模块 440 项回归、模块生产构建及定向样式检查通过。`vue-tsc` 仍报告相同的 199 条既有诊断。`channelTemplates.mjs` 验证模板补齐和请求体。群机器人、统一试发、渠道说明、渠道冒烟和模板导航回归均通过。实际服务商投递仍待联调。
 
 模块目录执行 `node --test tests/messageNotification*.test.mjs`，419 项中 418 项通过，余下一项为已有的 AI 合规告警邮件原型断言。模块生产构建、4 个 Vue 文件的定向样式检查、中英日文案键校验及 `git diff --check` 通过。模块无独立 lint 脚本。按上文 `vue-tsc` 命令复验，仍为原有 195 条诊断。
 

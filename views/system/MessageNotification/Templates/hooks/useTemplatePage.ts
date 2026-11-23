@@ -43,7 +43,6 @@ export function useTemplatePage() {
   const fillingInsideMail = ref(false)
   const businessActionState = ref('idle')
   const selectedBusinessId = computed(() => identity(business.value))
-  const businessEnabled = computed(() => !!business.value?.id && (typeof business.value.state === 'string' ? business.value.state : business.value.state?.value) !== 'disabled')
   const canFillInsideMail = computed(() => Boolean(canQuery.value && canUpdate.value && directory.insideMailChannel.value
     && business.value?.id && !hasInsideMailChannel(business.value)))
   const uploading = ref(false)
@@ -307,7 +306,7 @@ export function useTemplatePage() {
   })
 
   return {
-    canManage, selectedBusiness: business, selectedBusinessId, businessEnabled, businessActionState,
+    canManage, selectedBusiness: business, selectedBusinessId, businessActionState,
     businessLinkPending: businessNavigation.requested, businessLinkState: businessNavigation.state, importOptions,
     t, compact, workspace, ...workspace, ...directory, canQuery, canAdd, canEdit, canConfigure, busy, uploading,
     canFillInsideMail, fillingInsideMail, fillInsideMail,
