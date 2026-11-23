@@ -765,6 +765,31 @@ test('an empty robot provider previews defaults despite work or removed robot bi
   assert.equal(workspace.canSave.value, true)
 })
 
+test('unconfigured DingTalk work notifications preview defaults without querying a robot binding', async () => {
+  const robotProvider = 'dingTalkRobotWebHook'
+  const io = mockApi(['robot-a', 'robot-b'].map(id => config(id, 'dingTalk', robotProvider)))
+  const robot = item('actual-topic', template({
+    type: 'dingTalk', provider: robotProvider, configId: 'robot-a',
+    template: { messageType: 'text', text: { content: '群机器人已保存正文' } },
+  }), { channelKey: 'robot-a' })
+  const topic = { ...business(), channels: [robot.channel] }
+  io.records.set('actual-topic/notifier-dingTalk/robot-a', robot)
+  const workspace = useTemplateWorkspace(permissions(), io.api)
+
+  await workspace.loadBusiness(topic, `dingTalk:${robotProvider}`, 'robot-a')
+  assert.equal(workspace.draft.value.id, robot.template.id)
+  await workspace.loadBusiness(topic, 'dingTalk:dingTalkMessage')
+
+  assert.equal(workspace.configState.value, 'empty')
+  assert.equal(workspace.detailState.value, 'ready')
+  assert.equal(workspace.isDefault.value, true)
+  assert.equal(workspace.draft.value.configId, '')
+  assert.equal(workspace.canSave.value, false)
+  assert.deepEqual(io.calls.filter(([method]) => method === 'getBusinessTemplate'), [
+    ['getBusinessTemplate', topic.id, 'notifier-dingTalk', 'robot-a'],
+  ])
+})
+
 test('robot tabs keep independent drafts, then save and reload both managed templates', async () => {
   const robot = 'dingTalk:dingTalkRobotWebHook'
   const io = mockApi(['robot-a', 'robot-b'].map(id => config(id, 'dingTalk', 'dingTalkRobotWebHook')))

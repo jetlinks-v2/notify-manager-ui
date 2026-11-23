@@ -76,7 +76,7 @@ function mockApi() {
     queryTemplateDirectory: async () => [],
     getBusinessTemplate: async (owner, type) => type === 'notifier-email' ? { channel: { id: 'binding', providerId: owner, channelProvider: type, state: 'enabled', channelConfiguration: { templateId: 'second', notifierId: 'smtp-one' } }, template: record('second', { type: 'email' }) } : undefined,
     saveBusinessTemplate: async (owner, type, payload) => { calls.push(['saveBusinessTemplate', owner, type, structuredClone(payload)]); return { channel: { ...payload.channel, id: 'binding', providerId: owner, channelConfiguration: { ...payload.channel.channelConfiguration, templateId: 'stpl_binding' } }, template: { ...payload.template, id: 'stpl_binding' } } },
-    updateBusinessChannelState: async (...args) => { calls.push(['updateBusinessChannelState', ...args]); return args[2].state },
+    saveBusinessChannel: async (...args) => { calls.push(['saveBusinessChannel', ...args]) },
     queryInsideMailChannel: async () => undefined,
     queryTypes: async () => channelTypes,
     queryProviders: async type => channelProviders[type] || [],
@@ -475,7 +475,9 @@ async function mountTemplatePage(query = {}, permission = () => true, options = 
   }
   api.saveBusinessTemplate = async (id, channelProvider, value) => {
     api.calls.push(['saveBusinessTemplate', id, channelProvider, clone(value)])
-    return persistItem(id, value)
+    const saved = persistItem(id, value)
+    // 现有保存接口会为省略的状态填充响应默认值，数据库仍保留已有状态。
+    return { ...saved, channel: { ...saved.channel, state: value.channel.state ?? 'enabled' } }
   }
   api.saveBusinessTemplates = async (provider, value) => {
     api.calls.push(['saveBusinessTemplates', provider, clone(value)])
@@ -526,6 +528,10 @@ const business = (provider = 'scene', templateId = 'second', channelProvider = '
 
 test('business entry resolves the actual bound template/provider and preserves its topic and return context', async () => {
   const current = await mountTemplatePage({ topicProvider: 'scene', channelProvider: 'notifier-dingTalk', q: 'kept' }, () => true, {
+    queryAllConfigs: async () => [
+      { id: 'smtp-one', name: 'SMTP', type: 'email', provider: 'embedded', configuration: {} },
+      { id: 'ding-config', name: '工作通知', type: 'dingTalk', provider: 'dingTalkMessage', configuration: { agentId: '42' } },
+    ],
     queryTemplateDirectory: async () => [business('scene', 'ding-template', 'notifier-dingTalk')],
     getBusinessTemplate: async (owner, type) => type === 'notifier-dingTalk' ? { channel: { providerId: owner, channelProvider: type }, template: record('ding-template', { type: 'dingTalk', provider: 'dingTalkMessage', configId: 'ding-config' }) } : undefined,
     queryTemplates: async () => ({ data: [record('ding-template', { type: 'dingTalk', provider: 'dingTalkMessage', configId: 'ding-config' })] }),
@@ -1277,15 +1283,16 @@ test('an unsaved prototype has no channel state action and retains its draft', a
     await current.page.toggleChannel()
     assert.equal(current.route.query.topicProvider, 'scene')
     assert.equal(current.page.draft.value.subject, 'Unsaved default')
-    assert.equal(current.api.calls.some(([name]) => name.startsWith('saveBusiness') || name === 'updateBusinessChannelState'), false)
+    assert.equal(current.api.calls.some(([name]) => name.startsWith('saveBusiness')), false)
   } finally { current.close() }
 })
 
 test('channel buttons toggle one credential, respect failures and read back the persisted state', async () => {
   const topicId = 'alarm-scope'
   const configIds = ['hook-one', 'hook-two']
-  const bindings = configIds.map(configId => ({ id: `binding-${configId}`, channelProvider: 'notifier-webhook',
-    channelKey: configId, state: { value: 'enabled' }, channelConfiguration: { templateId: `template-${configId}` } }))
+  const bindings = configIds.map(configId => ({ id: `binding-${configId}`, name: configId, channelProvider: 'notifier-webhook',
+    channelKey: configId, state: { value: 'enabled' }, grant: { role: { idList: ['ops'] } },
+    channelConfiguration: { templateId: `template-${configId}` } }))
   let fail = false
   const canUpdate = vue.ref(true)
   const writes = []
@@ -1298,20 +1305,22 @@ test('channel buttons toggle one credential, respect failures and read back the 
         Object.assign(template, { type: 'webhook', provider: 'http', configId: channel.channelKey, template: { body: template.id } })
         channel.channelConfiguration.notifierId = template.configId
       }
-      api.updateBusinessChannelState = async (id, channelId, change) => {
-        writes.push([id, channelId, change])
+      api.saveBusinessChannel = async (id, change) => {
+        writes.push([id, change])
         if (fail) throw { status: 500 }
-        const binding = [...records.values()].find(item => item.channel.id === channelId)
+        const binding = [...records.values()].find(item => item.channel.id === change.id)
         binding.channel.state = change.state
-        return change.state
       }
     },
   })
   try {
     assert.equal(current.page.business.value.state, 'enabled')
     assert.equal(current.page.channelStateTarget.value.enabled, true)
+    const binding = current.records.get(`${topicId}/notifier-webhook/hook-one`)
+    binding.channel.channelConfiguration.variables = { message: { source: 'fixed', value: 'Latest channel config' } }
+    const written = structuredClone(binding.channel)
     await current.page.toggleChannel()
-    assert.deepEqual(writes, [[topicId, 'binding-hook-one', { templateId: 'template-hook-one', configId: 'hook-one', state: 'disabled' }]])
+    assert.deepEqual(writes, [[topicId, { ...written, state: 'disabled' }]])
     assert.equal(current.page.business.value.state, 'enabled')
     assert.equal(current.page.channelStateTarget.value.enabled, false)
     assert.equal(current.route.query.configId, 'hook-one')
@@ -1329,7 +1338,7 @@ test('channel buttons toggle one credential, respect failures and read back the 
 
     fail = true
     await current.page.toggleChannel()
-    assert.deepEqual(writes.at(-1), [topicId, 'binding-hook-one', { templateId: 'template-hook-one', configId: 'hook-one', state: 'enabled' }])
+    assert.deepEqual(writes.at(-1), [topicId, { ...written, state: 'enabled' }])
     assert.equal(current.page.channelStateTarget.value.enabled, false)
     assert.equal(current.page.channelActionFailure.value, true)
     assert.equal(current.messages.length, 1)
@@ -1340,18 +1349,39 @@ test('channel buttons toggle one credential, respect failures and read back the 
     await settlePage()
     await current.page.toggleChannel()
     assert.equal(current.page.channelStateTarget.value.enabled, true)
+    assert.deepEqual(writes.at(-1), [topicId, { ...written, state: 'enabled' }])
     assert.deepEqual(current.messages.at(-1), ['messageNotification.templates.enableChannelSucceeded', 'success'])
     canUpdate.value = false
     assert.equal(current.page.canToggleChannel.value, false)
     await current.page.toggleChannel()
     assert.equal(writes.length, 3)
+    canUpdate.value = true
+    current.records.get(`${topicId}/notifier-webhook/hook-one`).template.configId = 'replaced-config'
+    await current.page.toggleChannel()
+    assert.equal(current.page.channelActionFailure.value, true)
+    assert.equal(writes.length, 3)
+  } finally { current.close() }
+})
+
+test('channel toggle declines a legacy row that the existing API would replace with a new ID', async () => {
+  const current = await mountTemplatePage({ business: 'alarm-scope', channel: 'email:embedded' }, () => true, {
+    businessTypes: [{ id: 'alarm-scope', provider: 'alarm-device', name: 'Device alarm', state: 'enabled', channels: [{
+      id: 'legacy-email', name: 'Email', channelProvider: 'notifier-email', state: 'enabled',
+      channelConfiguration: { templateId: 'email-template' },
+    }] }],
+  })
+  try {
+    assert.equal(current.page.channelStateTarget.value.enabled, true)
+    await current.page.toggleChannel()
+    assert.equal(current.page.channelActionFailure.value, true)
+    assert.equal(current.api.calls.some(([name]) => name === 'saveBusinessChannel'), false)
   } finally { current.close() }
 })
 
 test('read-only template users query independent templates without requesting all-for-save or toggling channels', async () => {
   let reads = 0, writes = 0
   const current = await mountTemplatePage({ templateId: 'first', channel: 'email:embedded' }, code => code.endsWith(':query'), {
-    queryTemplateDirectory: async () => { reads++; return [business()] }, updateBusinessChannelState: async () => { writes++ },
+    queryTemplateDirectory: async () => { reads++; return [business()] }, saveBusinessChannel: async () => { writes++ },
   })
   try {
     assert.equal(current.page.draft.value.id, 'first')
@@ -1434,6 +1464,12 @@ test('five business channels save single bindings, preserve states and receiver 
     api.queryAllConfigs = async () => [{ id: 'exact-config', name: 'Exact', type: channelId.split(':')[0], provider: channelId.split(':')[1], configuration: {} }]
     let persisted
     api.getBusinessTemplate = async () => persisted
+    const save = api.saveBusinessTemplate
+    api.saveBusinessTemplate = async (...args) => {
+      const saved = await save(...args)
+      persisted = { ...saved, channel: { ...saved.channel, state: persisted?.channel.state ?? saved.channel.state } }
+      return saved
+    }
     const scope = vue.effectScope()
     const workspace = scope.run(() => useTemplateWorkspace(access(), api))
     try {
@@ -1467,7 +1503,7 @@ test('five business channels save single bindings, preserve states and receiver 
       assert.equal(second.template.name, 'Updated template name')
       assert.equal(second.channel.state, undefined)
       assert.equal(workspace.dirty.value, false)
-      assert.equal(api.calls.some(call => ['createTemplate', 'updateTemplate', 'updateBusinessChannelState'].includes(call[0])), false)
+      assert.equal(api.calls.some(call => ['createTemplate', 'updateTemplate', 'saveBusinessChannel'].includes(call[0])), false)
     } finally { scope.stop() }
   }
 })
@@ -1475,7 +1511,14 @@ test('five business channels save single bindings, preserve states and receiver 
 test('business drafts survive channel, vendor and asset-scope switches, failed saves and retries', async () => {
   const api = mockApi()
   const original = { id: 'binding', providerId: 'scope-a', channelProvider: 'notifier-email', state: { value: 'disabled' }, grant: { roles: ['role'] }, channelConfiguration: { templateId: 'old-independent', notifierId: 'smtp-one', variables: { custom: 'keep' } } }
-  api.getBusinessTemplate = async (owner, type) => owner === 'scope-a' && type === 'notifier-email' ? { channel: original, template: record('old-independent', { type: 'email' }) } : undefined
+  let persisted = { channel: original, template: record('old-independent', { type: 'email' }) }
+  api.getBusinessTemplate = async (owner, type) => owner === 'scope-a' && type === 'notifier-email' ? persisted : undefined
+  const saveBinding = api.saveBusinessTemplate
+  api.saveBusinessTemplate = async (...args) => {
+    const saved = await saveBinding(...args)
+    persisted = { ...saved, channel: { ...saved.channel, state: original.state } }
+    return { ...saved, channel: { ...saved.channel, state: 'enabled' } }
+  }
   const scope = vue.effectScope()
   const workspace = scope.run(() => useTemplateWorkspace(access(), api))
   try {
@@ -1503,6 +1546,7 @@ test('business drafts survive channel, vendor and asset-scope switches, failed s
     const payload = api.calls.find(call => call[0] === 'saveBusinessTemplate')[3]
     assert.equal(payload.template.id, 'old-independent')
     assert.equal(payload.channel.state, undefined)
+    assert.equal(workspace.channelStateTarget.value.enabled, false)
     assert.deepEqual(payload.channel.grant, original.grant)
     assert.equal(payload.channel.channelConfiguration.variables.custom, 'keep')
     assert.equal(original.channelConfiguration.templateId, 'old-independent')
@@ -1511,7 +1555,13 @@ test('business drafts survive channel, vendor and asset-scope switches, failed s
 
 test('missing sending config and supplier fields block writes; imported history preserves managed target', async () => {
   const api = mockApi()
-  api.getBusinessTemplate = async owner => ({ channel: { id: 'binding', providerId: owner, channelProvider: 'notifier-sms', channelConfiguration: { templateId: 'stpl_binding' } }, template: { ...record('stpl_binding'), type: 'sms', provider: 'aliyunSms', template: { code: 'SMS_OLD', signName: 'Old sign' } } })
+  let persisted
+  api.getBusinessTemplate = async owner => persisted ?? { channel: { id: 'binding', providerId: owner, channelProvider: 'notifier-sms', channelConfiguration: { templateId: 'stpl_binding' } }, template: { ...record('stpl_binding'), type: 'sms', provider: 'aliyunSms', template: { code: 'SMS_OLD', signName: 'Old sign' } } }
+  const save = api.saveBusinessTemplate
+  api.saveBusinessTemplate = async (...args) => {
+    persisted = await save(...args)
+    return persisted
+  }
   api.queryAllConfigs = async () => ['sms-config', 'sms-source'].map(id => ({ id, name: id, type: 'sms', provider: 'aliyunSms', configuration: {} }))
   api.getTemplate = async id => ({ ...record(id), type: 'sms', provider: 'aliyunSms', configId: 'sms-source', template: { code: 'SMS_SOURCE', signName: 'Approved' } })
   const scope = vue.effectScope()

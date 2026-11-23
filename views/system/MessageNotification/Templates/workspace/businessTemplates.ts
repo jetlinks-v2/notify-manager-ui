@@ -43,6 +43,19 @@ export function businessChannelKey(channel: NoticeChannelConfig): string | undef
   return channel.channelKey || undefined
 }
 
+/** 保存接口按实例身份定位，详情回读必须仍指向同一通道、模板和凭证。 */
+export async function readBusinessChannelBinding(api: Pick<MessageNotificationApi, 'getBusinessTemplate'>,
+  providerId: string, expected: NoticeChannelConfig, templateId: string, configId: string | undefined): Promise<NoticeChannelConfig> {
+  const channelProvider = expected.channelProvider
+  const channelKey = businessChannelKey(expected)
+  if (!expected.id || !channelProvider || !configId) throw new NotificationRequestError('unavailable')
+  const { channel, template } = await api.getBusinessTemplate(providerId, channelProvider, channelKey) ?? {}
+  if (channel?.id !== expected.id || channel.providerId !== providerId || channel.channelProvider !== channelProvider
+    || businessChannelKey(channel) !== channelKey || channel.channelConfiguration?.templateId !== templateId
+    || template?.id !== templateId || template.configId !== configId) throw new NotificationRequestError('unavailable')
+  return channel
+}
+
 /** 模板目录的凭证优先于旧通道上为兼容写入的 notifierId。 */
 export function bindingConfigId(channel: NoticeChannelConfig, templates: readonly NotificationTemplate[]): string | undefined {
   const reference = channel.channelConfiguration
