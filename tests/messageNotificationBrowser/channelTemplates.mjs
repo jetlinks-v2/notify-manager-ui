@@ -46,14 +46,33 @@ async function savedTemplates(page, type, provider) {
   const generated = templates.filter(item => item.configId === config.id)
   assert.equal(generated.length, 4)
   assert.equal(new Set(generated.map(item => item.id)).size, 4)
-  for (const business of businessTypes) {
+  const bindings = businessTypes.map(business => {
     const channel = business.channels.find(item => item.channelProvider === `notifier-${type}`
       && generated.some(template => template.id === item.channelConfiguration?.templateId))
     assert.equal(channel.state, 'enabled')
     assert.equal(channel.channelConfiguration.notifierId, config.id)
     assert.ok(generated.some(item => item.id === channel.channelConfiguration.templateId && item.provider === provider))
-  }
-  return { config, generated }
+    return channel
+  })
+  return { config, generated, bindings }
+}
+
+async function renameConfiguration(page, previous, nameLabelKey, name, bindingName) {
+  const row = page.locator(`.channel-configurations__row[data-config-id="${previous.config.id}"]`)
+  await editButton(row, await t(page, 'messageNotification.channels.more')).click()
+  await editButton(page.locator('.ant-dropdown:visible'), await t(page, 'messageNotification.common.edit')).click()
+  const modal = page.locator('.channel-configuration-modal')
+  await text(modal, await t(page, nameLabelKey)).fill(name)
+  const before = (await snapshot(page)).calls.length
+  await saveChannelDraft(page)
+  await modal.waitFor({ state: 'hidden' })
+  await summary(page, 0, 4)
+  const current = await savedTemplates(page, previous.config.type, previous.config.provider)
+  assert.equal(current.config.name, name)
+  assert.deepEqual(current.generated, previous.generated)
+  assert.deepEqual(current.bindings, previous.bindings.map(binding => ({ ...binding, name: bindingName })))
+  const writes = (await snapshot(page)).calls.slice(before).filter(([method]) => method === 'saveBusinessTemplate')
+  assert.deepEqual(writes.map(([, { item }]) => item.channel.name), Array(4).fill(bindingName))
 }
 
 async function addRobot(page) {
@@ -286,11 +305,13 @@ try {
   await modal.waitFor({ state: 'hidden' })
   await summary(robot, 4, 0)
   const robotSaved = await savedTemplates(robot, 'dingTalk', 'dingTalkRobotWebHook')
+  assert.ok(robotSaved.bindings.every(binding => binding.name === '钉钉·验收机器人'))
   assert.deepEqual(robotSaved.config.configuration.messageTemplateDefaults, {
     messageType: 'link', title: '${topic}', message: '${message}', messageUrl: 'https://fixture.example.test/details',
   })
   assert.ok(robotSaved.generated.every(item => item.template.messageType === 'link' && item.template.link.messageUrl === 'https://fixture.example.test/details'
     && item.template.link.title === '${topic}' && item.template.link.text === '${message}'))
+  await renameConfiguration(robot, robotSaved, 'messageNotification.channels.robot.name', '夜班机器人', '钉钉·夜班机器人')
   await editButton(robot.locator('.channel-configurations__row'), await t(robot, 'messageNotification.channels.more')).click()
   await editButton(robot.locator('.ant-dropdown:visible'), '补齐消息模板').click()
   await summary(robot, 0, 4)
@@ -300,6 +321,7 @@ try {
   const webhook = await open('webhook:http', 1440, 'fail=saveBusinessTemplate')
   await editButton(webhook, await t(webhook, 'messageNotification.channels.add')).click()
   const webhookModal = webhook.locator('.channel-configuration-modal')
+  await text(webhookModal, await t(webhook, 'messageNotification.channels.fields.name')).fill('告警回调')
   await text(webhookModal, await t(webhook, 'messageNotification.channels.webhook.address')).fill('https://fixture.example.test/webhook')
   assert.equal(await webhook.locator('.webhook-preview').count(), 0)
   assert.equal(await webhook.getByText('请求示例', { exact: true }).count(), 0)
@@ -309,14 +331,16 @@ try {
   await editButton(feedback(webhook), '重试补齐').click()
   await summary(webhook, 4, 0)
   const web = await savedTemplates(webhook, 'webhook', 'http')
+  assert.ok(web.bindings.every(binding => binding.name === 'Webhook·告警回调'))
   assert.equal(web.config.configuration.messageTemplateDefaults, undefined)
   assert.equal(new Set(web.generated.map(item => item.template.body)).size, 4)
   assert.ok(web.generated.every(item => item.template.contextAsBody === false && !Object.hasOwn(item.template, 'url') && JSON.parse(item.template.body)))
   assert.equal((await snapshot(webhook)).calls.filter(([method]) => method === 'createConfig').length, 1)
+  await renameConfiguration(webhook, web, 'messageNotification.channels.fields.name', '值班回调', 'Webhook·值班回调')
   await webhook.close()
 
   assert.deepEqual(problems, [])
-  console.log('Email, Aliyun voice and SMS, both DingTalk providers and Webhook passed channel creation, required fields, exact binding, preservation and retry checks.')
+  console.log('Channel template checks passed, including creation and renaming of DingTalk robot and Webhook bindings.')
 } catch (error) {
   for (const context of browser.contexts()) {
     for (const page of context.pages()) await page.screenshot({ path: join(output, 'failure.png') }).catch(() => {})

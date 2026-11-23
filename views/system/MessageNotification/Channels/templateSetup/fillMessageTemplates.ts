@@ -17,6 +17,9 @@ import { createChannelMessageTemplate, dingTalkRobotChannel, readTemplateSetup, 
 type TemplateFillApi = Pick<MessageNotificationApi, 'getConfig' | 'getSmsTemplateContent' | 'queryTemplateDirectory' |
   'getBusinessTemplate' | 'queryInsideMailChannel' | 'queryTemplates' | 'saveBusinessTemplate' | 'saveBusinessTemplates'>
 
+// 对应 notify_subscriber_channel.name 的数据库列宽，按字符截取以保留完整的 Unicode 码点。
+const subscriberChannelNameLimit = 128
+
 export interface TemplateFillResult {
   created: number
   skipped: number
@@ -42,7 +45,7 @@ function isEnabled({ state }: NoticeChannelConfig): boolean {
   return (typeof state === 'string' ? state : state?.value) === 'enabled'
 }
 
-/** The existing PUTs are upserts. Only a confirmed empty slot is eligible for a write. */
+/** 按配置补齐缺失的绑定，已有多配置绑定仅同步名称。 */
 export async function fillMessageTemplates(
   api: TemplateFillApi,
   config: NotifierConfig,
@@ -57,6 +60,7 @@ export async function fillMessageTemplates(
   const keyed = usesBusinessChannelKey(channel.id)
   let directory: NoticeChannelConfig[]
   let recipients: ReturnType<typeof readWorkRecipients>
+  let configurationName: string | undefined
   try {
     const saved = await api.getConfig(config.id)
     // Confirm the defaults survived the channel write before creating any business record.
@@ -67,13 +71,16 @@ export async function fillMessageTemplates(
     }
     if (!active()) return result
     recipients = isWorkChannel(channel.id) ? readWorkRecipients(saved.configuration) : undefined
+    configurationName = channel.multipleConfigurations ? saved.name?.trim() : undefined
     directory = await api.queryTemplateDirectory()
   } catch (error) {
     result.loadFailure = classifyNotificationFailure(error)
     return result
   }
 
-  const channelName = channel.name || translate(channel.labelKey)
+  const channelName = configurationName
+    ? Array.from(`${channel.typeName || channel.type}·${configurationName}`).slice(0, subscriberChannelNameLimit).join('')
+    : channel.name || translate(channel.labelKey)
   let smsContent: string | undefined
   let insideMailRequest: Promise<NoticeChannelConfig | undefined> | undefined
   let templateDirectory: ReturnType<TemplateFillApi['queryTemplates']> | undefined
@@ -97,7 +104,19 @@ export async function fillMessageTemplates(
         const records = needsTemplates
           ? (await (templateDirectory ??= api.queryTemplates(withNotificationChannel({ paging: false }, channel)))).data
           : undefined
-        configured = Boolean((await loadBusinessTemplateForConfig(api, business, channel, config.id, records)).template)
+        const stored = await loadBusinessTemplateForConfig(api, business, channel, config.id, records)
+        configured = Boolean(stored.template)
+        const existing = stored.savedItem
+        if (configurationName && existing && existing.channel.name !== channelName) {
+          if (!active()) break
+          if (!business.id || !existing.channel.id) throw new NotificationRequestError('error', existing)
+          // 随通道提交回读的原始模板，避免把编辑器的默认值写入已有模板。
+          const item = { ...existing, channel: { ...existing.channel, name: channelName } }
+          writing = true
+          const saved = await api.saveBusinessTemplate(business.id, channelProvider, item)
+          readSavedBusinessTemplate(business, channel, item, saved)
+          if (saved.channel.name !== channelName) throw new NotificationRequestError('error', saved)
+        }
       } else {
         configured = hasBinding(business, channelProvider)
           || Boolean(business.id && await api.getBusinessTemplate(business.id, channelProvider))

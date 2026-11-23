@@ -137,7 +137,7 @@ test('verified notifier and template backend declarations keep read, save, delet
         query: ['notifier:query'],
         add: ['notifier:query', 'notifier:save'],
         update: ['notifier:query', 'notifier:save'],
-        delete: ['notifier:delete', 'notifier:query'],
+        delete: ['notifier:delete', 'notifier:query', 'notify-channel:delete', 'notify-channel:query'],
         action: ['notifier:query', 'notifier:send'],
         bind: ['notifier:query', 'user-third-party-manager:query', 'user-third-party-manager:save', 'user:query'],
       },
