@@ -33,7 +33,11 @@ export function channelProviderFor(channel: NotificationChannel): string {
   return `notifier-${channel.type}`
 }
 
-type StoredBusinessTemplate = { channel?: NoticeChannelConfig; template?: NotificationTemplate }
+type StoredBusinessTemplate = {
+  channel?: NoticeChannelConfig
+  template?: NotificationTemplate
+  savedItem?: NoticeChannelTemplateItem
+}
 
 export function businessChannelKey(channel: NoticeChannelConfig): string | undefined {
   return channel.channelKey || undefined
@@ -68,7 +72,7 @@ export function readBusinessTemplate(business: NoticeChannelConfig, channel: Not
     throw new NotificationRequestError('error', item)
   }
   if (notificationEnumValue(template.provider) !== channel.provider) return { channel: actual || declared }
-  return { channel: actual || declared, template: {
+  return { channel: actual || declared, savedItem: item, template: {
     ...cloneNotificationValue(template), id: template.id,
     name: template.name || business.name || channel.name || channel.type,
     type: channel.type, provider: channel.provider, template: cloneNotificationValue(template.template),

@@ -127,7 +127,13 @@ AgentId 说明验证（2026-11-19）：模块目录执行 `node --test tests/mes
 
 `Channels/useChannelsPage.ts` 和 `Channels/configuration/useChannelConfigurations.ts` 将保存后的当前渠道交给 `Channels/templateSetup/useChannelTemplateSetup.ts`。`Channels/templateSetup/templateDefaults.ts` 按消息类型组装邮件、钉钉工作通知和 Webhook 模板，扩展类型使用通用通知变量。钉钉工作通知从 `configuration.agentId` 取值，群机器人在 `configuration.messageTemplateDefaults` 中保存消息类型、默认标题与正文以及链接消息的跳转地址。自动补齐群机器人模板时使用通用通知变量，纯文本消息只带正文。企业微信沿用 `configuration.alarmTemplateDefaults.agentId` 和历史 AgentId 读取规则。
 
-`Channels/templateSetup/fillMessageTemplates.ts` 回读当前渠道和消息类型目录，通过现有单渠道和聚合接口创建缺失的模板。新绑定默认启用，首次创建类型时处理内置站内信，个人订阅由用户勾选。工作通知、群机器人和 Webhook 按各自的配置实例读取绑定。已有绑定优先，消息模板页按配置 ID 打开对应内容。渠道和模板分别保存，遇到部分成功可在渠道页或机器人行菜单用「补齐消息模板」重试缺失项。
+`Channels/templateSetup/fillMessageTemplates.ts` 回读当前渠道和消息类型目录，通过现有单渠道和聚合接口创建缺失的模板。钉钉群机器人与 Webhook 的新绑定以「渠道类型名·配置名」填写 `channel.name`，例如「钉钉·小黑」和「WebHook·告警回调」。绑定名称按数据库列宽最多保留 128 个字符，旧配置缺少名称时沿用服务商的默认名称。新绑定默认启用，首次创建类型时处理内置站内信，个人订阅由用户勾选。工作通知、群机器人和 Webhook 按各自的配置实例读取绑定。已有绑定优先，消息模板页按配置 ID 打开对应内容。渠道和模板分别保存，遇到部分成功可在渠道页或机器人行菜单用「补齐消息模板」重试缺失项。
+
+### 编辑保存同步绑定名称
+
+钉钉群机器人和 Webhook 编辑保存后，`Channels/templateSetup/fillMessageTemplates.ts` 按配置 ID 回读已有业务绑定。名称不同的绑定通过 `_save-with-template` 提交原绑定和原模板，并把 `channel.name` 更新为「渠道类型名·配置名」。按原 `channelKey` 保存，兼容历史默认实例。重试从服务端回读，逐条同步名称仍不同的绑定。
+
+配置名称随模板写入的回归由 `tests/messageNotificationBusinessWorkspace.test.mjs` 覆盖单渠道和聚合新建、编辑时的具名与默认绑定，以及重复保存。相关回归共 202 项通过，`tests/messageNotificationBrowser/channelTemplates.mjs` 的新建与编辑隔离浏览器验证、模块生产构建均通过。模块类型检查仍报告 199 项基线诊断，修复后可在 `runtime-ui/` 执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json` 复验。真实落库待在支持 `channelKey` 的环境中新增和编辑具名渠道后核对。
 
 ### 阿里云语音和短信随渠道创建消息模板
 
@@ -729,7 +735,7 @@ AgentId 浏览器复核：9200 实际企业微信页已显示新字段和默认�
 
 `Channels/index.vue` 按多配置能力展示列表。首次和后续配置均从页头「新增配置」打开弹窗，已有配置从行菜单进入编辑。列表显示接收地址的协议和主机。`Channels/configuration/useChannelConfigurations.ts` 复用逐行操作和弹窗草稿。保存成功后按配置 ID 及本模块的[模板自动生成规则](#邮件钉钉与-webhook-随渠道创建消息模板)补齐模板。请求体的编辑和预览位于消息模板页。
 
-Webhook 和钉钉群机器人逐行删除复用 `Channels/configuration/deleteChannelConfiguration.ts`。具备消息模板查询及删除权限时，确认框提示清理相应模板和投递配置。前端按所选配置 ID 查询专属模板，从现有业务目录核对投递绑定，依次调用 `DELETE /notify/channel/{id}`、`DELETE /notifier/template/{id}` 和 `DELETE /notifier/config/{id}`。投递绑定清理沿用接口自身要求的业务权限。其他实例、通用模板及个人订阅保留。
+Webhook 和钉钉群机器人逐行删除复用 `Channels/configuration/deleteChannelConfiguration.ts`。具备消息模板查询及删除权限时，确认框提示清理相应模板和投递配置。前端按所选配置 ID 查询专属模板，从现有业务目录核对投递绑定，依次调用 `DELETE /notify/channel/{id}`、`DELETE /notifier/template/{id}` 和 `DELETE /notifier/config/{id}`。`baseMenu.json` 的「清除配置」动作同时声明 `notifier` 和 `notify-channel` 的查询与删除权限，供菜单同步后为该动作授权。其他实例、通用模板及个人订阅保留。
 
 各接口独立提交。失败时提示未完成的步骤，并在重试前重新查询。当前页面会记录已确认完成的解绑。页面重新打开后，若业务目录无法再确认托管模板的绑定，流程保留渠道配置并提示核对。缺少模板查询或删除权限时，配置删除沿用原有引用校验。
 

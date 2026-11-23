@@ -211,7 +211,8 @@ test('WeCom provisioning never treats unreadable bindings or unpersisted default
   assert.deepEqual(io.calls.map(([name]) => name), ['queryTemplateDirectory'])
 })
 
-test('new external channels fill four message types with their saved config ID, default content and enabled bindings', async () => {
+test('new external channels fill four message types with their saved config ID, binding name and default content', async () => {
+  const longRobotName = `${'运'.repeat(124)}🔔`
   const cases = [
     { id: 'email:embedded', configuration: { messageTemplateDefaults: { subject: '历史邮件主题', message: '历史邮件正文' } },
       verify: (item, provider) => {
@@ -244,16 +245,19 @@ test('new external channels fill four message types with their saved config ID, 
       assert.equal(item.template.template.toUser, 'member-1,member-2')
       assert.equal(item.channel.channelConfiguration.variables.toUser, undefined)
     } },
-    { id: 'dingTalk:dingTalkRobotWebHook', configuration: { messageTemplateDefaults: { messageType: 'link', title: '旧标题', message: '旧正文', messageUrl: 'https://fixture.example.test/details' } },
+    { id: 'dingTalk:dingTalkRobotWebHook', name: '小黑', bindingName: '钉钉·小黑',
+      configuration: { messageTemplateDefaults: { messageType: 'link', title: '旧标题', message: '旧正文', messageUrl: 'https://fixture.example.test/details' } },
       verify: item => {
         assert.deepEqual(item.template.template, { messageType: 'link', link: { title: '${topic}', text: '${message}', messageUrl: 'https://fixture.example.test/details' } })
         assert.deepEqual(item.channel.channelConfiguration.variables, {})
       } },
-    { id: 'dingTalk:dingTalkRobotWebHook', configuration: { messageTemplateDefaults: { messageType: 'text' } },
+    { id: 'dingTalk:dingTalkRobotWebHook', name: `${longRobotName}额外`, bindingName: `钉钉·${longRobotName}`,
+      configuration: { messageTemplateDefaults: { messageType: 'text' } },
       verify: item => {
         assert.deepEqual(item.template.template, { messageType: 'text', text: { content: '${message}' } })
       } },
-    { id: 'webhook:http', configuration: { url: 'https://fixture.example.test/webhook' },
+    { id: 'webhook:http', name: '事件接收端', bindingName: 'Webhook·事件接收端',
+      configuration: { url: 'https://fixture.example.test/webhook' },
       verify: (item, provider) => {
         assert.equal(item.template.template.contextAsBody, false)
         assert.equal(Object.hasOwn(item.template.template, 'url'), false)
@@ -288,9 +292,10 @@ test('new external channels fill four message types with their saved config ID, 
         assert.deepEqual(item.template.variableDefinitions, [])
       } },
   ]
-  for (const { id, configuration, verify } of cases) {
-    const channel = notificationChannels.find(value => value.id === id)
-    const saved = { ...config('current-config', channel.type, channel.provider), configuration }
+  for (const { id, name, bindingName, configuration, verify } of cases) {
+    const definition = notificationChannels.find(value => value.id === id)
+    const channel = { ...definition, typeName: channelTypes.find(type => type.id === definition.type)?.name }
+    const saved = { ...config('current-config', channel.type, channel.provider), name: name ?? 'current-config', configuration }
     const io = mockApi([saved])
     io.api.getConfig = async () => clone(saved)
     io.api.getSmsTemplateContent = async (...args) => {
@@ -316,12 +321,48 @@ test('new external channels fill four message types with their saved config ID, 
     for (const item of records) {
       assert.equal(item.template.configId, saved.id)
       assert.equal(item.template.provider, channel.provider)
+      assert.equal(item.channel.name, bindingName ?? channel.labelKey, id)
       assert.equal(item.channel.state, 'enabled')
       verify(item, directory.find(business => business.id === item.channel.providerId)?.provider)
     }
     const [, , request] = io.calls.find(([method]) => method === 'saveBusinessTemplates')
     assert.equal(request.provider.defaultSubscribed, false)
     assert.deepEqual(request.channels[1], { channel: { name: '站内信', state: 'enabled', channelProvider: 'inside-mail' } })
+  }
+})
+
+test('saving a multi-config channel updates only the matching named and legacy binding names', async () => {
+  for (const [id, typeName] of [['dingTalk:dingTalkRobotWebHook', '钉钉'], ['webhook:http', 'WebHook']]) {
+    const channel = { ...notificationChannels.find(value => value.id === id), typeName }
+    const saved = { ...config('edited-config', channel.type, channel.provider), name: '新的名称' }
+    const io = mockApi([saved])
+    const currentTopic = business()
+    const legacyTopic = business('scene-topic', 'scene')
+    const channelProvider = `notifier-${channel.type}`
+    function bind(topic, configId, channelKey) {
+      const record = item(topic.id, template({
+        id: `template-${topic.id}-${configId}`, name: '', configId, type: channel.type, provider: channel.provider,
+      }), { id: `binding-${topic.id}-${configId}`, name: '旧名称', channelKey })
+      record.channel.channelConfiguration.notifierId = configId
+      topic.channels.push(record.channel)
+      io.records.set(bindingKey(topic.id, channelProvider, channelKey), record)
+      return record
+    }
+    const selected = bind(currentTopic, saved.id, 'custom-key')
+    const sibling = bind(currentTopic, 'another-config', 'another-key')
+    const legacy = bind(legacyTopic, saved.id, null)
+    io.api.queryTemplateDirectory = async () => clone([currentTopic, legacyTopic])
+    const fill = () => fillMessageTemplates(io.api, saved, channel, () => true, key => key)
+    const writes = () => io.calls.filter(([method]) => method === 'saveBusinessTemplate' || method === 'saveBusinessTemplates')
+    const expected = [selected, legacy].map(record => [
+      'saveBusinessTemplate', record.channel.providerId, channelProvider,
+      { ...record, channel: { ...record.channel, name: `${typeName}·新的名称` } },
+    ])
+    assert.deepEqual(await fill(), { created: 0, skipped: 2, failed: [], unknown: false })
+    assert.deepEqual(writes(), expected)
+    assert.deepEqual(io.records.get(bindingKey(currentTopic.id, channelProvider, 'another-key')), sibling)
+    assert.deepEqual(await fill(), { created: 0, skipped: 2, failed: [], unknown: false })
+    assert.deepEqual(writes(), expected)
   }
 })
 

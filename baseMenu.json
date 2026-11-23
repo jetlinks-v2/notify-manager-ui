@@ -134,6 +134,13 @@
                       "query",
                       "delete"
                     ]
+                  },
+                  {
+                    "permission": "notify-channel",
+                    "actions": [
+                      "query",
+                      "delete"
+                    ]
                   }
                 ]
               },
