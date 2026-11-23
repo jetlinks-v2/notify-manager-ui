@@ -24,8 +24,6 @@ import {
 
 export interface CurrentNotificationBinding { type: string; provider: string; providerName?: string; thirdPartyUserId: string }
 interface BusinessVariableMetadata extends NotificationVariable { valueType?: { type?: string; format?: string } }
-type BusinessChannelState = 'enabled' | 'disabled'
-interface BusinessChannelStateUpdate { templateId: string; configId: string; state: BusinessChannelState }
 export const insideMailChannelProvider = 'inside-mail'
 
 /** Preserve platform request behavior, but require success before a page updates its saved baseline. */
@@ -90,16 +88,6 @@ function businessTemplate(value: unknown): NoticeChannelTemplateItem | undefined
 
 /** Typed notification facade using the platform request context and checked responses. */
 export const messageNotificationApi = {
-  /** 只接受服务端确认的同一条模板绑定及目标状态。 */
-  async updateBusinessChannelState(providerId: string, channelId: string, change: BusinessChannelStateUpdate): Promise<BusinessChannelState> {
-    const result = await checked<{ channelId: string; templateId: string; configId: string; state: NoticeChannelConfig['state'] }>(
-      request.put(`/notify/channel/${idSegment(providerId)}/channels/${idSegment(channelId)}/state`, change, { hiddenError: true }),
-    )
-    const state = typeof result?.state === 'string' ? result.state : result?.state?.value
-    if (result?.channelId !== channelId || result.templateId !== change.templateId || result.configId !== change.configId
-      || state !== change.state) throw new NotificationRequestError('error', result)
-    return state
-  },
   /** Existing business directory supplies grouping and exact template bindings, never name matching. */
   async queryTemplateDirectory(): Promise<NoticeChannelConfig[]> {
     const result = await checked<NoticeChannelConfig[]>(request.get('/notify/channel/all-for-save'))

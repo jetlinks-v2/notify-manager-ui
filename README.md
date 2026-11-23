@@ -158,7 +158,9 @@ AgentId 说明验证（2026-11-19）：模块目录执行 `node --test tests/mes
 
 消息模板页以业务组织左侧目录。对于按配置实例管理模板的钉钉和 Webhook，`Templates/hooks/useTemplatePage.ts` 将当前配置 ID 交给 `Templates/templateDirectoryModel.ts`，每个业务显示一项，搜索及配置提示使用该配置绑定的模板。右侧页签负责切换配置和对应内容。
 
-`Templates/useTemplateWorkspace.ts` 在配置列表成功返回且没有群机器人配置时，按空配置加载默认模板预览。「当前渠道尚未配置」提示提供「去配置」入口，返回后按当前可用的群机器人配置加载模板。
+`Templates/useTemplateWorkspace.ts` 按当前钉钉子渠道确认是否存在可用配置。配置列表成功返回且当前子渠道为空时，展示默认模板预览及「当前渠道尚未配置」和「去配置」入口。群机器人与工作通知共用 `notifier-dingTalk`，空配置会跳过业务模板详情查询。配置可用后，按当前子渠道的凭证加载对应模板。
+
+本地 9201 已核对两份群机器人配置并存时，切到未配置的工作通知会显示未配置提示及默认预览。模块目录执行 `node --test tests/messageNotification*.test.mjs views/notice/template/hooks/noticeAlarmVariables.test.mjs`，447 项通过，包含工作通知跳过群机器人绑定查询的回归。模块生产构建和 `git diff --check` 通过。类型检查仍报告与修改前一致的 199 条诊断，复验命令为在 `runtime-ui/` 执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`。
 
 本地 9201 已核对仅配置工作通知时的群机器人空态和默认预览。`navigation.mjs` 通过 14 组浏览器验证，业务工作区测试覆盖失效绑定及新增配置后的刷新。通知测试 429 项、模块生产构建和定向样式检查通过。`vue-tsc` 的 197 条诊断与当前分支基线一致。
 
@@ -417,11 +419,11 @@ Commit：`79bbbea`（本地 `2.20`，未推送）。提交快照验证（2026-11
 页头现有按钮控制当前已保存的外部渠道绑定。目标由左侧消息类型和右侧选中的渠道凭证共同确定。「设备告警 → 钉钉 → 群机器人·小黑2」对应一条独立绑定，钉钉群机器人和 Webhook 按各自凭证选择。
 
 1. `views/system/MessageNotification/Templates/index.vue` 的「消息订阅」标签与「禁用 / 启用」按钮读取当前已保存的渠道绑定状态。切换凭证时显示对应绑定的状态。具备消息模板编辑权限时可操作。
-2. `Templates/hooks/useTemplatePage.ts` 和 `Templates/useTemplateWorkspace.ts` 使用实际绑定 ID、模板 ID 和凭证 ID 发起状态请求，保留当前 `business`、`channel`、`configId` 选择。写入期间锁定按钮，按服务端结果回显，失败时提供重新读取入口。模板编辑和收件人同步按当前已存状态保留渠道启停，已禁用模板仍计为已配置。
+2. `Templates/useTemplateWorkspace.ts` 先读取并核对当前绑定，通过现有 `PATCH /notify/channel/{providerId}` 提交该条渠道的完整记录和目标状态，再读取同一绑定确认结果。启用时，投递注册使用请求里的 `channelConfiguration` 和授权信息。切换凭证时保留 `business`、`channel`、`configId` 选择，写入期间锁定按钮，失败时提供重新读取入口。旧默认渠道按已稳定化的实际 ID 保存。模板正文、名称及收件人编辑省略 `state`，模板编辑从详情回读渠道状态。
 
 以「设备告警 → Webhook → 值班 A」和「值班 B」验收。关闭 A 后，B、短信和同凭证下的「设备告警解除」仍按各自的订阅与授权投递。刷新后 A 仍显示关闭，编辑正文和补齐模板后仍关闭。
 
-验证（2026-11-23）。模块目录执行 `node --test tests/messageNotification*.test.mjs`，440 项通过。模块生产构建、定向 UI 样式检查和中英日语言键一致性通过。隔离 Chrome 在 9201 通过完整导航的 13 项检查，包含订阅标签随启停和凭证切换回显。页面错误和被拦截的业务请求均为 0。定向检查覆盖桌面和 390px 的单凭证启停、相邻凭证状态、刷新、请求失败和权限撤回，也验证了企业微信旧默认绑定编辑后仍为禁用。完整企业微信浏览器脚本停在 AgentId 焦点断言。运行时目录执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，仍有 199 条既有诊断，前后输出一致。实际投递待与支持渠道状态接口的运行时通知服务联调。
+验证（2026-11-23）。以 `notify-manager` 的 `13f9377` 为基线，9 项隔离通道集成验证覆盖默认及具名渠道的保存，以及正文保存省略状态后的回读。补充的默认邮件启用用例复现 `Instance must not be null`，提交完整渠道记录后启用成功并回读为 `enabled`。模块目录执行 `node --test tests/messageNotification*.test.mjs`，441 项通过。隔离 Chrome 在 9201 通过导航的 13 项检查及默认邮件启用回显，核对了完整配置和授权的提交。模块生产构建与 `git diff --check` 通过。运行时目录执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，仍有 199 条相同的既有诊断。实际第三方投递待联调。
 
 ### 业务节点联动与模板预览
 

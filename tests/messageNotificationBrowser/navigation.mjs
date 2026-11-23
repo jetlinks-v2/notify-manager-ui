@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -69,7 +70,8 @@ try {
   const businessRows = wechat.locator('.template-directory__name')
   await businessRows.first().waitFor()
   const directoryLabels = await labels(businessRows)
-  await wechat.evaluate(() => {
+  const robotChannelId = createHash('md5').update('wechat-device-topic||notifier-dingTalk').digest('hex')
+  await wechat.evaluate(channelId => {
     const { businessTypes, templates } = window.__notificationSmoke
     const business = businessTypes.find(item => item.id === 'wechat-device-topic')
     const template = {
@@ -78,10 +80,10 @@ try {
     }
     templates.push(template)
     business.channels.push({
-      id: 'saved-robot-channel', providerId: business.id, channelProvider: 'notifier-dingTalk', state: 'enabled',
+      id: channelId, providerId: business.id, name: '钉钉群机器人', channelProvider: 'notifier-dingTalk', state: 'enabled',
       channelConfiguration: { notifierId: template.configId, templateId: template.id },
     })
-  })
+  }, robotChannelId)
   await channelNav.getByRole('button', { name: /^钉钉 ·/ }).click()
   await channelNav.getByRole('tab', { name: '工作通知', exact: true }).waitFor()
   const expectedRobotLabels = await wechat.evaluate(() => window.__notificationSmoke.configs
@@ -113,12 +115,13 @@ try {
   assert.equal(await subscriptionStatus.innerText(), subscriptionEnabled)
   const disableChannel = await button(wechat, 'messageNotification.templates.disableChannel')
   const enableChannel = await button(wechat, 'messageNotification.templates.enableChannel')
+  const robotBinding = await wechat.evaluate(id => window.__notificationSmoke.businessTypes
+    .find(item => item.id === 'wechat-device-topic').channels.find(channel => channel.id === id), robotChannelId)
   await disableChannel.click()
   await enableChannel.waitFor()
   assert.equal(await subscriptionStatus.innerText(), subscriptionDisabled)
-  assert.deepEqual(await wechat.evaluate(() => window.__notificationSmoke.calls.filter(([method]) => method === 'updateBusinessChannelState')), [
-    ['updateBusinessChannelState', { providerId: 'wechat-device-topic', channelId: 'saved-robot-channel',
-      templateId: 'saved-robot-template', configId: 'robot-one', state: 'disabled' }],
+  assert.deepEqual(await wechat.evaluate(() => window.__notificationSmoke.calls.filter(([method]) => method === 'saveBusinessChannel')), [
+    ['saveBusinessChannel', { providerId: 'wechat-device-topic', channel: { ...robotBinding, state: 'disabled' } }],
   ])
   await wechat.setViewportSize({ width: 390, height: 844 })
   assert.equal(await enableChannel.isVisible(), true)
@@ -142,6 +145,8 @@ try {
   await enableChannel.click()
   await disableChannel.waitFor()
   assert.equal(await subscriptionStatus.innerText(), subscriptionEnabled)
+  assert.deepEqual(await wechat.evaluate(() => window.__notificationSmoke.calls.filter(([method]) => method === 'saveBusinessChannel').at(-1)),
+    ['saveBusinessChannel', { providerId: 'wechat-device-topic', channel: { ...robotBinding, state: 'enabled' } }])
   assert.equal(await wechat.evaluate(() => window.__notificationSmoke.businessTypes.find(item => item.id === 'wechat-device-topic').state), 'enabled')
   await wechat.setViewportSize({ width: 1440, height: 1000 })
   report.passed.push('the subscription tag follows the selected robot and its confirmed state on desktop and mobile')
@@ -232,7 +237,7 @@ try {
   const missing = await open('templates?topicProvider=scene&channelProvider=notifier-email', '?directory=tree')
   await missing.locator('.template-preview').waitFor()
   assert.equal(await missing.evaluate(() => window.__notificationSmoke.calls.some(([method]) => method === 'getTemplate')), false)
-  assert.equal(await missing.evaluate(() => window.__notificationSmoke.calls.some(([method]) => method.startsWith('saveBusiness') || method === 'updateBusinessChannelState')), false)
+  assert.equal(await missing.evaluate(() => window.__notificationSmoke.calls.some(([method]) => method.startsWith('saveBusiness'))), false)
   assert.equal(await missing.locator('.message-templates__subscription-state').count(), 0)
   const actions = missing.locator('.cloud-detail-header__actions')
   assert.equal(await actions.getByRole('button', { name: await translate(missing, 'messageNotification.templates.more'), exact: true }).count(), 0)
