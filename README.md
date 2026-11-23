@@ -374,10 +374,10 @@ node ../ui/scripts/check-ui-style.mjs --files modules/notify-manager-ui/views/sy
 改动范围为运行时消息模板页 `views/system/MessageNotification/Templates/`。在公共 `components/TemplateEditor.vue` 表单底部展示「变量、名称、类型、格式」四列，覆盖各内置渠道及动态提供商。短信和语音移除原「变量对应」区块，使用同一张变量列表。
 
 1. 从当前渠道实际使用的模板字段识别 `${变量ID}`，包括邮件主题、富文本和附件引用、服务商模板原文以及 Webhook 自定义请求体。按 ID 去重，最后一处引用移除时同步移出列表。「变量」列复用正文的蓝色名称标签，悬停显示原始表达式。「名称」列只读，沿用可用变量面板的显示名，目录外的历史占位符回显已有名称或原始 ID。无引用时显示空态。
-2. 通过 `variables/definitions.ts`、`hooks/useTemplateVariables.ts` 和 `model.ts` 读写模板的 `variableDefinitions`。新选字符串使用 `%s`，日期可选 `timestamp`、`yyyy-MM-dd`、`yyyy-MM-dd HH:mm:ss`，新选数值默认 `%.2f`，可编辑格式。已有变量优先回显保存的格式或历史 `expands.format`。缺省格式的存量日期和数值沿用服务端原有输出，保存时保留扩展字段及投递所需的独立声明。只进入编辑时保持草稿干净，收件人与发送参数继续由原通知配置管理。
-3. 在模块目录运行 `node --test tests/messageNotification{TemplatePresentation,Templates,VariableEditing,VariableAttachments,VoiceVisual}.test.mjs`，111 项通过。隔离浏览器脚本 `tests/messageNotificationBrowser/templateVariables.mjs` 验证了七个内置提供商和一个扩展提供商，覆盖蓝色标签与正文同色、按 ID 去重、删除、格式切换、取消、保存重开和 390px 窄屏。9201 的实际钉钉编辑页也已核对「{级别名称}」及其悬停标识 `${detail.levelText}`。保存请求在隔离数据上验证。
+2. 各渠道和通知类型的新用时间变量、新选时间类型和缺省格式的时间声明统一使用 `yyyy-MM-dd HH:mm:ss`，例如 `2026-11-22 15:30:00`。`definition/templateDefaults.ts` 为业务变量提供日期时间默认值，`variables/definitions.ts` 和 `hooks/useTemplatePreview.ts` 同步变量列表、可用变量示例、模板预览及保存声明。系统事件与设备透传异常的 `detail.timestamp` 按日期时间处理。已有模板优先使用保存的格式或历史 `expands.format`，仍可选择仅日期或时间戳。新选字符串使用 `%s`，新选数值默认 `%.2f`，缺省格式的存量数值沿用服务端原有输出。只进入编辑时保持草稿干净，保存时保留扩展字段及投递所需的独立声明。
+3. 验证（2026-11-22）。模块目录运行 `node --test tests/messageNotification*.test.mjs views/notice/template/hooks/noticeAlarmVariables.test.mjs`，437 项通过。隔离 Chrome 的 `tests/messageNotificationBrowser/templateVariables.mjs` 通过 10 组检查，覆盖七个内置提供商、一个扩展提供商、告警示例、新选时间类型、历史格式保存回显和 390px 窄屏。
 
-模块生产构建和四个 Vue 文件的定向样式检查通过，中英日资源键一致。模块没有独立 lint 脚本。全量 `node --test tests/messageNotification*.test.mjs` 共 404 项，403 项通过，已有 AI 合规告警原型的来源字段断言仍失败。在 `runtime-ui/` 执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，前后均为相同的 195 条既有诊断。
+模块生产构建、三个 Vue 文件的定向样式检查和 `git diff --check` 通过。模块没有独立 lint 脚本。类型检查仍有 197 条基线诊断，修复后从 `runtime-ui/` 运行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json` 复验。
 
 ### 业务启停入口与默认开启
 
@@ -729,13 +729,21 @@ AgentId 浏览器复核：9200 实际企业微信页已显示新字段和默认�
 
 `Channels/index.vue` 按多配置能力展示列表。首次和后续配置均从页头「新增配置」打开弹窗，已有配置从行菜单进入编辑。列表显示接收地址的协议和主机。`Channels/configuration/useChannelConfigurations.ts` 复用逐行操作和弹窗草稿。保存成功后按配置 ID 及本模块的[模板自动生成规则](#邮件钉钉与-webhook-随渠道创建消息模板)补齐模板。请求体的编辑和预览位于消息模板页。
 
+Webhook 和钉钉群机器人逐行删除复用 `Channels/configuration/deleteChannelConfiguration.ts`。具备消息模板查询及删除权限时，确认框提示清理相应模板和投递配置。前端按所选配置 ID 查询专属模板，从现有业务目录核对投递绑定，依次调用 `DELETE /notify/channel/{id}`、`DELETE /notifier/template/{id}` 和 `DELETE /notifier/config/{id}`。投递绑定清理沿用接口自身要求的业务权限。其他实例、通用模板及个人订阅保留。
+
+各接口独立提交。失败时提示未完成的步骤，并在重试前重新查询。当前页面会记录已确认完成的解绑。页面重新打开后，若业务目录无法再确认托管模板的绑定，流程保留渠道配置并提示核对。缺少模板查询或删除权限时，配置删除沿用原有引用校验。
+
+`node --test tests/messageNotification*.test.mjs` 通过 438 项，覆盖两类渠道、其他实例和通用模板隔离、模板换绑、权限、失败重试及接口路径。隔离 Chrome 的 Webhook 9 项和钉钉群机器人 12 项断言通过。模块生产构建、定向样式检查与三语文案校验通过，`vue-tsc` 诊断与已有的 199 条完全一致。本机通知服务已恢复原有后端逻辑，实际删除使用隔离数据验证。
+
 隔离浏览器的 `tests/messageNotificationBrowser/webhook.mjs` 通过 9 组检查，覆盖空列表、新增两份配置、逐条编辑、试发与删除、取消草稿、请求头保留和 390px 布局。`channelTemplates.mjs` 验证模板补齐和请求体。群机器人、统一试发、渠道说明、渠道冒烟和模板导航回归均通过。实际服务商投递仍待联调。
 
 模块目录执行 `node --test tests/messageNotification*.test.mjs`，419 项中 418 项通过，余下一项为已有的 AI 合规告警邮件原型断言。模块生产构建、4 个 Vue 文件的定向样式检查、中英日文案键校验及 `git diff --check` 通过。模块无独立 lint 脚本。按上文 `vue-tsc` 命令复验，仍为原有 195 条诊断。
 
 ### 已配置渠道回显与整表编辑
 
-邮件服务商与 SMTP 选择（2026-11-13）：仅调整本模块邮件渠道表单。“常用邮箱”使用腾讯、阿里、网易、微软、其他五项 `a-segmented`，同品牌个人邮箱、企业邮箱和云邮件推送合并分组。前四组使用可搜索 SMTP 单选，选项与选中值显示“地址(产品 / 地域)”，括号及其中说明使用次级文字颜色；其他使用 `a-auto-complete`，候选沿用同样格式，仅含其余品牌并允许自定义输入。地址与说明均支持搜索。中英日的五项分段在 390px 下完整显示，不改变页面壳层。
+邮件服务商与 SMTP 选择：`Channels/ChannelConfiguration.vue` 的「常用邮箱」使用 `a-select` 单选下拉框，提供腾讯、阿里、网易、微软和其他五项。同品牌个人邮箱、企业邮箱和云邮件推送合并分组。前四组使用可搜索 SMTP 单选，选项与选中值显示“地址(产品 / 地域)”，括号及其中说明使用次级文字颜色。其他使用 `a-auto-complete`，候选沿用同样格式，仅含其余品牌并允许自定义输入。地址与说明均支持搜索。
+
+下拉交互验证（2026-11-22）：`tests/messageNotificationBrowser/emailSmtp.mjs` 的 5 组 Chrome 场景通过，覆盖键盘展开、五项选项、SMTP 联动、保存回显及中英日在 390px 下的操作。115 项定向测试、模块构建、浏览器脚本语法检查及 `git diff --check` 通过。模块无独立 lint 脚本。类型检查仍有 197 条基线诊断，修复后从 `runtime-ui/` 执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json` 复验。
 
 实现提交：`e4f5623`（`feat(通知渠道): 按邮箱品牌选择 SMTP 服务地址`）。
 

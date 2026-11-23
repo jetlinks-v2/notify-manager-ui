@@ -6,7 +6,8 @@ import type {
   NotifierConfig,
 } from '@notify-manager-ui/api/notice-center'
 import { getPreviewTexts } from './noticeTemplateFormModel'
-import type { NoticeTemplateEditorPayload } from './noticeTemplateFormModel'
+import type { NoticeTemplateEditorPayload, NoticeVariableDefinition } from './noticeTemplateFormModel'
+import { defaultTemplateDateFormat, explicitTemplateVariableFormat } from './noticeAlarmPreview'
 
 export type { NoticeTemplateEditorPayload } from './noticeTemplateFormModel'
 
@@ -94,7 +95,7 @@ const alarmVariables: NoticeTemplateVariable[] = [
   { id: 'alarmConfigName', i18nName: 'NoticeCenter.template.variable.recommend.alarmConfigName' },
   { id: 'targetName', i18nName: 'NoticeCenter.template.variable.recommend.targetName' },
   { id: 'level', i18nName: 'NoticeCenter.template.variable.recommend.level' },
-  { id: 'alarmTime', i18nName: 'NoticeCenter.template.variable.recommend.alarmTime', type: 'date', expands: { format: 'yyyy-MM-dd HH:mm:ss' } },
+  { id: 'alarmTime', i18nName: 'NoticeCenter.template.variable.recommend.alarmTime', type: 'date', expands: { format: defaultTemplateDateFormat } },
   { id: 'sourceType', i18nName: 'NoticeCenter.template.variable.recommend.sourceType' },
   { id: 'sourceName', i18nName: 'NoticeCenter.template.variable.recommend.sourceName' },
 ]
@@ -111,6 +112,8 @@ const aiAlarmVariables: NoticeTemplateVariable[] = [
   })),
 ]
 
+const systemEventTime = { id: 'timestamp', i18nName: 'NoticeCenter.template.variable.recommend.timestamp', type: 'date' }
+
 const recommendedVariablesByProvider: Record<string, NoticeTemplateVariable[]> = {
   'alarm-device': [
     ...alarmVariables.filter(item => item.id !== 'targetName'),
@@ -120,7 +123,7 @@ const recommendedVariablesByProvider: Record<string, NoticeTemplateVariable[]> =
       id,
       i18nName: `NoticeCenter.template.variable.recommend.${id}`,
       type: id === 'relieveTime' ? 'date' : 'string',
-      expands: { descriptionKey: 'NoticeCenter.template.variable.propertyOptional', ...(id === 'relieveTime' ? { format: 'yyyy-MM-dd HH:mm:ss' } : {}) },
+      expands: { descriptionKey: 'NoticeCenter.template.variable.propertyOptional', ...(id === 'relieveTime' ? { format: defaultTemplateDateFormat } : {}) },
     })),
   ],
   'alarm-product': [
@@ -147,12 +150,12 @@ const recommendedVariablesByProvider: Record<string, NoticeTemplateVariable[]> =
   'system-event': [
     { id: 'level', i18nName: 'NoticeCenter.template.variable.recommend.level' },
     { id: 'code', i18nName: 'NoticeCenter.template.variable.recommend.code' },
-    { id: 'timestamp', i18nName: 'NoticeCenter.template.variable.recommend.timestamp' },
+    systemEventTime,
   ],
   'device-transparent-codec': [
     { id: 'level', i18nName: 'NoticeCenter.template.variable.recommend.level' },
     { id: 'code', i18nName: 'NoticeCenter.template.variable.recommend.code' },
-    { id: 'timestamp', i18nName: 'NoticeCenter.template.variable.recommend.timestamp' },
+    systemEventTime,
   ],
   'alarm-flow-pool': [
     ...alarmVariables.filter(item => !['sourceType', 'sourceName'].includes(item.id)),
@@ -203,7 +206,7 @@ export const getRecommendedVariables = (
 ): NoticeTemplateVariable[] =>
   filterUnsupportedRecommendedVariables(providerCode, [
     { id: 'message', i18nName: 'NoticeCenter.template.variable.recommend.message' },
-    { id: 'notifyTime', i18nName: 'NoticeCenter.template.variable.recommend.notifyTime', type: 'date', expands: { format: 'yyyy-MM-dd HH:mm:ss' } },
+    { id: 'notifyTime', i18nName: 'NoticeCenter.template.variable.recommend.notifyTime', type: 'date', expands: { format: defaultTemplateDateFormat } },
     ...normalizeDetailVariables(recommendedVariablesByProvider[providerCode === 'alarm-device-relieve' ? 'alarm-device' : providerCode || ''] || []),
   ])
     .map((variable: NoticeTemplateVariable) => ({
@@ -241,7 +244,13 @@ export const filterUnsupportedRecommendedVariables = (
   return variables.filter(variable => !unsupportedIds.includes(variable.id))
 }
 
-/** 推荐信息补全空白/占位名称及缺失类型，保留自定义名称和格式；旧详情别名不重复推荐。 */
+/** 时间字段以前可由服务商以 long 声明，有明确格式的存量声明继续使用原类型。 */
+export function templateVariableType(declared?: NoticeVariableDefinition, available?: NoticeTemplateVariable): string | undefined {
+  if (available?.type === 'date' && declared?.type === 'long' && !explicitTemplateVariableFormat(declared)) return 'date'
+  return declared?.type || available?.type
+}
+
+/** 推荐信息补全名称和类型，保留自定义名称和格式。旧详情别名不重复推荐。 */
 export const mergeTemplateVariableDeclarations = (
   available: NoticeTemplateVariable[],
   declared: NoticeTemplateVariable[],
@@ -263,7 +272,7 @@ export const mergeTemplateVariableDeclarations = (
       ...variable,
       name: name && !placeholderNames.includes(name) ? variable.name : fallback.name || variable.name,
       i18nName: variable.i18nName || fallback.i18nName,
-      type: variable.type || fallback.type,
+      type: templateVariableType(variable, fallback),
       expands: { ...fallback.expands, ...variable.expands },
     })
   }

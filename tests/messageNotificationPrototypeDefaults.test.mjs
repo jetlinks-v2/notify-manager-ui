@@ -77,7 +77,7 @@ test('后端详情字段归一到 detail，仅解除主题推荐解除时间且�
   const properties = [
     { id: 'targetName', name: '设备名称', type: 'string' },
     { id: 'alarmTime', name: '告警时间', type: 'long' },
-    { id: 'relieveTime', name: '解除时间', type: 'date' },
+    { id: 'relieveTime', name: '解除时间', type: 'date', format: 'timestamp' },
   ]
   const before = structuredClone(properties)
   for (const provider of ['alarm-device', 'alarm-device-relieve']) {
@@ -86,6 +86,26 @@ test('后端详情字段归一到 detail，仅解除主题推荐解除时间且�
     assert.equal(variables.filter(value => value.id === 'detail.targetName').length, 1)
     assert.equal(variables.find(value => value.id === 'detail.alarmTime').type, 'date')
     assert.equal(variables.some(value => value.id === 'detail.relieveTime'), provider === 'alarm-device-relieve')
+  }
+  const relieved = create('alarm-device-relieve', 'email:embedded', properties)
+  assert.equal(relieved.variableDefinitions.find(item => item.id === 'detail.relieveTime').format, 'yyyy-MM-dd HH:mm:ss')
+  assert.deepEqual(properties, before)
+})
+
+test('系统事件、透传异常及扩展业务的时间变量共用日期时间输出默认值', () => {
+  const properties = [
+    { id: 'timestamp', type: 'long' },
+    { id: 'executedAt', type: 'date', format: 'timestamp', expands: { format: 'yyyy-MM-dd', keep: true } },
+    { id: 'elapsed', type: 'long' },
+  ]
+  const before = structuredClone(properties)
+  for (const provider of ['system-event', 'device-transparent-codec', 'extension']) {
+    const variables = new Map(defaults.prototypeAvailableVariables(business(provider), properties).map(item => [item.id, item]))
+    assert.equal(variables.get('notifyTime').expands.format, 'yyyy-MM-dd HH:mm:ss')
+    assert.equal(variables.get('detail.timestamp').type, provider === 'extension' ? 'long' : 'date')
+    assert.equal(variables.get('detail.executedAt').format, undefined)
+    assert.deepEqual(variables.get('detail.executedAt').expands, { format: 'yyyy-MM-dd HH:mm:ss', keep: true, recommended: true })
+    assert.equal(variables.get('detail.elapsed').type, 'long')
   }
   assert.deepEqual(properties, before)
 })

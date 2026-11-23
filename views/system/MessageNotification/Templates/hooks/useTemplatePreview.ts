@@ -9,9 +9,16 @@ import { formatPreviewValue } from '../../../../notice/template/hooks/noticeAlar
 import { hasKnownTemplatePresentation, matchesTemplateConfiguration, readPresentationTemplate, safePreviewStructure } from './templatePresentation'
 import { templateTextBlocks } from './useTemplateMessageText'
 import { getRecommendedVariables, mergeTemplateVariableDeclarations } from '../../../../notice/template/hooks/noticeTemplateModel'
+import { usedTemplateVariables } from '../variables/definitions'
 
 export type TemplatePreviewKind = 'email' | 'dingTalk' | 'robot' | 'wechat' | 'voice' | 'sms' | 'webhook' | 'generic'
-interface PreviewProps { draft: TemplateDraft; business?: NoticeChannelConfig; channel?: NotificationChannel; config?: NotifierConfig }
+interface PreviewProps {
+  draft: TemplateDraft
+  business?: NoticeChannelConfig
+  channel?: NotificationChannel
+  config?: NotifierConfig
+  availableVariables?: NotificationVariable[]
+}
 
 const asText = (value: unknown): string => ['string', 'number', 'boolean'].includes(typeof value) ? String(value) : ''
 const asObject = (value: unknown): NotificationObject => value && typeof value === 'object' && !Array.isArray(value) ? value as NotificationObject : {}
@@ -59,16 +66,25 @@ export function useTemplatePreview(props: PreviewProps) {
     if (detailIds.value.has(variable.id)
       || props.business?.provider === 'alarm-device' && variable.id === 'detail.relieveTime') return ''
     const values = exampleValues.value
+    const fallback = recommended.value.filter(item => item.id === variable.id)
+    const [definition] = mergeTemplateVariableDeclarations(fallback, [variable])
+    const sampleTime = definition?.type === 'date' ? values.notifyTime ?? values['detail.alarmTime'] : undefined
     const source = [variable.expands?.mockValue, values[variable.id],
-      variable.id.startsWith('detail.') ? undefined : values[`detail.${variable.id}`], variable.defaultValue]
+      variable.id.startsWith('detail.') ? undefined : values[`detail.${variable.id}`], variable.defaultValue, sampleTime]
       .find(value => value != null && (typeof value !== 'string' || value.trim() !== ''))
-    // 缺少类型的历史声明沿用推荐元数据，不修改用户已指定的类型和格式。
-    const definition = mergeTemplateVariableDeclarations(recommended.value, [variable]).find(item => item.id === variable.id)
     return source === undefined ? undefined : templatePreviewExample(source, definition)
   }
   const examples = computed(() => {
     const values = { ...exampleValues.value }
-    for (const variable of props.draft.variables) {
+    const available = props.availableVariables ?? recommended.value
+    const variables = new Map(props.draft.variables.map(variable => [variable.id, variable]))
+    const usedDates = new Set(usedTemplateVariables(props.draft, available)
+      .filter(variable => variable.type === 'date').map(variable => variable.id))
+    // 直接输入的时间占位符也使用目录示例，进入预览时保持草稿声明不变。
+    for (const variable of mergeTemplateVariableDeclarations(available, props.draft.variables)) {
+      if (usedDates.has(variable.id)) variables.set(variable.id, variable)
+    }
+    for (const variable of variables.values()) {
       values[variable.id] = variableExample(variable)
         ?? t('messageNotification.templates.sample', { name: variable.name || variable.id })
     }

@@ -184,9 +184,14 @@ try {
   const confirm = fresh.locator('.jlc-modal:visible')
   await confirm.getByText('删除 Webhook 配置？', { exact: true }).waitFor()
   assert.match(await confirm.innerText(), /场景联动 Webhook/)
+  assert.match(await confirm.innerText(), /也会删除它绑定的消息模板/)
+  const targetTemplates = await fresh.evaluate(id => window.__notificationSmoke.templates.filter(template => template.configId === id).map(template => template.id), second.id)
+  assert.ok(targetTemplates.length > 0)
   await editButton(confirm, '删除').click()
   await row(fresh, second.id).waitFor({ state: 'hidden' })
   assert.deepEqual(await calls(fresh, 'deleteConfig'), [second.id])
+  assert.deepEqual(new Set(await calls(fresh, 'deleteTemplate')), new Set(targetTemplates))
+  assert.equal(await fresh.evaluate(id => window.__notificationSmoke.templates.some(template => template.configId === id), first.id), true)
   assert.deepEqual((await savedConfigs(fresh)).map(config => config.id), [first.id])
   report.checks.push('editing and deleting a row affect only that Webhook')
 
@@ -199,7 +204,6 @@ try {
   assert.deepEqual(report.errors, [])
 } finally {
   await writeFile(`${output}/report.json`, JSON.stringify(report, null, 2))
-  for (const context of browser.contexts()) await context.close()
   await browser.close()
 }
 console.log(JSON.stringify(report, null, 2))

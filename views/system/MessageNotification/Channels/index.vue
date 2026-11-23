@@ -102,7 +102,7 @@
     </ChannelConfigurationModal>
     <JlConfirmDialog :open="!!configurationDeleteTarget" tone="danger"
       :title="t(isRobot ? 'messageNotification.channels.robot.deleteTitle' : 'messageNotification.channels.webhook.deleteTitle')"
-      :message="t(isRobot ? 'messageNotification.channels.robot.deleteMessage' : 'messageNotification.channels.webhook.deleteMessage', { name: configurationDeleteTarget?.name ?? '' })"
+      :message="configurationDeleteMessage"
       :confirm-text="t('messageNotification.common.delete')" :cancel-text="t('messageNotification.common.cancel')"
       @confirm="configurationList.confirmDelete" @cancel="configurationList.cancelDelete" />
     <ChannelTestModal :model="testModel" @close="trial.close()" @recipient="trial.selectRecipient" @address="trial.setAddress" @validate="trial.validateRecipient" @retry-identity="trial.loadIdentity" @retry-members="trial.loadMembers" @send="trial.send" @again="trial.again" @fix="fixTestConfiguration" @closed="afterTestClosed" />
@@ -132,7 +132,7 @@ const channelIcons: Record<string, string> = { email: Email, dingTalk: DingTalk,
 const channelIcon = (type: string) => channelIcons[type]
 const {
   templateSetup, templateSetupModel, fillingTemplates, viewMessageTemplates, canFillConfigurationTemplates,
-  configurationList, isRobot, configurationRows, configurationModal, configurationCanAdd, configurationCanDelete, configurationDeleteTarget,
+  configurationList, isRobot, configurationRows, configurationModal, configurationCanAdd, configurationCanDelete, configurationDeleteTarget, configurationDeleteMessage,
   t, notificationPermissions, isNarrow, channelOptions, channelSearch, filteredChannelTree, openChannelKeys, selectChannel,
   canQuery, channelId, channel, multipleConfigurations, state, detailState, entry, selectedConfigId,
   busy, dirty, canEdit, operationBusy, trialSupported, canTrial, leaveOpen, decideLeave,

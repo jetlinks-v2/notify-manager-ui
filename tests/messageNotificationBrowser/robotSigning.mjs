@@ -152,6 +152,7 @@ try {
   await action(page, 'robot-one', 'delete')
   await confirmation.waitFor()
   assert.match(await confirmation.innerText(), /robot-one/)
+  assert.match(await confirmation.innerText(), /也会删除它绑定的消息模板/)
   await editButton(confirmation, await t(page, 'messageNotification.common.cancel')).click()
   await confirmation.waitFor({ state: 'hidden' })
   assert.deepEqual(await deletes(page), [])
@@ -180,12 +181,23 @@ try {
   await page.evaluate(code => window.__notificationSmoke.deniedPermissions.delete(code), deletePermission)
   pass('revoking delete permission closes the confirmation and disables the menu action')
 
+  await page.evaluate(() => {
+    const { businessTypes, templates } = window.__notificationSmoke
+    const businessId = 'robot-deletion-fixture'
+    const channels = ['robot-one', 'robot-two'].map(configId => {
+      const id = `binding-${configId}`
+      const templateId = `stpl_${id}`
+      templates.push({ id: templateId, name: templateId, configId, type: 'dingTalk', provider: 'dingTalkRobotWebHook', template: {} })
+      return { id, providerId: businessId, channelProvider: 'notifier-dingTalk', channelConfiguration: { templateId, notifierId: configId } }
+    })
+    businessTypes.push({ id: businessId, channels })
+  })
   await action(page, 'robot-two', 'delete')
   await confirmation.waitFor()
   assert.match(await confirmation.innerText(), /Updated robot name/)
   await page.evaluate(() => window.__notificationSmoke.failures.add('deleteConfig'))
   await editButton(confirmation, deleteLabel).click()
-  await page.locator('.ant-message').getByText(await t(page, 'messageNotification.state.error'), { exact: true }).waitFor()
+  await page.locator('.ant-message').getByText(/渠道配置删除未完成/).waitFor()
   assert.equal(await row(page, 'robot-two').isVisible(), true)
   assert.deepEqual(await deletes(page), ['robot-two'])
   await action(page, 'robot-two', 'delete')
@@ -195,6 +207,10 @@ try {
   assert.equal(await config(page, 'robot-two'), undefined)
   assert.equal((await config(page, 'robot-one')).configuration.secret, 'SECfixture-one')
   assert.deepEqual(await deletes(page), ['robot-two', 'robot-two'])
+  assert.deepEqual(await page.evaluate(() => window.__notificationSmoke.calls.filter(([method]) => ['deleteBusinessChannel', 'deleteTemplate'].includes(method))), [
+    ['deleteBusinessChannel', 'binding-robot-two'], ['deleteTemplate', 'stpl_binding-robot-two'],
+  ])
+  assert.equal(await page.evaluate(() => window.__notificationSmoke.templates.some(template => template.id === 'stpl_binding-robot-one')), true)
   pass('a failed delete keeps the row and a confirmed retry removes only the requested robot')
   for (const language of ['zh', 'en', 'ja']) {
     await page.evaluate(language => { window.__notificationSmoke.i18n.global.locale.value = language }, language)

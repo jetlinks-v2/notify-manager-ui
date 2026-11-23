@@ -1,6 +1,6 @@
 import type { NotificationObject, NotificationTemplatePayload } from '../../../../api/notice/messageNotificationTypes'
 import { getRecommendedVariables } from '../../../notice/template/hooks/noticeTemplateModel'
-import { alarmPreviewValues, formatPreviewValue } from '../../../notice/template/hooks/noticeAlarmPreview'
+import { alarmPreviewValues, defaultTemplateDateFormat, formatPreviewValue } from '../../../notice/template/hooks/noticeAlarmPreview'
 
 type Translate = (key: string, values?: Record<string, unknown>) => string
 export interface BuiltinEmailTemplate {
@@ -24,7 +24,7 @@ export function builtinEmailTemplates(t: Translate): BuiltinEmailTemplate[] {
       ? ['detail.alarmConfigName', 'detail.targetName', 'detail.level', 'detail.alarmTime', ...(relieve ? ['detail.relieveTime'] : []), 'message']
       : key === 'scene' ? ['detail.sceneName', 'message', 'notifyTime'] : ['message', 'notifyTime']
     const variables = getRecommendedVariables(key, t).filter(variable => ids.includes(variable.id))
-      .map(variable => ({ ...variable, format: variable.type === 'date' ? String(variable.expands?.format || 'yyyy-MM-dd HH:mm:ss') : undefined }))
+      .map(variable => ({ ...variable, format: variable.type === 'date' ? defaultTemplateDateFormat : undefined }))
     const subject = alarm ? `${label} · \${detail.alarmConfigName}` : key === 'scene' ? `${label} · \${detail.sceneName}` : label
     const text = variables.map(variable => `${variable.name || variable.id}：\${${variable.id}}`).join('\n')
       + '\n\n' + t('messageNotification.builtin.footer')

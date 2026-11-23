@@ -64,6 +64,7 @@ const { emailEncryption, emailEncryptionProperties } = load(resolve(root, 'confi
 const { emailSmtpEndpoints, emailBrandForHost } = load(resolve(root, 'configuration/emailSmtpCatalog.ts'))
 const { useChannelConfiguration } = load(resolve(root, 'useChannelConfiguration.ts'))
 const { useChannelWorkspace } = load(resolve(root, 'useChannelWorkspace.ts'))
+const { ChannelDeletionError, deleteChannelConfiguration } = load(resolve(root, 'configuration/deleteChannelConfiguration.ts'))
 const { useChannelConfigurations } = load(resolve(root, 'configuration/useChannelConfigurations.ts'))
 const { configurationAddressSummary } = load(resolve(root, 'configuration/configurationPresentation.ts'))
 const { createChannelConfigDraft, channelConfigPayload, validateChannelDraft } = load(resolve(root, 'channelSchema.ts'))
@@ -101,6 +102,104 @@ function testApi(initial = [email()]) {
   }
   return { api, calls, records }
 }
+
+const cleanupWrites = calls => calls.filter(([method]) => ['deleteBusinessChannel', 'deleteTemplate', 'deleteConfig'].includes(method))
+
+function deletionFixture(target, sibling) {
+  const io = testApi([target, sibling])
+  const templates = new Map([
+    ['stpl_binding-target', { id: 'stpl_binding-target', configId: target.id }],
+    ['standalone', { id: 'standalone', configId: target.id }],
+    ['stpl_binding-sibling', { id: 'stpl_binding-sibling', configId: sibling.id }],
+    ['common', { id: 'common' }],
+  ])
+  const channelProvider = `notifier-${target.type}`
+  const channels = new Map([
+    ['binding-target', { id: 'binding-target', channelProvider, channelConfiguration: { templateId: 'stpl_binding-target' } }],
+    ['binding-sibling', { id: 'binding-sibling', channelProvider, channelConfiguration: { templateId: 'stpl_binding-sibling', notifierId: sibling.id } }],
+  ])
+  const deleteConfig = io.api.deleteConfig
+  Object.assign(io.api, {
+    async queryTemplates(query) { io.calls.push(['queryTemplates', query]); return { data: [...templates.values()] } },
+    async queryTemplateDirectory() { return [{ id: 'business', channels: [...channels.values()] }] },
+    async getTemplate(id) { return templates.get(id) },
+    async deleteBusinessChannel(id) { io.calls.push(['deleteBusinessChannel', id]); channels.delete(id) },
+    async deleteTemplate(id) { io.calls.push(['deleteTemplate', id]); templates.delete(id) },
+    async deleteConfig(id) {
+      if ([...templates.values()].some(template => template.configId === id)) throw new Error('Configuration still referenced')
+      return deleteConfig(id)
+    },
+  })
+  return { ...io, templates, channels, channelProvider }
+}
+
+test('Webhook and DingTalk robot deletion clean only the selected configuration before the server guard', async () => {
+  const webhook = id => ({ id, name: id, type: 'webhook', provider: 'http', configuration: { url: 'https://example.test' } })
+  for (const create of [webhook, robot]) {
+    const target = create('target')
+    const sibling = create('sibling')
+    const io = deletionFixture(target, sibling)
+    const workspace = useChannelWorkspace({ api: io.api, permissions: permissions(), canDeleteTemplates: vue.ref(true) })
+    await workspace.activate(`${target.type}:${target.provider}`, target.id)
+    assert.equal(await workspace.deleteConfig(), true)
+    assert.deepEqual(io.calls.find(([method]) => method === 'queryTemplates'), ['queryTemplates', {
+      paging: false, terms: [{ column: 'configId', termType: 'eq', value: target.id }],
+    }])
+    assert.deepEqual(cleanupWrites(io.calls), [
+      ['deleteBusinessChannel', 'binding-target'], ['deleteTemplate', 'stpl_binding-target'],
+      ['deleteTemplate', 'standalone'], ['deleteConfig', target.id],
+    ])
+    assert.deepEqual([...io.templates.keys()], ['stpl_binding-sibling', 'common'])
+    assert.deepEqual([...io.channels.keys()], ['binding-sibling'])
+    assert.deepEqual([...io.records.keys()], [sibling.id])
+  }
+})
+
+test('managed template without a confirmed delivery binding stops before any writes', async () => {
+  const io = deletionFixture(robot('target'), robot('sibling'))
+  io.channels.delete('binding-target')
+  await assert.rejects(deleteChannelConfiguration(io.api, 'target', io.channelProvider, new Set(), () => true),
+    error => error instanceof ChannelDeletionError && error.step === 'inspect')
+  assert.deepEqual(cleanupWrites(io.calls), [])
+})
+
+test('template moved to another configuration after discovery leaves its binding untouched', async () => {
+  const io = deletionFixture(robot('target'), robot('sibling'))
+  io.api.getTemplate = async id => ({ id, configId: 'sibling' })
+  await assert.rejects(deleteChannelConfiguration(io.api, 'target', io.channelProvider, new Set(), () => true),
+    error => error instanceof ChannelDeletionError && error.step === 'bindings')
+  assert.deepEqual(cleanupWrites(io.calls), [])
+})
+
+test('failure after removing a binding preserves the configuration and a fresh retry resumes cleanup', async () => {
+  const io = deletionFixture(robot('target'), robot('sibling'))
+  const errors = []
+  const workspace = useChannelWorkspace({ api: io.api, permissions: permissions(), canDeleteTemplates: vue.ref(true), onMutationError: error => errors.push(error) })
+  await workspace.activate('dingTalk:dingTalkRobotWebHook', 'target')
+  const deleteTemplate = io.api.deleteTemplate
+  io.api.deleteTemplate = async () => { throw new Error('Template deletion failed') }
+  assert.equal(await workspace.deleteConfig(), false)
+  assert.equal(errors[0].step, 'templates')
+  assert.equal(io.records.has('target'), true)
+  assert.deepEqual(cleanupWrites(io.calls), [['deleteBusinessChannel', 'binding-target']])
+  io.api.deleteTemplate = deleteTemplate
+  assert.equal(await workspace.deleteConfig(), true)
+  assert.equal(io.calls.filter(([method]) => method === 'queryTemplates').length, 2)
+  assert.deepEqual(cleanupWrites(io.calls), [
+    ['deleteBusinessChannel', 'binding-target'], ['deleteTemplate', 'stpl_binding-target'],
+    ['deleteTemplate', 'standalone'], ['deleteConfig', 'target'],
+  ])
+})
+
+test('missing template permission leaves configuration deletion under the existing server guard', async () => {
+  const io = deletionFixture(robot('target'), robot('sibling'))
+  const workspace = useChannelWorkspace({ api: io.api, permissions: permissions(), canDeleteTemplates: vue.ref(false) })
+  await workspace.activate('dingTalk:dingTalkRobotWebHook', 'target')
+  assert.equal(await workspace.deleteConfig(), false)
+  assert.equal(io.records.has('target'), true)
+  assert.equal(io.calls.some(([method]) => method === 'queryTemplates'), false)
+  assert.deepEqual(cleanupWrites(io.calls), [])
+})
 
 // Real pages unmount the form during activation; hook-only tests retain its last mounted entry.
 function configurationProps(workspace) {

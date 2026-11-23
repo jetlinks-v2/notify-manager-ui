@@ -12,6 +12,12 @@ const browser = await chromium.launch({ channel: process.env.SMOKE_CHROMIUM_CHAN
 const errors = []
 const list = page => page.getByRole('region', { name: '变量列表', exact: true })
 const row = (page, id) => list(page).locator(`tr[data-row-key="${id}"]`)
+const formatOf = variable => variable.locator('td').nth(3).locator('.ant-select-selection-item').getAttribute('title')
+const sampleOf = (page, id) => {
+  const token = '${' + id + '}'
+  return page.locator(`.template-variables button[title^="${token}"] .template-variables__sample`).innerText()
+}
+const dateTimeFormat = 'yyyy-MM-dd HH:mm:ss'
 const edit = page => page.getByRole('button', { name: /^编\s*辑$/ })
 const save = page => page.getByRole('button', { name: '保存模板', exact: true })
 
@@ -85,6 +91,7 @@ try {
     const samples = await panel.locator('.template-variables__sample').allTextContents()
     assert.equal(samples.length, 14)
     assert.ok(samples.every(value => value.trim() && value !== '—'))
+    assert.equal(await sampleOf(page, 'detail.alarmTime'), '2026-01-01 12:00:00')
     const spaceRow = panel.locator('button[title^="${detail.spaceName}"]')
     assert.equal(await spaceRow.locator('.template-variables__name').innerText(), '{空间名称}')
     assert.equal(await spaceRow.locator('.template-variables__sample').innerText(), space)
@@ -119,7 +126,13 @@ try {
   const time = row(voice, 'detail.alarmTime')
   assert.equal(await time.count(), 1)
   assert.equal(await time.locator('td').nth(1).innerText(), '告警时间')
+  assert.equal(await formatOf(time), dateTimeFormat)
+  assert.equal(await sampleOf(voice, 'detail.alarmTime'), '2026-01-01 12:00:00')
+  await choose(voice, time.locator('td').nth(2), '字符串')
+  await choose(voice, time.locator('td').nth(2), '时间')
+  assert.equal(await formatOf(time), dateTimeFormat)
   await choose(voice, time.locator('td').nth(3), 'yyyy-MM-dd')
+  assert.equal(await sampleOf(voice, 'detail.alarmTime'), '2026-01-01')
   await choose(voice, device.locator('td').nth(2), '数字')
   assert.equal(await device.getByRole('textbox').inputValue(), '%.2f')
   await device.getByRole('textbox').fill('%.3f')
@@ -135,7 +148,7 @@ try {
   assert.equal(saved.template.message.split('${detail.alarmTime}').length, 3)
   await edit(voice).click()
   assert.equal(await device.getByRole('textbox').inputValue(), '%.3f')
-  assert.equal(await time.locator('.ant-select-selection-item').last().innerText(), 'yyyy-MM-dd')
+  assert.equal(await formatOf(time), 'yyyy-MM-dd')
   assert.ok(await save(voice).isDisabled())
   await source.fill('固定播报内容')
   await list(voice).getByText('当前模板未使用变量', { exact: true }).waitFor()
@@ -149,6 +162,9 @@ try {
 
   for (const channel of ['sms:aliyunSms', 'email:embedded', 'dingTalk:dingTalkMessage', 'dingTalk:dingTalkRobotWebHook', 'weixin:corpMessage', 'webhook:http', 'extension:custom']) {
     const page = await open(channel, channel.startsWith('sms:') ? 390 : 1440)
+    assert.equal(await sampleOf(page, 'notifyTime'), '2026-01-01 12:00:00', channel)
+    const alarmTime = row(page, 'detail.alarmTime')
+    if (await alarmTime.count()) assert.equal(await formatOf(alarmTime), dateTimeFormat, channel)
     assert.ok(await list(page).evaluate(element => element === element.closest('form').lastElementChild), channel)
     assert.equal(await page.getByText('变量对应', { exact: true }).count(), 0)
     if (channel === 'extension:custom') await list(page).getByText('当前模板未使用变量', { exact: true }).waitFor()

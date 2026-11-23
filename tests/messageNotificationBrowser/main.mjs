@@ -331,6 +331,13 @@ Object.assign(messageNotificationApi, {
     record('saveBusinessChannel', { providerId, channel })
     persistBusinessChannel(providerId, channel)
   },
+  deleteBusinessChannel: async id => {
+    record('deleteBusinessChannel', id)
+    for (const business of businessTypes) {
+      const index = business.channels?.findIndex(row => row.id === id) ?? -1
+      if (index >= 0) business.channels.splice(index, 1)
+    }
+  },
   queryTypes: async () => { record('queryTypes', {}); return clone(flags.get('catalog') === 'extended' ? [...channelTypes, extensionType] : channelTypes) },
   queryProviders: async type => { record('queryProviders', type); if (flags.get('providerError') === type) throw new Error('Provider fixture failure'); return clone(type === extensionType.id ? extensionProviders : flags.has('unifiedTests') && type === 'weixin' ? [...channelProviders.weixin, { id: 'officialMessage', name: '微信服务号' }] : channelProviders[type] || []) },
   queryAllConfigs: async () => { record('queryAllConfigs', {}); return clone(configs) },
@@ -344,7 +351,7 @@ Object.assign(messageNotificationApi, {
   getTemplateMetadata: async (type, provider) => { record('getTemplateMetadata', { type, provider }); if (flags.has('templateMetadataError')) throw new Error('Template metadata fixture failure'); return { name: '消息模板', properties: type === extensionType.id ? [{ id: 'title', name: '标题', valueType: { type: 'string' } }, { id: 'content', name: '正文', valueType: { type: 'string' } }] : [] } },
   queryBusinessVariables: async providerId => { record('queryBusinessVariables', providerId); return [
     { id: 'detail.targetName', name: '设备名称', type: 'string' }, { id: 'detail.alarmConfigName', name: '告警名称', type: 'string' },
-    { id: 'detail.alarmTime', name: '告警时间', type: 'date', format: 'yyyy-MM-dd HH:mm:ss' }, { id: 'detail.relieveTime', name: '解除时间', type: 'date' },
+    { id: 'detail.alarmTime', name: '告警时间', type: 'date', format: 'timestamp' }, { id: 'detail.relieveTime', name: '解除时间', type: 'date' },
     { id: 'detail.level', name: '告警级别', type: 'int' }, { id: 'detail.sceneName', name: '场景名称', type: 'string' },
     ...(flags.has('emailImages') ? [{ id: 'imageUrl', name: '图片地址', type: 'string' }] : []),
   ] },
@@ -364,13 +371,25 @@ Object.assign(messageNotificationApi, {
   getConfig: async id => { record('getConfig', id); return clone(configs.find(row => row.id === id)) },
   createConfig: async payload => { record('createConfig', payload); configs.push(clone(payload)) },
   updateConfig: async payload => { if (writeDelay) await new Promise(resolve => setTimeout(resolve, writeDelay)); record('updateConfig', payload); Object.assign(configs.find(row => row.id === payload.id), clone(payload)) },
-  deleteConfig: async id => { record('deleteConfig', id); configs.splice(configs.findIndex(row => row.id === id), 1) },
+  deleteConfig: async id => {
+    record('deleteConfig', id)
+    if (templates.some(template => template.configId === id)) throw { status: 400, message: '当前通知配置已绑定模板，不可删除' }
+    const index = configs.findIndex(row => row.id === id)
+    if (index >= 0) configs.splice(index, 1)
+  },
   queryTemplates: async query => { record('queryTemplates', query); return { data: clone(queryRows(templates, query)) } },
   getTemplate: async id => { record('getTemplate', id); return clone(templates.find(row => row.id === id)) },
   getSendTemplate: async id => { record('getSendTemplate', id); return clone(templates.find(row => row.id === id)) },
   createTemplate: async payload => { record('createTemplate', payload); templates.push(clone(payload)) },
   updateTemplate: async payload => { record('updateTemplate', payload); Object.assign(templates.find(row => row.id === payload.id), clone(payload)) },
-  deleteTemplate: async id => { record('deleteTemplate', id); templates.splice(templates.findIndex(row => row.id === id), 1) },
+  deleteTemplate: async id => {
+    record('deleteTemplate', id)
+    if (businessTypes.some(business => business.channels?.some(channel => channel.channelConfiguration?.templateId === id))) {
+      throw new Error('Fixture delivery binding still references the template')
+    }
+    const index = templates.findIndex(row => row.id === id)
+    if (index >= 0) templates.splice(index, 1)
+  },
   send: async (configId, templateId, variables) => {
     if (!flags.has('wechat') || configId !== 'corp-fixture') throw new Error('Notification sending is disabled in this browser harness')
     record('sendFixture', { configId, templateId, variables })

@@ -8,9 +8,9 @@
           :visible="fieldDisabled ? false : undefined" :visibility-toggle="!fieldDisabled"
           :aria-label="field.label" :placeholder="field.placeholder" :status="field.error ? 'error' : undefined"
           autocomplete="new-password" @update:value="update" />
-        <div v-else-if="field.key === 'email:preset'" class="channel-configuration__brands">
-          <a-segmented :value="String(value)" :options="field.options" size="small" :disabled="fieldDisabled" :aria-label="field.label" @change="update" />
-        </div>
+        <a-select v-else-if="field.key === 'email:preset'" :id="inputId"
+          :value="typeof value === 'string' ? value : undefined" :options="field.options" :disabled="fieldDisabled"
+          :aria-label="field.label" @change="update" />
         <template v-else-if="emailOptionsVisible && field.key === 'config:host'">
           <a-auto-complete v-if="preset === 'other'" :value="typeof value === 'string' ? value : ''" :options="smtpOptions" :filter-option="filterSmtpOption" :disabled="fieldDisabled" :aria-label="field.label" class="channel-configuration__host" @change="update" @select="selectSmtpHost" />
           <a-select v-else :value="typeof value === 'string' ? value : undefined" :options="smtpOptions" show-search :filter-option="filterSmtpOption" :disabled="fieldDisabled" :aria-label="field.label" class="channel-configuration__host" @change="update" />
@@ -55,9 +55,5 @@ const {
 <style scoped>
 .channel-configuration { min-width: 0; width: 100%; max-width: 55rem; }
 .channel-configuration__error { margin-bottom: var(--space-4); }
-.channel-configuration__brands { max-width: 100%; overflow-x: auto; }
 .channel-configuration__host { width: 100%; }
-@media (max-width: 640px) {
-  .channel-configuration__brands :deep(.ant-segmented) { font-size: var(--fs-sm); }
-}
 </style>

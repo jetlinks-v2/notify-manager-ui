@@ -2,13 +2,14 @@ import { computed, reactive, ref, shallowRef, type Ref } from 'vue'
 import { randomString } from '@jetlinks-web/utils'
 import { messageNotificationApi, type MessageNotificationApi } from '../../../../api/notice/messageNotification'
 import {
-  classifyNotificationFailure, cloneNotificationValue, findNotificationChannel, notificationChannels,
+  classifyNotificationFailure, cloneNotificationValue, dingTalkRobotChannelId, findNotificationChannel, notificationChannels,
   publishNotificationConfigurationChange, resolveNotificationChannel, selectNotificationConfig, withNotificationChannel,
   type NotificationFailureKind, type NotificationLoadState, type NotificationNavigation, type NotifierConfig, type NotifierConfigPayload, type NotificationChannel,
 } from '../shared'
 import { channelConfigPayload, createChannelConfigDraft, validateChannelDraft, type ChannelValidationIssue } from './channelSchema'
 import { channelDefaults, type ChannelDefinition } from './configuration/channelMetadata'
 import { initialEmailConfiguration } from './configuration/emailSettings'
+import { deleteChannelConfiguration } from './configuration/deleteChannelConfiguration'
 
 export interface ChannelPermissions {
   query: Ref<boolean>
@@ -38,6 +39,7 @@ interface ChannelWorkspaceOptions {
   api?: MessageNotificationApi
   navigate?: (navigation: NotificationNavigation) => void | Promise<unknown>
   blocked?: Ref<boolean>
+  canDeleteTemplates?: Ref<boolean>
   channels?: Ref<readonly NotificationChannel[]>
   loadConfigs?: (force?: boolean) => Promise<NotifierConfig[]>
   loadDefinition?: (channel: NotificationChannel) => Promise<ChannelDefinition>
@@ -57,11 +59,14 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
   const definition = shallowRef<ChannelDefinition>()
   const drafts = reactive(new Map<string, ChannelDraftEntry>())
   const remembered = new Map<string, { id: string } | { isNew: true }>()
+  const removedBindingsByConfig = new Map<string, Set<string>>()
   let listVersion = 0
   let detailVersion = 0
   const availableChannels = computed(() => options.channels?.value ?? notificationChannels)
   const channel = computed(() => findNotificationChannel(channelId.value, availableChannels.value))
   const multipleConfigurations = computed(() => !!channel.value?.multipleConfigurations)
+  const canCleanTemplates = computed(() => !!options.canDeleteTemplates?.value
+    && (channelId.value === dingTalkRobotChannelId || channelId.value === 'webhook:http'))
   const entry = computed(() => drafts.get(activeKey.value))
   const selectedConfigId = ref<string>()
   const dirty = computed(() => !!entry.value && JSON.stringify(entry.value.draft) !== entry.value.snapshot)
@@ -322,11 +327,20 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
     const current = entry.value
     if (!current?.draft.id || current.isNew || busy.value || options.blocked?.value || !options.permissions.query.value || !options.permissions.delete.value) return false
     const version = detailVersion
+    const id = current.draft.id
+    const currentChannel = channelId.value
     busy.value = true
     try {
-      await api.deleteConfig(current.draft.id)
+      if (canCleanTemplates.value) {
+        const removedBindings = removedBindingsByConfig.get(id) ?? new Set<string>()
+        removedBindingsByConfig.set(id, removedBindings)
+        await deleteChannelConfiguration(api, id, `notifier-${current.draft.type}`, removedBindings, () =>
+          version === detailVersion && channelId.value === currentChannel && options.permissions.query.value && options.permissions.delete.value && canCleanTemplates.value)
+      } else {
+        await api.deleteConfig(id)
+      }
+      removedBindingsByConfig.delete(id)
       if (version !== detailVersion || !options.permissions.query.value) return true
-      const id = current.draft.id
       drafts.delete(current.key)
       remembered.delete(channelId.value)
       activeKey.value = ''
@@ -353,8 +367,8 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
   function clear() {
     ++listVersion; ++detailVersion
     activeKey.value = ''; selectedConfigId.value = undefined; configs.value = []; definition.value = undefined
-    drafts.clear(); remembered.clear(); state.value = 'forbidden'; detailState.value = 'idle'
+    drafts.clear(); remembered.clear(); removedBindingsByConfig.clear(); state.value = 'forbidden'; detailState.value = 'idle'
   }
 
-  return { channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId, busy, dirty, hasUnsavedChanges, canEdit, editing, startEditing, cancelEditing, discardConfig, activate, selectConfig, createConfig, changeField, save, saveFields, refreshSaved, deleteConfig, resetDraft, clear }
+  return { channelId, channel, multipleConfigurations, configs, state, detailState, entry, selectedConfigId, busy, dirty, hasUnsavedChanges, canEdit, canCleanTemplates, editing, startEditing, cancelEditing, discardConfig, activate, selectConfig, createConfig, changeField, save, saveFields, refreshSaved, deleteConfig, resetDraft, clear }
 }
