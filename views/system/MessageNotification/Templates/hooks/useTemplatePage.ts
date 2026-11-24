@@ -36,7 +36,7 @@ export function useTemplatePage() {
   const canManage = computed(() => canQuery.value && (canAdd.value || canUpdate.value))
   const directory = useTemplateBusinessDirectory(canManage)
   const workspace = useTemplateWorkspace({ query: canQuery, add: canAdd, update: canUpdate }, messageNotificationApi, t)
-  const { channelId, templates, draft, business, channels, detailState, listState, saving, changingChannelState } = workspace
+  const { channelId, templates, draft, business, channels, detailState, listState, saving } = workspace
   const businessNavigation = useTemplateBusinessNavigation(computed(() => route.query), directory.businessTypes, directory.directoryState, channels)
   const configurationNavigation = useNotificationConfigNavigation(() => workspace.refreshConfigs(), 'system/MessageNotification/Channels')
   const canConfigure = computed(() => canQueryConfig.value && configurationNavigation.available.value)
@@ -51,7 +51,7 @@ export function useTemplatePage() {
   const selectionUnavailable = ref(false)
   const validationMessage = ref('')
   const confirmation = reactive({ open: false })
-  const busy = computed(() => saving.value || uploading.value || changingChannelState.value || fillingInsideMail.value)
+  const busy = computed(() => saving.value || uploading.value || fillingInsideMail.value)
   const pendingChannelRefresh = ref('')
   const navigation = computed(() => normalizeNotificationNavigation(route.query, channels.value))
   const activeConfigId = computed(() => workspace.entry.value?.businessConfigId === '' ? undefined
@@ -258,13 +258,6 @@ export function useTemplatePage() {
     if (busy.value || !canConfigure.value) return
     configurationNavigation.open(identity(business.value), undefined, { channel: channelId.value, configId: draft.value?.configId })
   }
-  async function toggleChannel() {
-    if (busy.value || editing.value || workspace.dirty.value) return
-    const enabled = workspace.channelStateTarget.value?.enabled
-    if (await workspace.toggleChannel() && !disposed) {
-      onlyMessage(t(enabled ? 'messageNotification.templates.disableChannelSucceeded' : 'messageNotification.templates.enableChannelSucceeded'), 'success')
-    }
-  }
   async function fillInsideMail() {
     const selected = business.value
     const id = selected?.id
@@ -291,7 +284,7 @@ export function useTemplatePage() {
     editing.value = true
   }
   onBeforeRouteUpdate(() => !busy.value)
-  onBeforeRouteLeave(async () => !saving.value && !changingChannelState.value && !fillingInsideMail.value
+  onBeforeRouteLeave(async () => !saving.value && !fillingInsideMail.value
     && (!workspace.hasDirtyDrafts.value && !uploading.value || await confirmDiscard()))
   function beforeUnload(event: BeforeUnloadEvent) {
     if (workspace.hasDirtyDrafts.value || busy.value) { event.preventDefault(); event.returnValue = '' }
@@ -313,6 +306,6 @@ export function useTemplatePage() {
     editing, title, description, activeConfig, activeConfigId, directoryConfigId, templateStatus, selectedDirectoryKey, selectedTemplateId, templateOptions,
     validationMessage, channelOptions, listFailure, detailFailure, feedbackState, saveFailure,
     missingConfiguration, confirmation, setUploading, reload, changeChannel, selectConfiguration, selectTemplate, createTemplate,
-    startEditing, save, restoreDefault, requestDiscard, goConfigure, resolveConfirmation, importTemplate, toggleChannel,
+    startEditing, save, restoreDefault, requestDiscard, goConfigure, resolveConfirmation, importTemplate,
   }
 }

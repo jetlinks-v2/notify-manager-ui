@@ -1,5 +1,4 @@
 import { computed, getCurrentScope, onScopeDispose, reactive, ref, type Ref } from 'vue'
-import md5 from 'crypto-js/md5'
 import { messageNotificationApi, type MessageNotificationApi } from '../../../../api/notice/messageNotification'
 import type { NoticeChannelConfig, NoticeChannelTemplateItem } from '../../../../api/notice-center'
 import {
@@ -21,8 +20,6 @@ import {
 
 interface WorkspaceAccess { query: Ref<boolean>; add: Ref<boolean>; update: Ref<boolean> }
 
-const channelStateValue = (state: NoticeChannelConfig['state']) => typeof state === 'string' ? state : state?.value
-
 /** Own business/provider drafts and legacy standalone links; late responses never replace the current selection. */
 export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotificationApi = messageNotificationApi, translate?: PrototypeTranslate) {
   const channelId = ref('email:embedded')
@@ -33,8 +30,6 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
   const listState = ref<NotificationLoadState>('idle')
   const detailState = ref<NotificationLoadState>('idle')
   const saveState = ref<NotificationLoadState>('idle')
-  const changingChannelState = ref(false)
-  const channelActionState = ref<NotificationLoadState>('idle')
   const activeKey = ref('')
   const drafts = reactive(new Map<string, TemplateDraftEntry>())
   const variables = new Map<string, NotificationVariable[]>()
@@ -57,18 +52,6 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
       ? candidate : undefined
   })
   const draft = computed(() => entry.value?.draft)
-  const channelStateTarget = computed(() => {
-    const providerId = business.value?.id
-    const saved = entry.value
-    const channel = saved?.channel
-    const templateId = saved?.baselineDraft.id
-    const configId = saved?.baselineDraft.configId
-    if (detailState.value !== 'ready' || !saved?.existing || !providerId || !channel?.id || channel.providerId !== providerId
-      || !templateId || !configId || channel.channelConfiguration?.templateId !== templateId) return
-    return { providerId, channel, templateId, configId, enabled: channelStateValue(channel.state) === 'enabled' }
-  })
-  const channelActionFailure = computed(() => ['error', 'forbidden', 'unavailable'].includes(channelActionState.value))
-  const canToggleChannel = computed(() => !!channelStateTarget.value && access.update.value && !channelActionFailure.value)
   const entryDirty = (item: TemplateDraftEntry) => item.baseline !== templateDraftFingerprint(item.draft)
   const dirty = computed(() => Boolean(entry.value && entryDirty(entry.value)))
   const hasDirtyDrafts = computed(() => [...drafts.values()].some(entryDirty))
@@ -203,7 +186,6 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     activeKey.value = ''
     templates.value = templateLists.get(id) || []
     saveState.value = 'idle'
-    channelActionState.value = 'idle'
     detailState.value = 'loading'
     listState.value = templateListStates.get(id) || 'idle'
     if (!access.query.value) { catalog.clear(); listState.value = detailState.value = 'forbidden'; return }
@@ -264,48 +246,11 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     }
   }
 
-  /** 现有渠道保存接口无返回数据，保存前后均按原凭证回读，确认后才更新展示状态。 */
-  async function toggleChannel(): Promise<boolean> {
-    const target = channelStateTarget.value
-    if (!target || !canToggleChannel.value || changingChannelState.value) return false
-    const revision = detailRevision
-    changingChannelState.value = true
-    channelActionState.value = 'loading'
-    const active = () => revision === detailRevision && access.query.value
-    const { providerId, channel, templateId, configId } = target
-    const state = target.enabled ? 'disabled' : 'enabled'
-    try {
-      const current = await readBusinessChannelBinding(api, providerId, channel, templateId, configId)
-      if (!active() || !access.update.value) return false
-      if (channelStateValue(current.state) !== state) {
-        const channelKey = businessChannelKey(current)
-        // 现有接口会重算默认实例 ID。详情查询可回退到旧行，写入前须核对实际 ID。
-        if (!channelKey && md5(`${providerId}||${current.channelProvider}`).toString() !== current.id) {
-          throw new NotificationRequestError('unavailable')
-        }
-        // 启用后的投递注册使用保存事件中的通道对象，需要带上最新的完整配置和授权信息。
-        await api.saveBusinessChannel(providerId, { ...current, state })
-        const saved = await readBusinessChannelBinding(api, providerId, channel, templateId, configId)
-        if (channelStateValue(saved.state) !== state) throw new NotificationRequestError('error')
-      }
-      if (!active()) return false
-      channel.state = state
-      channelActionState.value = 'ready'
-      return true
-    } catch (error) {
-      if (active()) channelActionState.value = classifyNotificationFailure(error)
-      return false
-    } finally {
-      changingChannelState.value = false
-    }
-  }
-
   /** Explicit template IDs keep their independent storage semantics and never fall back to business defaults. */
   async function selectTemplate(id: string) {
     const revision = ++detailRevision
     business.value = undefined
     saveState.value = 'idle'
-    channelActionState.value = 'idle'
     activeKey.value = id
     if (!access.query.value) { detailState.value = 'forbidden'; return }
     if (!id) { detailState.value = 'idle'; return }
@@ -331,7 +276,6 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     channelId.value = id
     activeKey.value = ''
     detailState.value = 'idle'
-    channelActionState.value = 'idle'
     templates.value = templateLists.get(id) || []
     if (!access.query.value) { catalog.clear(); listState.value = 'forbidden'; return }
     listState.value = 'loading'
@@ -567,7 +511,6 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
 
   return { channelId, currentChannel, channels, catalogState, metadata, metadataState, business, templates,
     configs, configurationsByChannel, listState, configState, channelConfigurationStates, detailState, saveState, activeKey, draft, dirty, hasDirtyDrafts, saving,
-    channelStateTarget, channelActionFailure, canToggleChannel, changingChannelState, toggleChannel,
     canSave, entry, isDefault, hasContent, availableVariables, canRestoreDefault, saveOutcomeUnknown, loadCatalog, reloadCatalog, loadBusiness, loadChannel,
     selectTemplate, refreshConfigs, refreshUnboundTemplates, createTemplate, saveTemplate, discardDraft, discardBusinessDrafts,
     restoreDefault, resetBusinessIdentity, importTemplate }
