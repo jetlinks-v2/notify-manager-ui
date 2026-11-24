@@ -819,6 +819,25 @@ test('robot tabs keep independent drafts, then save and reload both managed temp
   assert.match(reloaded.draft.value.templateJson, /正在编辑/)
 })
 
+test('unconfigured Webhook previews defaults without querying a stale business binding', async () => {
+  const io = mockApi()
+  const legacy = item('actual-topic', template({
+    type: 'webhook', provider: 'http', configId: 'removed-hook', template: { body: '{}' },
+  }))
+  const topic = { ...business(), channels: [{ ...legacy.channel, channelKey: 'removed-hook' }] }
+  io.records.set('actual-topic/notifier-webhook/removed-hook', legacy)
+  const workspace = useTemplateWorkspace(permissions(), io.api)
+
+  await workspace.loadBusiness(topic, 'webhook:http')
+
+  assert.equal(workspace.configState.value, 'empty')
+  assert.deepEqual(io.calls.filter(([method]) => method === 'getBusinessTemplate'), [])
+  assert.equal(workspace.detailState.value, 'ready')
+  assert.equal(workspace.isDefault.value, true)
+  assert.equal(workspace.draft.value.configId, '')
+  assert.equal(workspace.canSave.value, false)
+})
+
 test('Webhook saves a second credential without changing a binding with an existing custom key', async () => {
   const io = mockApi(['hook-a', 'hook-b'].map(id => config(id, 'webhook', 'http')))
   const previous = item('actual-topic', template({

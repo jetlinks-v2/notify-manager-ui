@@ -26,13 +26,21 @@ export function useChannelTemplateSetup(
   const { entry, canEdit, dirty } = workspace
   const channelId = computed(() => context.channel.value?.id || '')
   const current = computed(() => supportsTemplateSetup(channelId.value) ? entry.value : undefined)
+  const configId = computed(() => current.value?.baseline?.id)
   const isSms = computed(() => channelId.value === smsChannel)
-  const sms = useSmsTemplateOptions(computed(() => isSms.value ? current.value : undefined), canEdit)
+  // 短信首次写入凭据后，继续完成同一份配置的模板和签名选择。
+  const pendingSmsSetupId = ref<string>()
+  const settingUp = computed(() => !!current.value?.isNew
+    || (isSms.value && !!configId.value && configId.value === pendingSmsSetupId.value))
+  const settingUpSms = computed(() => isSms.value && settingUp.value)
+  // 企业微信的 AgentId 同时用于渠道试发和应用授权，已保存渠道也需要编辑入口。
+  const showFields = computed(() => settingUp.value || channelId.value === wechatCorpChannel)
+  const sms = useSmsTemplateOptions(computed(() => settingUpSms.value ? current.value : undefined), canEdit)
   const values = computed(() => readTemplateSetup(channelId.value, current.value?.draft.configuration))
-  const fields = computed(() => templateSetupFields(channelId.value, values.value))
+  const fields = computed(() => showFields.value ? templateSetupFields(channelId.value, values.value) : [])
   const issues = computed(() => {
     const result = templateSetupIssues(channelId.value, values.value)
-    if (isSms.value) {
+    if (settingUpSms.value) {
       for (const key of ['code', 'signName'] as const) {
         if (sms.state.value[key] === 'ready' && values.value[key] && !sms.choices.value[key].some(option => option.value === values.value[key])) {
           result[key] = 'messageNotification.channels.validation.invalidValue'
@@ -41,7 +49,6 @@ export function useChannelTemplateSetup(
     }
     return result
   })
-  const configId = computed(() => current.value?.baseline?.id)
   const submittedId = ref<string>()
   const feedback = shallowRef<{ id: string; result: TemplateFillResult }>()
   const ready = computed(() => Boolean(configId.value && !dirty.value && !Object.keys(issues.value).length))
@@ -54,11 +61,11 @@ export function useChannelTemplateSetup(
       options: field.key === 'code' || field.key === 'signName' ? sms.choices.value[field.key] : field.options,
       error: submittedId.value === current.value?.draft.id ? issues.value[field.key] : undefined })),
     saveCredentialsFirst: sms.credentialsPending.value,
-    smsOptionsState: isSms.value ? sms.state.value : undefined,
-    saveBlocked: isSms.value && !sms.credentialsPending.value && !sms.ready.value,
+    smsOptionsState: settingUpSms.value ? sms.state.value : undefined,
+    saveBlocked: settingUpSms.value && !sms.credentialsPending.value && !sms.ready.value,
     disabled: !canEdit.value || context.blocked.value,
     generating: context.generating.value,
-    canFill: ready.value && canEdit.value && context.permitted.value && (!isSms.value || sms.ready.value),
+    canFill: ready.value && canEdit.value && context.permitted.value && (!settingUpSms.value || sms.ready.value),
     noPermission: ready.value && canEdit.value && !context.permitted.value,
     result: feedback.value && feedback.value.id === configId.value && !dirty.value ? feedback.value.result : undefined,
   }))
@@ -76,10 +83,10 @@ export function useChannelTemplateSetup(
     workspace.changeField(storageKey, defaults)
   }
 
-  /** 业务模板使用本次渠道保存的默认值，独立于渠道试发参数。 */
+  /** 首次配置校验并保存默认模板值，企业微信继续校验渠道 AgentId。 */
   function prepareForSave() {
     const { value: selected } = current
-    if (!selected) return true
+    if (!selected || !showFields.value) return true
     if (sms.credentialsPending.value) {
       submittedId.value = undefined
       return true
@@ -104,6 +111,12 @@ export function useChannelTemplateSetup(
     return true
   }
 
+  /** 仅成功保存的短信凭据进入首次模板选择，保存模板默认值后结束该流程。 */
+  function afterSmsSave(id: string, credentialsOnly: boolean) {
+    if (credentialsOnly) pendingSmsSetupId.value = id
+    else if (pendingSmsSetupId.value === id) pendingSmsSetupId.value = undefined
+  }
+
   async function fill(expectedId?: string, canWrite = () => canEdit.value) {
     const channel = context.channel.value
     const baseline = current.value?.baseline
@@ -124,7 +137,7 @@ export function useChannelTemplateSetup(
     }
   }
 
-  return { model, change, fill, prepareForSave, reloadSmsOptions: sms.reload }
+  return { model, change, fill, prepareForSave, afterSmsSave, reloadSmsOptions: sms.reload }
 }
 
 export type ChannelTemplateSetupModel = ReturnType<typeof useChannelTemplateSetup>['model']['value']

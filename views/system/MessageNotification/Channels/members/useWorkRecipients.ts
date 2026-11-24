@@ -1,7 +1,7 @@
 import { computed, reactive, ref, shallowRef, type Ref } from 'vue'
 import { messageNotificationApi as api } from '../../../../../api/notice/messageNotification'
 import { loadGroupRecipients } from '../../../../../api/notice/workRecipients'
-import { dingTalkMemberApi, loadMemberPlatformUsers, wechatMemberApi } from '../../../../../api/notice/wechatMembers'
+import { dingTalkMemberApi, loadMemberPlatformUsers, wechatMemberApi, type WechatDirectoryCache } from '../../../../../api/notice/wechatMembers'
 import { classifyNotificationFailure, NotificationRequestError, type NotificationLoadState, type NotifierConfig } from '../../shared'
 import {
   assertWorkConfig, emptyWorkRecipients, isWorkChannel, readWorkRecipients, uniqueNamePairs, workRecipientsEmpty, workRecipientsKey,
@@ -16,6 +16,7 @@ interface RecipientEditorOptions {
   config: () => NotifierConfig | undefined
   canWrite: Ref<boolean>
   busy: Ref<boolean>
+  wechatDirectory: WechatDirectoryCache
   saveSetting: (value: WorkRecipients, config: NotifierConfig) => Promise<boolean>
 }
 
@@ -132,7 +133,7 @@ export function useWorkRecipients(options: RecipientEditorOptions) {
     if (!refresh && directories[next]) return Promise.resolve(directories[next])
     states[next] = 'loading'
     const active = () => directoryRequests.get(next) === operation && isCurrent(current.id, current.channelId)
-    const operation = loadGroupRecipients(current.id, current.channelId, next).then(directory => {
+    const operation = loadGroupRecipients(current.id, current.channelId, next, options.wechatDirectory, refresh).then(directory => {
       if (!active()) return
       directories[next] = directory
       states[next] = directory.platform.length ? 'ready' : 'empty'

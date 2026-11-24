@@ -30,7 +30,7 @@ const { useWechatMembers } = load(resolve(base, 'members/useWechatMembers'))
 const { useWechatMembersDrawer } = load(resolve(base, 'members/useWechatMembersDrawer'))
 const { withMemberStatus } = load(resolve(base, 'members/wechatMemberFilters'))
 const { buildWechatMemberTree, wechatTreeExpandedKeys } = load(resolve(base, 'members/wechatMemberTree'))
-const { loadMemberPlatformUsers, wechatMemberApi } = load(resolve(root, 'api/notice/wechatMembers'))
+const { createWechatDirectoryCache, loadMemberPlatformUsers, wechatMemberApi } = load(resolve(root, 'api/notice/wechatMembers'))
 const { messageNotificationApi } = load(resolve(root, 'api/notice/messageNotification'))
 const corpChannel = { id: 'weixin:corpMessage', type: 'weixin', provider: 'corpMessage' }
 const corpTemplate = () => ({ id: 'tpl', name: 'Saved enterprise template', type: 'weixin', provider: 'corpMessage', configId: 'corp', template: { agentId: '1000002', message: 'Hello ${code}' }, variableDefinitions: [{ id: 'code', expands: { required: true } }, { id: 'toUser', name: 'Recipient', type: 'string' }] })
@@ -543,6 +543,68 @@ test('member APIs preserve permission context, encode IDs, and use user details 
   assert.deepEqual(calls[5].data, { pageIndex: 2, pageSize: 100, paging: true, sorts: [{ name: 'id', order: 'asc' }] })
   response = { success: false, status: 403 }
   await assert.rejects(wechatMemberApi.bindings('corp'), error => error.kind === 'forbidden')
+})
+
+test('WeCom directory shares pending reads and reuses successful results for 30 seconds', async ({ mock }) => {
+  mock.timers.enable({ apis: ['Date'], now: 0 })
+  calls.length = 0
+  const directory = createWechatDirectoryCache()
+  response = { success: true, result: [{ id: 'first' }] }
+  const departments = directory.departments('corp/one')
+  const members = directory.members('corp/one')
+  const tags = directory.tags('corp/one')
+  assert.equal(directory.departments('corp/one'), departments)
+  assert.equal(directory.members('corp/one', { refresh: true }), members)
+  assert.equal(directory.tags('corp/one'), tags)
+  mock.timers.tick(1000)
+  await Promise.all([departments, members, tags])
+  assert.deepEqual(calls.map(call => call.url), [
+    '/notifier/wechat/corp/corp%2Fone/departments/tree', '/notifier/wechat/corp/corp%2Fone/users', '/notifier/wechat/corp/corp%2Fone/tags',
+  ])
+
+  mock.timers.tick(29999)
+  const updated = [{ id: 'updated' }]
+  response = { success: true, result: updated }
+  assert.deepEqual(await directory.members('corp/one'), [{ id: 'first' }])
+  assert.equal(calls.length, 3)
+  assert.deepEqual(await directory.members('corp/two'), updated)
+  assert.deepEqual(await createWechatDirectoryCache().members('corp/one'), updated)
+  assert.deepEqual(await directory.departments('corp/one', { refresh: true }), updated)
+  assert.equal(calls.length, 6)
+
+  mock.timers.tick(1)
+  assert.deepEqual(await directory.members('corp/one'), updated)
+  assert.equal(calls.length, 7)
+})
+
+test('failed directory reads stay retryable after invalidation and cannot evict a newer result', async () => {
+  const directory = createWechatDirectoryCache()
+  const get = request.get
+  const pending = []
+  request.get = () => new Promise(resolve => pending.push(resolve))
+  try {
+    const previous = directory.members('corp')
+    await Promise.resolve()
+    directory.clear('corp')
+    const current = directory.members('corp')
+    await Promise.resolve()
+    pending[1]({ success: true, result: [{ id: 'current' }] })
+    assert.deepEqual(await current, [{ id: 'current' }])
+    pending[0]({ success: false, status: 403 })
+    await assert.rejects(previous, error => error.kind === 'forbidden')
+    assert.equal(directory.members('corp'), current)
+
+    directory.clear()
+    const failed = directory.members('corp')
+    await Promise.resolve()
+    pending[2]({ success: true, result: null })
+    await assert.rejects(failed, error => error.kind === 'error')
+    const retry = directory.members('corp')
+    await Promise.resolve()
+    pending[3]({ success: true, result: [] })
+    assert.deepEqual(await retry, [])
+    assert.equal(directory.members('corp'), retry)
+  } finally { request.get = get }
 })
 
 

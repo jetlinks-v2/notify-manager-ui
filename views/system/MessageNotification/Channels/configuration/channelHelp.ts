@@ -25,14 +25,20 @@ export function channelHelpSection(model: ChannelHelpModel, fieldKey: string): s
 }
 
 /** Historical documents supply the illustrations; current fields and metadata own the contract. */
-export function channelHelp(channel: NotificationChannel | undefined, definition: ChannelDefinition | undefined, t: (key: string) => string, configuration?: NotificationObject): ChannelHelpModel {
+export function channelHelp(
+  channel: NotificationChannel | undefined,
+  definition: ChannelDefinition | undefined,
+  t: (key: string) => string,
+  { configuration, showTemplateSetup }: { configuration?: NotificationObject; showTemplateSetup?: boolean } = {},
+): ChannelHelpModel {
   const guide = channel && channelHelpGuides[channel.id]
-  const sections: ChannelHelpSection[] = guide?.sections.map(section => ({
+  const visibleSections = guide?.sections.filter(section => showTemplateSetup || !section.templateSetupOnly) ?? []
+  const sections: ChannelHelpSection[] = visibleSections.map(section => ({
     id: section.id, fields: section.fields, title: t(section.titleKey),
     blocks: section.blocks.map(block => block.type === 'text'
       ? { type: 'text', text: t(block.key) }
       : { type: 'image', image: block.image, alt: t(section.titleKey) }),
-  })) ?? []
+  }))
   // Provider extensions keep their own explanations; hidden legacy settings are not advertised as inputs.
   for (const field of definition?.fields ?? []) {
     if (!field.property?.description || sections.some(section => section.fields.includes(field.key))
@@ -42,7 +48,8 @@ export function channelHelp(channel: NotificationChannel | undefined, definition
   }
   const smtp = channel?.id === 'email:embedded' && findEmailSmtpEndpoint(String(configuration?.host ?? ''))
   if (smtp && smtp.hintKey) sections.find(section => section.id === 'host')?.blocks.push({ type: 'text', text: t(smtp.hintKey) })
-  const description = guide ? t(`messageNotification.channels.guidance.${guide.kind}.description`)
+  const editingDescriptionKey = !showTemplateSetup ? guide?.editingDescriptionKey : undefined
+  const description = guide ? t(editingDescriptionKey ?? `messageNotification.channels.guidance.${guide.kind}.description`)
     : definition?.metadata.description || channel?.description || t('messageNotification.channels.guidance.generic')
   return {
     channelId: channel?.id || '', description,

@@ -13,7 +13,7 @@ interface ChannelTestContext { config: NotifierConfig; channelName: string; syst
 type ChannelTestApi = Pick<MessageNotificationApi, 'sendInline' | 'getCurrentEmail' | 'getCurrentPhone' | 'getCurrentBindings'>
 type MemberOption = { label: string; value: string }
 type MemberQueries = Partial<Record<string, (configId: string) => Promise<Pick<NoticeCorpUser, 'id' | 'name'>[]>>>
-const channelMemberQueries: MemberQueries = {
+export const channelMemberQueries: MemberQueries = {
   'dingTalk:dingTalkMessage': configId => checked(queryDingTalkCorpUsers_api(configId)),
   [wechatCorpChannel]: configId => wechatMemberApi.members(configId, { hiddenError: true }),
 }

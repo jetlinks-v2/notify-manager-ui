@@ -156,6 +156,9 @@ export function buildPrototypeContent(business: PrototypeBusiness, token: Protot
 
 const sampleMessages: Record<string, string> = {
   'NoticeCenter.template.sample.device': '温度设备 A',
+  'NoticeCenter.template.sample.type.device': '设备',
+  'NoticeCenter.template.sample.type.aiTaskMediaTarget': 'AI场景告警',
+  'NoticeCenter.template.sample.type.mediaChannel': '视频通道',
   'NoticeCenter.template.sample.product': '环境监测产品',
   'NoticeCenter.template.sample.property': '温度',
   'NoticeCenter.template.sample.alarm': '温度过高',
@@ -171,23 +174,30 @@ function sampleText(key: string, params: Record<string, unknown> = {}): string {
 }
 
 /** 样例只交给预览渲染，永不进入默认模板、变量 defaultValue 或保存 payload。 */
-export function prototypePreviewExamples(business?: NoticeChannelConfig): Record<string, string> {
+export function prototypePreviewExamples(business?: NoticeChannelConfig, translate?: PrototypeTranslate): Record<string, string> {
   const code = business?.provider
+  const typeText = (value: 'device' | 'aiTaskMediaTarget' | 'mediaChannel') => {
+    const key = `NoticeCenter.template.sample.type.${value}`
+    const translated = translate?.(key)
+    return translated && translated !== key ? translated : sampleText(key)
+  }
   const values = alarmPreviewValues(sampleText, code === 'alarm-device-relieve' ? 'relieve' : 'trigger')
   let selected: Record<string, unknown>
-  if (code === 'alarm-device' || code === 'alarm-device-relieve') selected = values
-  else if (code === 'aiComplianceAlarm' || code === 'aiSecurityAlarm') {
+  if (code === 'alarm-device' || code === 'alarm-device-relieve') {
+    const deviceType = typeText('device')
+    selected = { ...values, 'detail.targetType': deviceType, 'detail.sourceType': deviceType }
+  } else if (code === 'aiComplianceAlarm' || code === 'aiSecurityAlarm') {
     const security = code === 'aiSecurityAlarm'
     const alarmName = security ? '明火识别' : '收银台离岗'
     selected = {
       message: `AI ${prototypeBusinessNames[code]}：${alarmName}`,
       notifyTime: values.notifyTime,
-      'detail.targetType': 'aiTaskMediaTarget',
+      'detail.targetType': typeText('aiTaskMediaTarget'),
       'detail.alarmConfigName': alarmName,
       'detail.targetName': security ? '仓库入口' : '收银台',
       'detail.level': values['detail.level'],
       'detail.alarmTime': values['detail.alarmTime'],
-      'detail.sourceType': 'mediaChannel',
+      'detail.sourceType': typeText('mediaChannel'),
       'detail.sourceName': security ? '仓库入口 · 通道 01' : '收银台 · 通道 03',
       'detail.targetId': security ? 'target-001' : 'target-003',
       'detail.sourceId': security ? 'media-channel-001' : 'media-channel-003',

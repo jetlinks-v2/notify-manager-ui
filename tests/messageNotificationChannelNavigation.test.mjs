@@ -69,11 +69,11 @@ test('template navigation uses channel directory type names and DingTalk provide
   assert.deepEqual(result.subChannels.value.map(item => item.label), ['群机器人', '工作通知'])
 })
 
-test('primary family selection emits its real work provider ID rather than a visual grouping key', () => {
+test('primary family selection opens the first DingTalk subtab and the WeChat work provider', () => {
   const { result, props, events } = setup()
   result.selectGroup('dingTalk')
-  assert.equal(props.value, 'dingTalk:dingTalkMessage')
-  assert.deepEqual(events, [['change', 'dingTalk:dingTalkMessage']])
+  assert.equal(result.activeTabKey.value, result.subChannels.value[0].key)
+  assert.deepEqual(events, [['change', 'dingTalk:dingTalkRobotWebHook']])
   assert.equal(result.activeGroup.value.key, 'dingTalk')
   result.selectGroup('weixin')
   assert.equal(props.value, 'weixin:corpMessage')
@@ -84,24 +84,26 @@ test('primary family selection emits its real work provider ID rather than a vis
 test('subtabs keep exact provider identities and repeated current-family clicks retain the selected subtype', () => {
   const { result, props, events } = setup()
   result.selectGroup('dingTalk')
-  result.selectChannel('dingTalk:dingTalkRobotWebHook')
-  assert.equal(props.value, 'dingTalk:dingTalkRobotWebHook')
-  assert.deepEqual(events.at(-1), ['change', 'dingTalk:dingTalkRobotWebHook'])
+  result.selectChannel('dingTalk:dingTalkMessage')
+  assert.equal(props.value, 'dingTalk:dingTalkMessage')
+  assert.deepEqual(events.at(-1), ['change', 'dingTalk:dingTalkMessage'])
   const count = events.length
   result.selectGroup('dingTalk')
   result.selectGroup('dingTalk')
-  assert.equal(props.value, 'dingTalk:dingTalkRobotWebHook')
+  assert.equal(props.value, 'dingTalk:dingTalkMessage')
   assert.equal(events.length, count)
   assert.deepEqual(result.subChannels.value.map(item => item.id), ['dingTalk:dingTalkRobotWebHook', 'dingTalk:customDing', 'dingTalk:dingTalkMessage'])
   assert.equal(result.subChannels.value.find(item => item.id === 'dingTalk:customDing').label, 'customDing')
 })
 
-test('configured robots appear as distinct named tabs and emit their configuration ID', () => {
-  const { result, props, events } = setup(fixture, 'dingTalk:dingTalkMessage')
+test('configured robots appear as distinct named tabs and entering DingTalk selects the first configuration', () => {
+  const { result, props, events } = setup()
   props.configurationsByChannel['dingTalk:dingTalkRobotWebHook'] = [{ id: 'robot-a', name: '告警群' }, { id: 'robot-b', name: '告警群' }]
+  result.selectGroup('dingTalk')
   assert.deepEqual(result.subChannels.value.map(tab => tab.label), ['群机器人·告警群', '群机器人·告警群', 'customDing', '工作通知'])
-  assert.equal(result.activeTabKey.value, 'dingTalk:dingTalkMessage')
   const [first, second] = result.subChannels.value
+  assert.deepEqual(events.at(-1), ['change', 'dingTalk:dingTalkRobotWebHook', 'robot-a'])
+  assert.equal(result.activeTabKey.value, first.key)
   assert.notEqual(first.key, second.key)
   result.selectChannel(second.key)
   assert.deepEqual(events.at(-1), ['change', 'dingTalk:dingTalkRobotWebHook', 'robot-b'])

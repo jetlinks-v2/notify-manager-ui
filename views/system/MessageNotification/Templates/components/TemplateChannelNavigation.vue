@@ -1,7 +1,9 @@
 <template>
   <div class="template-channel-navigation">
     <a-button-group class="template-channel-navigation__primary" role="group" :aria-label="t('messageNotification.templates.channelFilter')">
-      <a-button v-for="group in groups" :key="group.key" :disabled="disabled" :class="{ 'is-active': group.key === activeGroup?.key }" :aria-pressed="group.key === activeGroup?.key" :title="`${group.label} · ${group.statusText}`" :aria-label="`${group.label} · ${group.statusText}`" @click="selectGroup(group.key)">
+      <a-button v-for="group in groups" :key="group.key"
+        :disabled="disabled || (group.key === 'dingTalk' && group.configurationState === 'loading')"
+        :class="{ 'is-active': group.key === activeGroup?.key }" :aria-pressed="group.key === activeGroup?.key" :title="`${group.label} · ${group.statusText}`" :aria-label="`${group.label} · ${group.statusText}`" @click="selectGroup(group.key)">
         <a-badge :status="group.configurationState === 'ready' ? 'success' : 'default'" />
         <span>{{ group.label }}</span>
       </a-button>

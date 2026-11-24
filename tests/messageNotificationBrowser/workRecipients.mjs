@@ -61,13 +61,29 @@ async function verifyWechatSummariesAfterSave() {
       groupRegion(page, '部门对应').getByText(/已对应 0 \/ 3 项/),
       groupRegion(page, '标签对应').getByText(/已对应 0 \/ 1 项/),
     ]
+    const directoryCalls = () => page.evaluate(() => {
+      const { calls } = window.__notificationSmoke
+      return {
+        departments: calls.filter(([method, id]) => method === 'memberDepartments' && id === 'corp-fixture').length,
+        members: calls.filter(([method, id]) => method === 'members' && id === 'corp-fixture').length,
+        tags: calls.filter(([method, url]) => method === 'remoteOption' && url === '/notifier/wechat/corp/corp-fixture/tags').length,
+      }
+    })
     await Promise.all(summaries.map(summary => summary.waitFor()))
+    assert.deepEqual(await directoryCalls(), { departments: 1, members: 1, tags: 1 })
+
+    await page.evaluate(() => window.__notificationSmoke.router.push('/channels?channel=dingTalk:dingTalkMessage'))
+    await summaries[2].waitFor({ state: 'hidden' })
+    await page.evaluate(() => window.__notificationSmoke.router.push('/channels?channel=weixin:corpMessage'))
+    await Promise.all(summaries.map(summary => summary.waitFor()))
+    assert.deepEqual(await directoryCalls(), { departments: 1, members: 1, tags: 1 })
 
     const setup = groupRegion(page, '消息模板默认配置')
     await setup.getByRole('textbox', { name: 'AgentId' }).fill('8000002')
     await button(page, '保存').click()
     await setup.getByText('已创建 1 个，跳过 2 个，失败 0 个', { exact: true }).waitFor()
     await Promise.all(summaries.map(summary => summary.waitFor({ timeout: 5000 })))
+    assert.deepEqual(await directoryCalls(), { departments: 2, members: 2, tags: 2 })
   } finally { await page.close() }
 }
 
