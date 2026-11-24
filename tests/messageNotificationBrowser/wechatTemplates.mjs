@@ -12,6 +12,8 @@ const entry = new URL(`/@fs${fileURLToPath(new URL('./index.html', import.meta.u
 const browser = await chromium.launch({ channel: process.env.SMOKE_CHROMIUM_CHANNEL })
 const problems = []
 const route = '#/channels?channel=weixin%3AcorpMessage'
+const subscriptionAction = /^(启\s*用|禁\s*用)$/
+const subscriptionStatus = /^消息订阅已(?:启用|禁用)$/
 await mkdir(output, { recursive: true })
 
 function setup(page) { return page.getByRole('region', { name: '消息模板默认配置' }) }
@@ -128,16 +130,11 @@ try {
   assert.equal(repairedAlarm.state, 'enabled')
   await openTemplate(existing, relieve.id)
   await existing.getByText('已保存', { exact: true }).waitFor()
-  await existing.getByText('消息订阅已禁用', { exact: true }).waitFor()
+  const existingHeader = existing.locator('.message-templates__header')
+  assert.equal(await existingHeader.getByText(subscriptionStatus).count(), 0)
   const channelSwitch = wechatSwitch(existing)
   assert.equal(await channelSwitch.count(), 0)
-  const enable = existing.getByRole('button', { name: '启用', exact: true })
-  const disable = existing.getByRole('button', { name: '禁用', exact: true })
-  await enable.click()
-  await existing.getByText('消息订阅已启用', { exact: true }).waitFor()
-  await disable.click()
-  await enable.waitFor()
-  await existing.getByText('消息订阅已禁用', { exact: true }).waitFor()
+  assert.equal(await existingHeader.getByRole('button', { name: subscriptionAction }).count(), 0)
 
   const edit = existing.getByRole('button', { name: /编\s*辑/ })
   await edit.click()
@@ -163,11 +160,9 @@ try {
   await openTemplate(existing, relieve.id)
   await existing.locator('.wechat-template__card').getByText(message, { exact: true }).waitFor()
   await existing.screenshot({ path: join(output, 'wechat-template-channel-disabled.png') })
-  await existing.getByText('消息订阅已禁用', { exact: true }).waitFor()
-  assert.deepEqual((await snapshot(existing)).calls
-    .filter(([method, input]) => method === 'saveBusinessChannel' && input.channel.channelProvider === 'notifier-weixin')
-    .map(([, input]) => input), ['enabled', 'disabled'].map(state => ({ providerId: relieve.id,
-    channel: { ...relieve.channels[0], state } })))
+  assert.equal(await existingHeader.getByText(subscriptionStatus).count(), 0)
+  assert.equal((await snapshot(existing)).calls
+    .some(([method, input]) => method === 'saveBusinessChannel' && input.channel.channelProvider === 'notifier-weixin'), false)
   await openTemplate(existing, alarm.id)
   await existing.getByText('已保存', { exact: true }).waitFor()
   assert.equal(await inboxSetup.count(), 0)
@@ -201,7 +196,10 @@ try {
   await fresh.screenshot({ path: join(output, 'wechat-message-templates-mobile.png') })
   await openTemplate(fresh, newBusinesses[0].id)
   await fresh.locator('.wechat-template__card').waitFor()
-  await fresh.getByRole('button', { name: '禁用', exact: true }).waitFor()
+  const freshHeader = fresh.locator('.message-templates__header')
+  await freshHeader.getByText('已保存', { exact: true }).waitFor()
+  assert.equal(await freshHeader.getByText(subscriptionStatus).count(), 0)
+  assert.equal(await freshHeader.getByRole('button', { name: subscriptionAction }).count(), 0)
   assert.equal(await wechatSwitch(fresh).count(), 0)
   assert.ok(await fresh.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
   await fresh.close()
