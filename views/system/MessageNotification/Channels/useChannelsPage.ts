@@ -296,7 +296,14 @@ export function useChannelsPage() {
   watch([() => route.query.channel, () => route.query.ch, () => route.query.configId], () => trial.close(true))
   // A refreshed saved configuration invalidates the snapshot used by an open test.
   watch(() => entry.value?.baseline, () => trial.close(true))
-  watch([channelId, selectedConfigId], () => { trial.close(true); members.close(true); workRecipients.close(true); decideMemberDiscard(false); focusedField.value = '' })
+  // 保存后重新选中配置时，先清理旧状态，避免作废随后启动的通讯录查询。
+  watch([channelId, selectedConfigId], () => {
+    trial.close(true)
+    members.close(true)
+    workRecipients.close(true)
+    decideMemberDiscard(false)
+    focusedField.value = ''
+  }, { flush: 'sync' })
   watch([canQuery, permissions.bind], ([query, bind]) => { if (!query || !bind) { members.close(true); decideMemberDiscard(false) } })
   watch([canManageWork, selectedConfigId], ([allowed]) => {
     if (allowed) workRecipients.prepare()

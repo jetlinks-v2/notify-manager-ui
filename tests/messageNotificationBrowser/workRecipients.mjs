@@ -53,6 +53,24 @@ const openGroup = async (page, type, waitFor) => {
   return currentDrawer
 }
 
+async function verifyWechatSummariesAfterSave() {
+  const page = await open('weixin:corpMessage', 1440, '&writeDelay=100')
+  try {
+    const summaries = [
+      groupRegion(page, '成员对应').getByText(/已对应 1 \/ 5 位平台用户/),
+      groupRegion(page, '部门对应').getByText(/已对应 0 \/ 3 项/),
+      groupRegion(page, '标签对应').getByText(/已对应 0 \/ 1 项/),
+    ]
+    await Promise.all(summaries.map(summary => summary.waitFor()))
+
+    const setup = groupRegion(page, '消息模板默认配置')
+    await setup.getByRole('textbox', { name: 'AgentId' }).fill('8000002')
+    await button(page, '保存').click()
+    await setup.getByText('已创建 1 个，跳过 2 个，失败 0 个', { exact: true }).waitFor()
+    await Promise.all(summaries.map(summary => summary.waitFor({ timeout: 5000 })))
+  } finally { await page.close() }
+}
+
 async function searchMapping(page, group, field, value) {
   const filter = group.locator('.condition-filter')
   await filter.locator('.condition-filter__text-input--tail').click()
@@ -195,6 +213,7 @@ async function verifyTagMapping(width) {
 }
 
 try {
+  await verifyWechatSummariesAfterSave()
   await verifyTagMapping(1440)
   await verifyTagMapping(390)
   await verifyDepartmentTree('weixin:corpMessage', 1440, 'corp-fixture', '全部测试部门 · all', '运营组 · other')
