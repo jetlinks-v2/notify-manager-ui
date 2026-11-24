@@ -1151,7 +1151,9 @@ test('SMTP selections obey busy and disabled locks and move provider hints to th
   model.changeValue('config:host', 'smtp-mail.outlook.com')
   const hostField = model.formGroups.value.flatMap(group => group.fields).find(field => field.key === 'config:host')
   assert.equal(hostField.hint, undefined)
-  const help = channelHelp(workspace.channel.value, workspace.entry.value.definition, key => key, workspace.entry.value.draft.configuration)
+  const help = channelHelp(workspace.channel.value, workspace.entry.value.definition, key => key, {
+    configuration: workspace.entry.value.draft.configuration,
+  })
   assert.ok(help.sections.find(section => section.id === 'host').blocks.some(block => block.text === 'messageNotification.channels.email.outlookAuthentication'))
   assert.equal(io.calls.some(([method]) => method === 'updateConfig'), false)
 })

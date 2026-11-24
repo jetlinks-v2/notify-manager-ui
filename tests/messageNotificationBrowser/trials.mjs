@@ -60,6 +60,8 @@ async function snapshot(page, name) {
 try {
   if (!process.env.TRIAL_SETTINGS_ONLY) {
     const page = await open('&dingTalkRecipients')
+    const directoryTime = new Date()
+    await page.clock.setFixedTime(directoryTime)
     for (const record of trialRecords.filter(item => item.provider !== 'officialMessage')) {
       await choose(page, record)
       await beginChannelEdit(page)
@@ -115,6 +117,7 @@ try {
       await choose(page, record)
       const dialog = await show(page)
       const before = await queryCount()
+      if (!dingTalk) assert.equal(before, 1, 'the WeCom summary has loaded the member directory')
       await dialog.getByRole('radio', { name: '其他接收人', exact: true }).check()
       assert.equal(await button(dialog, '发送').isDisabled(), true)
       const member = dialog.getByRole('combobox', { name: '其他接收人', exact: true })
@@ -133,12 +136,22 @@ try {
       const [, payload] = (await sends(page)).at(-1)
       assert.equal(payload.configId, record.id)
       assert.equal(payload.template.template[dingTalk ? 'userIdList' : 'toUser'], target)
-      assert.equal(await queryCount(), before + (dingTalk ? 2 : 1))
+      assert.equal(await queryCount(), before + (dingTalk ? 2 : 0))
       await button(dialog, '关闭').click()
       await dialog.waitFor({ state: 'hidden' })
+      if (!dingTalk) {
+        await page.clock.setFixedTime(new Date(directoryTime.getTime() + 30_000))
+        const reopened = await show(page)
+        await reopened.getByRole('radio', { name: '其他接收人', exact: true }).check()
+        const recipient = reopened.getByRole('combobox', { name: '其他接收人', exact: true })
+        await eventually(async () => assert.equal(await recipient.isEnabled(), true))
+        assert.equal(await queryCount(), before + 1)
+        await button(reopened, '取消').click()
+        await reopened.waitFor({ state: 'hidden' })
+      }
     }
     await page.evaluate(() => window.__notificationSmoke.deniedPermissions.delete('system/MessageNotification/Channels:bind'))
-    pass('DingTalk and WeCom look up other recipients by configuration, retry and send only the selected member')
+    pass('DingTalk retries directory reads and WeCom reuses the summary until expiry. Both send only the selected member.')
     await choose(page, trialRecords[0])
     let dialog = await show(page)
     await dialog.getByRole('radio', { name: '其他接收人', exact: true }).check()
@@ -259,7 +272,7 @@ try {
   assert.deepEqual(await voicePage.evaluate(() => window.__notificationSmoke.configs.find(row => row.id === 'trial-aliyun').configuration), trialRecords[5].configuration)
   await beginChannelEdit(voicePage)
   await voicePage.getByRole('textbox', { name: 'AccessKey ID', exact: true }).fill('updated-voice-fixture-key')
-  await voicePage.getByRole('textbox', { name: '语音模板编号', exact: true }).fill('TTS_BUSINESS')
+  assert.equal(await voicePage.getByRole('region', { name: '消息模板默认配置', exact: true }).count(), 0)
   await saveChannelDraft(voicePage)
   await voicePage.locator('.notification-channels__footer .ant-btn-primary:disabled:not(.ant-btn-loading)').waitFor()
   assert.deepEqual(await voicePage.evaluate(() => window.__notificationSmoke.configs.find(row => row.id === 'trial-aliyun').configuration.testTemplate), trialRecords[5].configuration.testTemplate)
@@ -329,11 +342,7 @@ try {
   await beginChannelEdit(smsPage)
   const accessKey = smsPage.getByRole('textbox', { name: 'AccessKey ID', exact: true })
   await accessKey.fill('updated-fixture-key')
-  await button(smsPage, '保存凭据').click()
-  for (const [label, option] of [['短信模板编号', 'SMS_FIXTURE'], ['短信签名', '测试签名']]) {
-    await channelField(smsPage, label).getByRole('combobox').click()
-    await smsPage.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: option }).click()
-  }
+  assert.equal(await smsPage.getByRole('region', { name: '消息模板默认配置', exact: true }).count(), 0)
   await saveChannelDraft(smsPage)
   await smsPage.locator('.notification-channels__footer .ant-btn-primary:disabled:not(.ant-btn-loading)').waitFor()
   const savedSettings = await smsPage.evaluate(() => window.__notificationSmoke.configs.find(row => row.id === 'trial-aliyunSms').configuration.testTemplate)

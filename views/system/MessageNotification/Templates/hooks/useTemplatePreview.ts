@@ -54,7 +54,7 @@ export function useTemplatePreview(props: PreviewProps) {
   const emailDraft = computed(() => isEmailDraft(props.draft))
   const exampleValues = computed(() => {
     const builtin = props.business ? undefined : builtinEmailTemplates(t).find(item => item.key === props.draft.builtinKey)
-    return builtin ? builtin.examples : prototypePreviewExamples(props.business)
+    return builtin ? builtin.examples : prototypePreviewExamples(props.business, t)
   })
   const recommended = computed(() => props.business ? getRecommendedVariables(
     props.business.provider === 'alarm-device' ? 'alarm-device-relieve' : props.business.provider, t,

@@ -62,6 +62,8 @@ async function renameConfiguration(page, previous, nameLabelKey, name, bindingNa
   await editButton(row, await t(page, 'messageNotification.channels.more')).click()
   await editButton(page.locator('.ant-dropdown:visible'), await t(page, 'messageNotification.common.edit')).click()
   const modal = page.locator('.channel-configuration-modal')
+  await modal.waitFor()
+  await setup(modal).waitFor({ state: 'hidden' })
   await text(modal, await t(page, nameLabelKey)).fill(name)
   const before = (await snapshot(page)).calls.length
   await saveChannelDraft(page)
@@ -69,6 +71,7 @@ async function renameConfiguration(page, previous, nameLabelKey, name, bindingNa
   await summary(page, 0, 4)
   const current = await savedTemplates(page, previous.config.type, previous.config.provider)
   assert.equal(current.config.name, name)
+  assert.deepEqual(current.config.configuration.messageTemplateDefaults, previous.config.configuration.messageTemplateDefaults)
   assert.deepEqual(current.generated, previous.generated)
   assert.deepEqual(current.bindings, previous.bindings.map(binding => ({ ...binding, name: bindingName })))
   const writes = (await snapshot(page)).calls.slice(before).filter(([method]) => method === 'saveBusinessTemplate')
@@ -109,6 +112,8 @@ try {
   for (const [type, provider] of [['voice', 'aliyun'], ['sms', 'aliyunSms']]) {
     const page = await open(`${type}:${provider}`, type === 'voice' ? 390 : 1440, type === 'sms' ? 'fail=remoteOption' : '')
     const form = setup(page)
+    const guide = page.locator(`.channel-help [data-help-section="${type}Template"]`)
+    await guide.waitFor()
     for (const [key, value] of [['accessKeyId', 'fixture-key'], ['secret', 'fixture-secret']]) {
       await channelField(page, await t(page, `messageNotification.channels.fields.${key}`)).locator('input').fill(value)
     }
@@ -157,6 +162,10 @@ try {
     }
     await saveChannelDraft(page)
     await summary(page, 4, 0)
+    await form.waitFor({ state: 'hidden' })
+    await guide.waitFor({ state: 'hidden' })
+    const editingDescription = await t(page, `messageNotification.channels.guidance.${type}.steps.1.description`)
+    await page.locator('.notification-channels__heading').getByText(editingDescription, { exact: true }).waitFor()
     const { config, generated } = await savedTemplates(page, type, provider)
     const defaults = type === 'sms' ? { code: 'SMS_FIXTURE', signName: '测试签名' } : { templateType: 'voice', templateCode: 'fixture.wav' }
     assert.deepEqual(config.configuration.messageTemplateDefaults, defaults)
@@ -170,12 +179,12 @@ try {
         assert.equal(template.message, undefined)
       }
     }
-    await editButton(form, '补齐消息模板').click()
+    await editButton(feedback(page), '补齐消息模板').click()
     await summary(page, 0, 4)
     assert.equal((await snapshot(page)).calls.filter(([method]) => method === 'createConfig').length, 1)
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
     await page.screenshot({ path: join(output, `${type}-templates.png`) })
-    await editButton(form, '消息模板').click()
+    await editButton(feedback(page), '消息模板').click()
     const previewCode = page.locator(`.${type}-preview__code code`)
     await previewCode.waitFor()
     assert.equal(await previewCode.innerText(), type === 'sms' ? 'SMS_FIXTURE' : 'fixture.wav')
@@ -188,10 +197,13 @@ try {
       await editButton(page, '编辑').waitFor()
       assert.equal(await previewCode.innerText(), 'business-only.wav')
       await page.evaluate(id => window.__notificationSmoke.router.push({ path: '/channels', query: { channel: 'voice:aliyun', configId: id } }), config.id)
-      await text(form, '语音ID').fill('next-default.wav')
+      await channelField(page, await t(page, 'messageNotification.channels.fields.accessKeyId')).locator('input').fill('updated-voice-fixture-key')
+      await form.waitFor({ state: 'hidden' })
       await saveChannelDraft(page)
       await summary(page, 0, 4)
-      const updated = (await savedTemplates(page, type, provider)).generated
+      const edited = await savedTemplates(page, type, provider)
+      assert.deepEqual(edited.config.configuration.messageTemplateDefaults, defaults)
+      const updated = edited.generated
       assert.equal(updated.filter(item => item.template.templateCode === 'business-only.wav').length, 1)
       assert.equal(updated.filter(item => item.template.templateCode === 'fixture.wav').length, 3)
     } else {
@@ -200,41 +212,26 @@ try {
         businessTypes.push({ id: 'new-topic', provider: 'new-topic', name: '新增消息类型', state: 'enabled', channels: [] })
         return router.push({ path: '/channels', query: { channel: 'sms:aliyunSms', configId: id } })
       }, config.id)
-      const codeField = channelField(page, '短信模板编号')
-      const signField = channelField(page, '短信签名')
-      await codeField.getByText('设备告警 (SMS_FIXTURE)', { exact: true }).waitFor()
-      await signField.getByText('测试签名', { exact: true }).waitFor()
       const keyField = channelField(page, await t(page, 'messageNotification.channels.fields.accessKeyId'))
+      await keyField.locator('input').waitFor()
+      await form.waitFor({ state: 'hidden' })
       await keyField.locator('input').fill('')
-      await editButton(page, '保存凭据').click()
+      await saveChannelDraft(page)
       await keyField.getByText(await t(page, 'messageNotification.channels.validation.required'), { exact: true }).waitFor()
-      await keyField.locator('input').fill('fixture-key')
-      await codeField.getByText('设备告警 (SMS_FIXTURE)', { exact: true }).waitFor({ timeout: 5000 })
-      await signField.getByText('测试签名', { exact: true }).waitFor()
       await keyField.locator('input').fill('fixture-key-rotated')
       await channelField(page, await t(page, 'messageNotification.channels.fields.secret')).locator('input').fill('fixture-secret-rotated')
-      assert.equal(await codeField.getByRole('combobox').isDisabled(), true)
-      assert.equal(await signField.getByRole('combobox').isDisabled(), true)
-      await editButton(page, '保存凭据').click()
-      await codeField.getByRole('combobox').click()
+      const before = (await snapshot(page)).calls.length
+      await saveChannelDraft(page)
+      await page.locator('.notification-channels__footer .ant-btn-primary:disabled:not(.ant-btn-loading)').waitFor()
+      await form.waitFor({ state: 'hidden' })
       const saved = await snapshot(page)
       assert.equal(saved.configs.length, 1)
       assert.equal(saved.configs[0].id, config.id)
+      assert.equal(saved.configs[0].configuration.accessKeyId, 'fixture-key-rotated')
       assert.equal(saved.configs[0].configuration.messageTemplateDefaults?.code, undefined)
       assert.equal(saved.configs[0].configuration.messageTemplateDefaults?.signName, undefined)
       assert.deepEqual(saved.templates.filter(item => item.configId === config.id), generated)
-      const options = page.locator('.ant-select-dropdown:visible .ant-select-item-option')
-      assert.equal(await options.filter({ hasText: 'SMS_FIXTURE' }).count(), 0)
-      await options.filter({ hasText: '新账号通知 (SMS_ROTATED)' }).click()
-      await signField.getByRole('combobox').click()
-      assert.equal(await options.filter({ hasText: '测试签名' }).count(), 0)
-      await options.filter({ hasText: '新账号签名' }).click()
-      await saveChannelDraft(page)
-      await summary(page, 1, 4)
-      const all = (await snapshot(page)).templates.filter(item => item.configId === config.id)
-      assert.deepEqual(all.filter(item => generated.some(known => known.id === item.id)), generated)
-      const [added] = all.filter(item => !generated.some(known => known.id === item.id))
-      assert.deepEqual(added.template, { code: 'SMS_ROTATED', signName: '新账号签名', message: '新账号通知 ${message}' })
+      assert.deepEqual(saved.calls.slice(before).filter(([method]) => ['remoteOption', 'saveBusinessTemplate', 'saveBusinessTemplates'].includes(method)), [])
     }
     await page.close()
   }
@@ -340,7 +337,7 @@ try {
   await webhook.close()
 
   assert.deepEqual(problems, [])
-  console.log('Channel template checks passed, including creation and renaming of DingTalk robot and Webhook bindings.')
+  console.log('Channel template checks passed, including creation-only defaults, existing credential edits, and binding renames.')
 } catch (error) {
   for (const context of browser.contexts()) {
     for (const page of context.pages()) await page.screenshot({ path: join(output, 'failure.png') }).catch(() => {})

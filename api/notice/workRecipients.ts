@@ -1,8 +1,7 @@
 import { request } from '@jetlinks-web/core'
-import { queryWechatCorpTags_api } from '../notice-center'
 import { checked } from './messageNotification'
 import { NotificationRequestError } from './messageNotificationState'
-import { dingTalkMemberApi, wechatMemberApi } from './wechatMembers'
+import { dingTalkMemberApi, type WechatDirectoryCache } from './wechatMembers'
 import type { DirectoryItem, GroupRecipientKind, WorkChannelId } from '../../views/system/MessageNotification/shared/workRecipients'
 
 interface RawDirectoryItem {
@@ -21,13 +20,14 @@ function flatten(value: unknown, parents: string[] = [], parentId?: string): Dir
   })
 }
 
-export async function loadGroupRecipients(configId: string, channelId: WorkChannelId, kind: GroupRecipientKind) {
+export async function loadGroupRecipients(configId: string, channelId: WorkChannelId, kind: GroupRecipientKind,
+  wechatDirectory: WechatDirectoryCache, refresh: boolean) {
   const [platform, external] = await (kind === 'tag' ? Promise.all([
     checked(request.post('/role/_query/no-paging', { paging: false }, { hiddenError: true })),
-    checked(queryWechatCorpTags_api(configId)),
+    wechatDirectory.tags(configId, { refresh }),
   ]) : Promise.all([
     checked(request.post('/organization/_all/tree', { paging: false }, { hiddenError: true })),
-    (channelId === 'weixin:corpMessage' ? wechatMemberApi : dingTalkMemberApi).departments(configId),
+    (channelId === 'weixin:corpMessage' ? wechatDirectory : dingTalkMemberApi).departments(configId, { refresh }),
   ]))
   return { platform: flatten(platform), external: flatten(external) }
 }

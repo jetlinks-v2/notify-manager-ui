@@ -198,10 +198,9 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
       await Promise.all([catalog.loadMetadata(channel), keyed ? listRequest : undefined])
       if (revision !== detailRevision || !access.query.value) return
       const records = templateLists.get(id) ?? []
-      // 钉钉子渠道共用 notifier-dingTalk。当前子渠道确认为空时直接预览，避免回退到另一类配置的绑定。
-      const unconfiguredDingTalk = channel.type === 'dingTalk' && configState.value === 'empty'
       let configId = keyed ? '' : undefined
-      if (keyed && !unconfiguredDingTalk) {
+      // 配置列表成功返回且当前服务商为空时，只预览默认模板，避免查询历史绑定。
+      if (keyed && configState.value !== 'empty') {
         const knownConfigIds = businessChannelBindings(resolved, channel)
           .map(binding => bindingConfigId(binding, records) || businessChannelKey(binding))
         if (requestedConfigId && !knownConfigIds.includes(requestedConfigId) && !configs.value.some(config => config.id === requestedConfigId)) {

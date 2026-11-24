@@ -7,10 +7,10 @@ import { onlyMessage } from '@jetlinks-web/utils'
 import { useAuthStore } from '@jetlinks-web-core/store/auth'
 import { useMenuStore } from '@jetlinks-web-core/store/menu'
 import { useSystemStore } from '@jetlinks-web-core/store/system'
-import { findNotificationChannel, resolveNotificationChannel, notificationChannelLabels, notificationNavigationTarget, notificationPermissions, notificationQuery, normalizeNotificationNavigation, type NotificationChannel, type NotificationNavigation } from '../shared'
+import { findNotificationChannel, resolveNotificationChannel, notificationChannelLabels, notificationConfigurationChange, notificationNavigationTarget, notificationPermissions, notificationQuery, normalizeNotificationNavigation, type NotificationChannel, type NotificationNavigation } from '../shared'
 import { useChannelWorkspace, type ChannelFieldChange } from './useChannelWorkspace'
 import { useChannelCatalog } from './useChannelCatalog'
-import { useChannelTest } from './testing/useChannelTest'
+import { channelMemberQueries, useChannelTest } from './testing/useChannelTest'
 import { channelTestSettingsKinds } from './testing/channelTestConfig'
 import { channelTestAdapters } from './testing/channelTestAdapter'
 import { useWechatMembers, type MemberFilterTerm, type MemberStatusFilter } from './members/useWechatMembers'
@@ -20,12 +20,12 @@ import { channelHelp, channelHelpSection } from './configuration/channelHelp'
 import { classifyNotificationFailure, notificationFailureMessage } from '../../../../api/notice/messageNotificationState'
 import { useChannelConfigurations } from './configuration/useChannelConfigurations'
 import { ChannelDeletionError } from './configuration/deleteChannelConfiguration'
-import { dingTalkWorkChannel } from './templateSetup/templateDefaults'
+import { dingTalkWorkChannel, smsChannel } from './templateSetup/templateDefaults'
 import { useChannelTemplateSetup } from './templateSetup/useChannelTemplateSetup'
 import { wechatCorpChannel } from './wechat/templateDefaults'
 import { useWorkRecipients } from './members/useWorkRecipients'
 import { isWorkChannel, workRecipientsKey } from '../shared/workRecipients'
-import { dingTalkMemberApi, wechatMemberApi } from '../../../../api/notice/wechatMembers'
+import { createWechatDirectoryCache, dingTalkMemberApi } from '../../../../api/notice/wechatMembers'
 
 /** Own backend directory, routing, permissions and draft effects outside rendering components. */
 export function useChannelsPage() {
@@ -77,7 +77,11 @@ export function useChannelsPage() {
   }))
   const directoryState = catalog.state
   function navigate(navigation: NotificationNavigation) { return router.replace({ query: notificationQuery(navigation, route.query, catalog.channels.value) }) }
-  const trial = useChannelTest()
+  const wechatDirectory = createWechatDirectoryCache()
+  const trial = useChannelTest(undefined, {
+    ...channelMemberQueries,
+    [wechatCorpChannel]: configId => wechatDirectory.members(configId, { hiddenError: true }),
+  })
   const members = useWechatMembers()
   const sending = trial.sending
   const fillingTemplates = ref(false)
@@ -107,7 +111,7 @@ export function useChannelsPage() {
     && auth.hasPermission(notificationPermissions.templates.query) && auth.hasPermission(notificationPermissions.templates.update)
     && !!entry.value?.baseline?.id && !entry.value.isNew && !dirty.value)
   const workRecipients = useWorkRecipients({
-    config: () => entry.value?.baseline, channelId, canWrite: canManageWork, busy: recipientsBusy,
+    config: () => entry.value?.baseline, channelId, canWrite: canManageWork, busy: recipientsBusy, wechatDirectory,
     saveSetting: (value, baseline) => workspace.saveFields([{ key: workRecipientsKey, value }], workRecipientsKey, baseline),
   })
   const templateSetup = useChannelTemplateSetup(workspace, {
@@ -176,7 +180,7 @@ export function useChannelsPage() {
   }
   function memberContext(id: string) {
     return {
-      configId: id, api: channelId.value === dingTalkWorkChannel ? dingTalkMemberApi : wechatMemberApi,
+      configId: id, api: channelId.value === dingTalkWorkChannel ? dingTalkMemberApi : wechatDirectory,
       permitted: () => canSyncMembers.value,
       clean: () => !dirty.value && !entry.value?.isNew && entry.value?.baseline?.id === id,
     }
@@ -199,7 +203,10 @@ export function useChannelsPage() {
   function updateMemberFilters(value: MemberFilterTerm[]) { if (!members.busy.value) members.filterTerms.value = value }
   function updateMemberStatus(value: MemberStatusFilter) { members.statusFilter.value = value }
   function resetMemberFilters() { members.filterTerms.value = [] }
-  const help = computed(() => channelHelp(channel.value, entry.value?.definition, t, entry.value?.draft.configuration))
+  const help = computed(() => channelHelp(channel.value, entry.value?.definition, t, {
+    configuration: entry.value?.draft.configuration,
+    showTemplateSetup: templateSetup.model.value.fields.length > 0,
+  }))
   const focusedField = ref('')
   const helpFocusVersion = ref(0)
   const activeHelpSection = computed(() => channelHelpSection(help.value, focusedField.value))
@@ -250,6 +257,7 @@ export function useChannelsPage() {
     if (!templateSetup.prepareForSave()) return
     if (!await workspace.save()) return
     onlyMessage(t('messageNotification.channels.saveSuccess'), 'success')
+    if (configId && savedChannel === smsChannel) templateSetup.afterSmsSave(configId, credentialsOnly)
     if (configId && !credentialsOnly) await fillSavedTemplates(savedChannel, configId, created)
   }
   async function fillSavedTemplates(savedChannel: string, id: string, created: boolean) {
@@ -296,6 +304,10 @@ export function useChannelsPage() {
   watch([() => route.query.channel, () => route.query.ch, () => route.query.configId], () => trial.close(true))
   // A refreshed saved configuration invalidates the snapshot used by an open test.
   watch(() => entry.value?.baseline, () => trial.close(true))
+  watch(notificationConfigurationChange, change => {
+    if (change?.channel === wechatCorpChannel && change.action !== 'message-templates-created') wechatDirectory.clear(change.id)
+  }, { flush: 'sync' })
+  watch(() => auth.permissions, () => wechatDirectory.clear(), { deep: true, flush: 'sync' })
   // 保存后重新选中配置时，先清理旧状态，避免作废随后启动的通讯录查询。
   watch([channelId, selectedConfigId], () => {
     trial.close(true)
@@ -317,7 +329,7 @@ export function useChannelsPage() {
     void members.prepare(memberContext(id))
   })
   watch([canQuery, permissions.action], ([query, send]) => { if (!query || !send) trial.close(true) })
-  onBeforeUnmount(() => { trial.close(true); members.close(true); workRecipients.close(true) })
+  onBeforeUnmount(() => { trial.close(true); members.close(true); workRecipients.close(true); wechatDirectory.clear() })
   watch(channel, value => {
     const key = `type:${value?.type}`
     if (value && channelTree.value.some(node => node.key === key) && !openChannelKeys.value.includes(key)) openChannelKeys.value.push(key)

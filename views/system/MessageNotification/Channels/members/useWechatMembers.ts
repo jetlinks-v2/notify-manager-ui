@@ -105,7 +105,7 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
     saved.value = false
     error.value = ''
   }
-  async function reload() {
+  async function reload(refresh = true) {
     if (!context || busy.value || !allowed()) return
     const ticket = ++version
     const id = configId.value
@@ -116,7 +116,7 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
     try {
       const api = memberApi()
       const [nextDepartments, nextMembers, nextUsers, nextBindings] = await Promise.all([
-        api.departments(id), api.members(id), loadMemberPlatformUsers(api, active), api.bindings(id),
+        api.departments(id, { refresh }), api.members(id, { refresh }), loadMemberPlatformUsers(api, active), api.bindings(id),
       ])
       if (!active()) return
       departments.value = nextDepartments
@@ -135,7 +135,7 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
     context = next
     configId.value = next.configId
     if (!allowed()) { state.value = 'forbidden'; return }
-    await reload()
+    await reload(false)
   }
   async function show(next: MemberContext) {
     if (busy.value || state.value === 'loading') return
@@ -146,7 +146,7 @@ export function useWechatMembers(api: WechatMemberApi = wechatMemberApi) {
     filterTerms.value = []
     open.value = true
     if (!allowed()) { state.value = 'forbidden'; return }
-    if (!reuse) await reload()
+    if (!reuse) await reload(false)
   }
 
   async function unchanged(ticket: number): Promise<boolean> {

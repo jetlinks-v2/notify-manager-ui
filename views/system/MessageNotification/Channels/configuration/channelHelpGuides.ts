@@ -1,11 +1,13 @@
 // Legacy illustrations and explanations are adapted to the current configuration fields.
 export interface ChannelHelpGuide {
   kind: string
+  editingDescriptionKey?: string
   link?: { labelKey: string; href: string }
   sections: {
     id: string
     fields: string[]
     titleKey: string
+    templateSetupOnly?: boolean
     blocks: ({ type: 'text'; key: string } | { type: 'image'; image: string })[]
   }[]
 }
@@ -359,6 +361,7 @@ export const channelHelpGuides: Record<string, ChannelHelpGuide> = {
   },
   "sms:aliyunSms": {
     "kind": "sms",
+    "editingDescriptionKey": "messageNotification.channels.guidance.sms.steps.1.description",
     "sections": [
       {
         "id": "regionId",
@@ -409,6 +412,7 @@ export const channelHelpGuides: Record<string, ChannelHelpGuide> = {
       },
       {
         "id": "smsTemplate",
+        "templateSetupOnly": true,
         "fields": ["code", "signName"],
         "titleKey": "messageNotification.channels.guidance.sms.steps.2.title",
         "blocks": [{ "type": "text", "key": "messageNotification.channels.guidance.sms.steps.2.description" }]
@@ -421,6 +425,7 @@ export const channelHelpGuides: Record<string, ChannelHelpGuide> = {
   },
   "voice:aliyun": {
     "kind": "voice",
+    "editingDescriptionKey": "messageNotification.channels.guidance.voice.steps.1.description",
     "sections": [
       {
         "id": "regionId",
@@ -471,6 +476,7 @@ export const channelHelpGuides: Record<string, ChannelHelpGuide> = {
       },
       {
         "id": "voiceTemplate",
+        "templateSetupOnly": true,
         "fields": ["templateType", "templateCode"],
         "titleKey": "messageNotification.channels.guidance.voice.steps.2.title",
         "blocks": [{ "type": "text", "key": "messageNotification.channels.guidance.voice.steps.2.description" }]

@@ -91,6 +91,8 @@ try {
     const samples = await panel.locator('.template-variables__sample').allTextContents()
     assert.equal(samples.length, 14)
     assert.ok(samples.every(value => value.trim() && value !== '—'))
+    assert.equal(await sampleOf(page, 'detail.targetType'), 'AI场景告警')
+    assert.equal(await sampleOf(page, 'detail.sourceType'), '视频通道')
     assert.equal(await sampleOf(page, 'detail.alarmTime'), '2026-01-01 12:00:00')
     const spaceRow = panel.locator('button[title^="${detail.spaceName}"]')
     assert.equal(await spaceRow.locator('.template-variables__name').innerText(), '{空间名称}')
@@ -162,6 +164,8 @@ try {
 
   for (const channel of ['sms:aliyunSms', 'email:embedded', 'dingTalk:dingTalkMessage', 'dingTalk:dingTalkRobotWebHook', 'weixin:corpMessage', 'webhook:http', 'extension:custom']) {
     const page = await open(channel, channel.startsWith('sms:') ? 390 : 1440)
+    assert.equal(await sampleOf(page, 'detail.targetType'), '设备', channel)
+    assert.equal(await sampleOf(page, 'detail.sourceType'), '设备', channel)
     assert.equal(await sampleOf(page, 'notifyTime'), '2026-01-01 12:00:00', channel)
     const alarmTime = row(page, 'detail.alarmTime')
     if (await alarmTime.count()) assert.equal(await formatOf(alarmTime), dateTimeFormat, channel)

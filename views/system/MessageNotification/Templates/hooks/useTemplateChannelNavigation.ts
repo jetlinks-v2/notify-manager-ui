@@ -79,7 +79,14 @@ export function useTemplateChannelNavigation(props: TemplateChannelNavigationPro
     tab.id === props.value && (!tab.configId || tab.configId === props.activeConfigId))?.key ?? '')
   function selectGroup(key: string) {
     const group = groups.value.find(item => item.key === key)
-    if (group && group !== activeGroup.value) emit('change', group.channels.find(item => item.provider === 'dingTalkMessage' || item.provider === 'corpMessage')?.id || group.channels[0].id)
+    if (!group || group === activeGroup.value) return
+    const channel = group.key === 'weixin'
+      ? group.channels.find(item => item.provider === 'corpMessage') ?? group.channels[0]
+      : group.channels[0]
+    // 钉钉按子页签的显示顺序选择首个实例，显式传入配置 ID 固定模板选择。
+    const configId = group.key === 'dingTalk' ? props.configurationsByChannel[channel.id]?.[0]?.id : undefined
+    if (configId) emit('change', channel.id, configId)
+    else emit('change', channel.id)
   }
   function selectChannel(key: string | number) {
     const tab = subChannels.value.find(tab => tab.key === key)
