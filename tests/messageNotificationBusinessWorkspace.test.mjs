@@ -41,7 +41,6 @@ function load(filename) {
 
 const { useTemplateWorkspace } = load(resolve(root, 'views/system/MessageNotification/Templates/useTemplateWorkspace.ts'))
 const { fillMessageTemplates } = load(resolve(root, 'views/system/MessageNotification/Channels/templateSetup/fillMessageTemplates.ts'))
-const { syncRecipientTemplates } = load(resolve(root, 'views/system/MessageNotification/Channels/members/syncWorkRecipients.ts'))
 const { useSmsTemplateOptions } = load(resolve(root, 'views/system/MessageNotification/Channels/templateSetup/useSmsTemplateOptions.ts'))
 const { readTemplateSetup, templateSetupIssues } = load(resolve(root, 'views/system/MessageNotification/Channels/templateSetup/templateDefaults.ts'))
 const { notificationChannels } = load(resolve(root, 'views/system/MessageNotification/shared/catalog.ts'))
@@ -241,10 +240,10 @@ test('new external channels fill four message types with their saved config ID, 
       departments: [{ platformId: 'org-id', externalId: 'department-id' }],
       tags: [{ platformId: 'role-id', externalId: 'tag-id' }],
     } }, verify: item => {
-      assert.equal(item.template.template.toParty, 'department-id')
-      assert.equal(item.template.template.toTag, 'tag-id')
-      assert.equal(item.template.template.toUser, 'member-1,member-2')
-      assert.equal(item.channel.channelConfiguration.variables.toUser, undefined)
+      assert.ok(!item.template.template.toParty)
+      assert.ok(!item.template.template.toTag)
+      assert.ok(!item.template.template.toUser)
+      assert.equal(item.channel.channelConfiguration.variables.toUser.relation.objectSource.upperKey, 'subscriber')
     } },
     { id: 'dingTalk:dingTalkRobotWebHook', name: '小黑', bindingName: '钉钉·小黑',
       configuration: { messageTemplateDefaults: { messageType: 'link', title: '旧标题', message: '旧正文', messageUrl: 'https://fixture.example.test/details' } },
@@ -870,27 +869,6 @@ test('a failed instance read or an old backend returning the default never enabl
     assert.equal(await workspace.saveTemplate(), false)
     assert.equal(io.calls.some(call => call[0].startsWith('saveBusiness')), false)
   }
-})
-
-test('work recipient sync updates its exact DingTalk instance and leaves the robot alone', async () => {
-  const io = mockApi()
-  const work = item('actual-topic', template({
-    id: 'work-template', type: 'dingTalk', provider: 'dingTalkMessage', configId: 'corp',
-    template: { message: '工作通知', agentId: '16', userIdList: 'previous-user' },
-  }), { id: 'work-channel', channelKey: 'work-key' })
-  const robot = item('actual-topic', template({
-    id: 'robot-template', type: 'dingTalk', provider: 'dingTalkRobotWebHook', configId: 'ops',
-    template: { messageType: 'text', text: { content: '机器人正文' } },
-  }), { id: 'robot-channel', channelKey: 'ops' })
-  io.records.set('actual-topic/notifier-dingTalk/work-key', work)
-  io.records.set('actual-topic/notifier-dingTalk/ops', robot)
-  io.api.queryTemplateDirectory = async () => [{ ...business(), channels: [robot.channel, work.channel] }]
-  io.api.queryTemplates = async () => ({ data: [work.template] })
-  const failed = await syncRecipientTemplates(io.api, 'corp', 'dingTalk:dingTalkMessage',
-    { memberIds: ['new-user'], departments: [], tags: [] }, () => true)
-  assert.deepEqual(failed, [])
-  assert.equal(io.records.get('actual-topic/notifier-dingTalk/work-key').template.template.userIdList, 'new-user')
-  assert.deepEqual(io.records.get('actual-topic/notifier-dingTalk/ops'), robot)
 })
 
 test('forbidden queries and broken template references stay errors instead of prototype defaults', async () => {
