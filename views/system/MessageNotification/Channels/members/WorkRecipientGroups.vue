@@ -11,15 +11,9 @@
       <a-button size="small" disabled>{{ t('messageNotification.members.manage') }} ›</a-button>
     </a-space>
   </section>
-  <div v-if="work.failed.value.length || (work.error.value && !work.open.value) || work.empty.value || work.saved.value" class="recipient-groups__feedback">
-    <a-alert v-if="work.failed.value.length" type="warning" show-icon :message="t('messageNotification.recipients.partial', { names: work.failed.value.join('、') })">
-      <template #action><a-button size="small" :disabled="disabled || !canManage" @click="work.retry()">{{ t('messageNotification.recipients.sync') }}</a-button></template>
-    </a-alert>
-    <a-alert v-if="work.error.value && !work.open.value" type="error" show-icon :message="failure">
-      <template v-if="work.enabled.value && !work.failed.value.length" #action><a-button size="small" :disabled="disabled || !canManage" @click="work.retry()">{{ t('messageNotification.recipients.sync') }}</a-button></template>
-    </a-alert>
-    <a-alert v-else-if="work.empty.value" type="warning" show-icon :message="t('messageNotification.recipients.noTargets')" />
-    <a-alert v-else-if="work.saved.value && !work.failed.value.length" type="success" show-icon :message="t('messageNotification.recipients.synced')" />
+  <div v-if="(work.error.value && !work.open.value) || work.saved.value" class="recipient-groups__feedback">
+    <a-alert v-if="work.error.value && !work.open.value" type="error" show-icon :message="failure" />
+    <a-alert v-else-if="work.saved.value" type="success" show-icon :message="t('messageNotification.members.saved')" />
   </div>
   <JlDrawerShell :key="kind" :open="work.open.value" :title="t(`messageNotification.recipients.${kind}Manage`)" :width="900" @update:open="!$event && emit('close')">
     <WechatMembersSummary v-if="work.loaded.value" summary-key="messageNotification.recipients.summary"
@@ -33,7 +27,6 @@
     <RecipientMappingTable v-if="work.open.value" :work="work" />
     <template #foot><StickyActionBar position="inline">
       <a-button :disabled="work.busy.value" @click="emit('close')">{{ t('messageNotification.common.close') }}</a-button>
-      <a-button v-if="work.enabled.value && work.loaded.value && !work.groupDirty.value" :disabled="work.busy.value" @click="work.retry()">{{ t('messageNotification.recipients.sync') }}</a-button>
       <a-button type="primary" :loading="work.busy.value" :disabled="!work.canSave.value" @click="work.requestSave()">{{ t('messageNotification.members.save') }}</a-button>
     </StickyActionBar></template>
   </JlDrawerShell>

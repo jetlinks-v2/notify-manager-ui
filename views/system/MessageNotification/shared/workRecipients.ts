@@ -1,4 +1,3 @@
-import type { NoticeChannelTemplateItem } from '../../../../api/notice-center'
 import { NotificationRequestError } from '../../../../api/notice/messageNotificationState'
 import type { NotificationObject, NotifierConfig } from '../../../../api/notice/messageNotificationTypes'
 
@@ -78,35 +77,6 @@ export function uniqueNamePairs(platform: DirectoryItem[], external: DirectoryIt
     }
   }
   return matches
-}
-
-function joined(ids: string[]): string {
-  return [...new Set(ids.filter(identifier))].sort().join(',')
-}
-
-/** Replace only the native recipient fields that each provider already reads. */
-export function workRecipientContent(channelId: WorkChannelId, content: NotificationObject, recipients: WorkRecipients): NotificationObject {
-  const keys = workChannelRecipients[channelId]
-  return {
-    ...content,
-    [keys.user]: joined(recipients.memberIds),
-    [keys.department]: joined(recipients.departments.map(pair => pair.externalId)),
-    ...('tag' in keys ? { [keys.tag]: joined(recipients.tags.map(pair => pair.externalId)) } : { toAllUser: false }),
-  }
-}
-
-/** Legacy subscriber expressions override static recipients, so remove only those reserved keys. */
-export function applyWorkRecipients(item: NoticeChannelTemplateItem, channelId: WorkChannelId,
-  recipients: WorkRecipients): NoticeChannelTemplateItem {
-  if (!item.template) return item
-  const configuration = item.channel.channelConfiguration
-  const keys: string[] = Object.values(workChannelRecipients[channelId])
-  if (channelId === 'dingTalk:dingTalkMessage') keys.push('toAllUser')
-  const variables = Object.fromEntries(Object.entries(configuration?.variables ?? {}).filter(([key]) => !keys.includes(key)))
-  return {
-    channel: { ...item.channel, channelConfiguration: { ...configuration, variables } },
-    template: { ...item.template, template: workRecipientContent(channelId, item.template.template ?? {}, recipients) },
-  }
 }
 
 export function workRecipientsEmpty(value: WorkRecipients, channelId: WorkChannelId): boolean {

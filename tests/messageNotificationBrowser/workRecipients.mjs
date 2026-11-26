@@ -1,19 +1,23 @@
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
-import { mkdir } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
 
 const { chromium } = createRequire(import.meta.url)(process.env.SMOKE_PLAYWRIGHT_MODULE || 'playwright')
 const base = process.env.SMOKE_BASE_URL || 'http://127.0.0.1:9201'
-const output = process.env.SMOKE_OUTPUT || '/tmp/notification-work-recipients'
+const taskDirectory = 'D:/CodexData/page-review/notification-relation-mapping'
+const output = process.env.SMOKE_OUTPUT || join(taskDirectory, 'results')
 const entry = new URL(`/@fs${fileURLToPath(new URL('./index.html', import.meta.url))}`, base)
-const browser = await chromium.launch({ channel: process.env.SMOKE_CHROMIUM_CHANNEL })
 const errors = []
 await mkdir(output, { recursive: true })
+await mkdir(taskDirectory, { recursive: true })
+const profile = await mkdtemp(join(taskDirectory, 'profile-'))
+let browser
 
 async function open(channel, width = 1440, options = '') {
-  const page = await browser.newPage({ viewport: { width, height: 960 }, serviceWorkers: 'block' })
+  const page = await browser.newPage()
+  await page.setViewportSize({ width, height: 960 })
   page.on('pageerror', error => errors.push(error.message))
   await page.routeWebSocket('**/*', () => {})
   await page.route('**/*', route => {
@@ -44,7 +48,7 @@ const drawer = (page, type) => page.locator('.ant-drawer-open').filter({ hasText
 const confirmation = page => page.getByRole('dialog', { name: '确认接收范围' })
 const button = (scope, name) => scope.getByRole('button', { name, exact: true })
 const manage = (page, type) => groupRegion(page, `${type}对应`).getByRole('button', { name: '管理对应 ›' })
-const status = page => page.getByText('消息模板接收范围已同步。', { exact: true })
+const status = page => page.locator('.recipient-groups__feedback').getByText('对应关系已更新', { exact: true })
 const openGroup = async (page, type, waitFor) => {
   await manage(page, type).click()
   const currentDrawer = drawer(page, type)
@@ -229,6 +233,9 @@ async function verifyTagMapping(width) {
 }
 
 try {
+  browser = await chromium.launchPersistentContext(profile, {
+    channel: process.env.SMOKE_CHROMIUM_CHANNEL, serviceWorkers: 'block', downloadsPath: join(taskDirectory, 'downloads'),
+  })
   await verifyWechatSummariesAfterSave()
   await verifyTagMapping(1440)
   await verifyTagMapping(390)
@@ -252,18 +259,18 @@ try {
   await departmentDrawer.getByRole('button', { name: /关\s*闭/ }).click()
   await departmentDrawer.waitFor({ state: 'hidden' })
   assert.equal((await snapshot(page)).calls.some(([method]) => method === 'updateConfig'), false)
-  await page.evaluate(() => window.__notificationSmoke.failures.add('saveRecipient:work-2'))
   await button(departmentRegion, '自动匹配').click()
-  await page.getByText(/设备告警解除.*重试/).waitFor()
+  await status(page).waitFor()
   assert.equal(await confirmation(page).count(), 0)
   assert.equal(await page.locator('.ant-drawer-open').count(), 0)
   let state = await snapshot(page)
   const first = state.templates.find(template => template.id === 'fixture-template-work-1-notifier-weixin')
   const failed = state.templates.find(template => template.id === 'fixture-template-work-2-notifier-weixin')
-  assert.deepEqual(first.template, { agentId: '42', message: '旧正文 work-1', toParty: 'team', toUser: 'corp-existing', toTag: '' })
+  assert.equal(first.template.toParty, 'legacy-dept')
+  assert.ok(!state.calls.some(([method]) => method === 'saveBusinessTemplate'))
   assert.equal(failed.template.toParty, 'legacy-dept')
   const channel = state.businessTypes[0].channels.find(item => item.channelProvider === 'notifier-weixin')
-  assert.equal(channel.channelConfiguration.variables.toUser, undefined)
+  assert.deepEqual(channel.channelConfiguration.variables.toUser, { source: 'relation' })
   assert.equal(channel.channelConfiguration.variables.business, 'keep')
   assert.equal(channel.state, 'enabled')
   assert.equal(state.templates.find(template => template.id === 'fixture-template-work-1-notifier-dingTalk').template.departmentIdList, 'legacy-ding')
@@ -271,13 +278,6 @@ try {
   assert.equal(config.configuration.corpSecret, 'fixture-only-secret')
   assert.deepEqual(config.configuration.workNotificationRecipients.departments, [{ platformId: 'org-team', externalId: 'team' }])
   assert.deepEqual(config.configuration.workNotificationRecipients.tags, [])
-
-  await button(page, '同步消息模板').click()
-  await status(page).waitFor()
-  state = await snapshot(page)
-  assert.deepEqual(state.calls.filter(([method]) => method === 'saveBusinessTemplate').map(([, payload]) => payload.providerId), ['work-1', 'work-2', 'work-2'])
-  assert.equal(state.templates.find(template => template.id === failed.id).template.toParty, 'team')
-  assert.equal(state.businessTypes[1].channels.find(item => item.channelProvider === 'notifier-weixin').state, 'disabled')
 
   const tagDrawer = await openGroup(page, '标签', '值班员')
   assert.equal(await tagDrawer.getByText('研发组', { exact: true }).count(), 0)
@@ -289,27 +289,28 @@ try {
   state = await snapshot(page)
   assert.deepEqual(state.configs.find(record => record.id === 'corp-fixture').configuration.workNotificationRecipients.tags,
     [{ platformId: 'role-duty', externalId: 'tag-duty' }])
-  assert.equal(state.templates.find(template => template.id === first.id).template.toTag, 'tag-duty')
+  assert.deepEqual(state.templates.find(template => template.id === first.id), first)
 
   await button(memberRegion, '自动匹配').click()
   await memberRegion.getByText('对应关系已更新', { exact: false }).waitFor()
-  await status(page).waitFor()
   state = await snapshot(page)
   assert.ok(state.memberBindings.some(item => item.userId === 'platform-phone' && item.thirdPartyUserId === 'corp-phone'))
-  assert.equal(state.templates.find(template => template.id === first.id).template.toUser, 'corp-existing,corp-phone')
+  assert.deepEqual(state.templates.find(template => template.id === first.id), first)
+  assert.ok(!state.calls.some(([method]) => method === 'saveBusinessTemplate'))
 
   await page.evaluate(() => window.__notificationSmoke.router.push('/templates?channel=weixin:corpMessage&business=work-3'))
   const editTemplate = page.getByRole('button', { name: /编\s*辑/ })
   if (!await page.getByRole('button', { name: '保存模板', exact: true }).isVisible()) await editTemplate.click()
   await page.getByText('在此编辑消息内容。请到「通知渠道」管理接收范围。').waitFor()
   assert.equal(await page.getByText(/接收部门|接收用户|接收标签/).count(), 0)
-  await page.getByRole('textbox', { name: '正文', exact: true }).fill('新模板继承渠道收件人')
+  await page.getByRole('textbox', { name: '正文', exact: true }).fill('消息模板不包含渠道映射目标')
   await button(page, '保存模板').click()
   await page.getByRole('button', { name: /编\s*辑/ }).waitFor()
   state = await snapshot(page)
   const created = state.templates.find(template => template.id === 'fixture-template-work-3-notifier-weixin')
-  assert.equal(created.template.toTag, 'tag-duty')
-  assert.equal(created.template.toParty, 'team')
+  assert.ok(!created.template.toTag)
+  assert.ok(!created.template.toParty)
+  assert.ok(!created.template.toUser)
 
   await page.evaluate(() => window.__notificationSmoke.router.push('/channels?channel=weixin:corpMessage'))
   const savedTagDrawer = await openGroup(page, '标签', '值班员')
@@ -318,12 +319,11 @@ try {
   await button(savedTagDrawer, '保存对应关系').click()
   await status(page).waitFor()
   state = await snapshot(page)
-  assert.equal(state.templates.find(template => template.id === created.id).template.toTag, '')
-  assert.equal(state.templates.find(template => template.id === created.id).template.toParty, 'team')
+  assert.deepEqual(state.templates.find(template => template.id === created.id), created)
   await button(groupRegion(page, '标签对应'), '自动匹配').click()
   await status(page).waitFor()
   assert.equal(await page.locator('.ant-drawer-open').count(), 0)
-  assert.equal((await snapshot(page)).templates.find(template => template.id === created.id).template.toTag, 'tag-duty')
+  assert.deepEqual((await snapshot(page)).templates.find(template => template.id === created.id), created)
   await page.close()
 
   const mobile = await open('dingTalk:dingTalkMessage', 390)
@@ -338,8 +338,8 @@ try {
   await status(mobile).waitFor()
   assert.equal(await confirmation(mobile).count(), 0)
   state = await snapshot(mobile)
-  assert.equal(state.templates.find(template => template.id === 'fixture-template-work-1-notifier-dingTalk').template.departmentIdList, 'ding-team')
-  assert.equal(state.templates.find(template => template.id === 'fixture-template-work-1-notifier-dingTalk').template.toAllUser, false)
+  assert.equal(state.templates.find(template => template.id === 'fixture-template-work-1-notifier-dingTalk').template.departmentIdList, 'legacy-ding')
+  assert.ok(!state.calls.some(([method]) => method === 'saveBusinessTemplate'))
   assert.ok(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
   await mobile.screenshot({ path: join(output, 'dingtalk-mobile.png') })
   await mobile.close()
@@ -351,16 +351,12 @@ try {
   await button(memberDrawer, '自动匹配').click()
   assert.equal((await snapshot(dingMembers)).calls.some(([method]) => method === 'bindMembers'), false)
   await button(memberDrawer, '保存对应关系').click()
-  await status(dingMembers).waitFor()
+  await groupRegion(dingMembers, '成员对应').getByText('对应关系已更新', { exact: false }).waitFor()
   assert.equal(await confirmation(dingMembers).count(), 0)
   state = await snapshot(dingMembers)
   assert.deepEqual(state.calls.filter(([method]) => ['bindMembers', 'updateConfig', 'saveBusinessTemplate'].includes(method)).map(([method]) => method),
-    ['bindMembers', 'updateConfig', 'saveBusinessTemplate', 'saveBusinessTemplate'])
-  assert.deepEqual(state.configs.find(config => config.id === 'ding-work-fixture').configuration.workNotificationRecipients.memberIds, ['ding-zhang'])
-  for (const template of state.templates.filter(template => template.configId === 'ding-work-fixture')) {
-    assert.equal(template.template.userIdList, 'ding-zhang')
-    assert.equal(template.template.toAllUser, false)
-  }
+    ['bindMembers'])
+  assert.ok(state.memberBindings.some(binding => binding.thirdPartyUserId === 'ding-zhang'))
   await dingMembers.close()
 
   const readonly = await open('weixin:corpMessage', 1440, '&permission=no-bind')
@@ -370,5 +366,7 @@ try {
   assert.deepEqual(errors, [])
   process.stdout.write('Work recipient browser checks passed.\n')
 } finally {
-  await browser.close()
+  await browser?.close()
+  if (dirname(resolve(profile)) !== resolve(taskDirectory)) throw new Error('Unexpected browser profile path')
+  await rm(profile, { recursive: true, force: true })
 }

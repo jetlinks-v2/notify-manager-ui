@@ -9,7 +9,6 @@ import {
 } from '../../shared/workRecipients'
 import type { WechatMembersSummaryModel } from './useWechatMembersDrawer'
 import type { MemberStatusFilter } from './wechatMemberFilters'
-import { syncRecipientTemplates } from './syncWorkRecipients'
 
 interface RecipientEditorOptions {
   channelId: Ref<string>
@@ -34,7 +33,6 @@ export function useWorkRecipients(options: RecipientEditorOptions) {
   const loading = ref(false)
   const loaded = ref(false)
   const error = ref('')
-  const failed = ref<string[]>([])
   const saved = ref(false)
   const automaticKind = ref<GroupRecipientKind>()
   const matchCounts = reactive<Partial<Record<GroupRecipientKind, number>>>({})
@@ -50,15 +48,6 @@ export function useWorkRecipients(options: RecipientEditorOptions) {
   let request = 0
 
   const enabled = computed(() => Object.hasOwn(options.config()?.configuration ?? {}, workRecipientsKey))
-  const empty = computed(() => {
-    const channelId = options.channelId.value
-    const config = options.config()
-    if (!config || !isWorkChannel(channelId)) return false
-    try {
-      const recipients = readWorkRecipients(config.configuration)
-      return Boolean(recipients && workRecipientsEmpty(recipients, channelId))
-    } catch { return false }
-  })
   const kinds = computed<readonly GroupRecipientKind[]>(() => options.channelId.value === 'weixin:corpMessage' ? groupKinds : ['department'])
   const storedGroups = computed(() => {
     const config = options.config()
@@ -191,7 +180,6 @@ export function useWorkRecipients(options: RecipientEditorOptions) {
     original.value = undefined
     draft.value = emptyWorkRecipients()
     if (force) {
-      failed.value = []
       saved.value = false
       directoryRequests.clear()
       for (const next of groupKinds) {
@@ -265,15 +253,7 @@ export function useWorkRecipients(options: RecipientEditorOptions) {
     original.value = confirmed
     draft.value = { departments: confirmed.departments, tags: confirmed.tags }
     open.value = false
-    const pending = await syncRecipientTemplates(api, current.id, current.channelId, confirmed, active, async () => {
-      const latest = await api.getConfig(current.id)
-      assertWorkConfig(latest, current.id, current.channelId)
-      if (signature(readWorkRecipients(latest.configuration)) !== signature(confirmed)) throw new NotificationRequestError('error')
-    })
-    if (active()) {
-      failed.value = pending
-      saved.value = !pending.length
-    }
+    saved.value = true
   }
   async function autoMatchAndSave(next: GroupRecipientKind) {
     const directory = directories[next]
@@ -299,14 +279,9 @@ export function useWorkRecipients(options: RecipientEditorOptions) {
       await persist(current, active, recipients, latest, config)
     })
   }
-  function retry() {
-    return withCurrent(async (current, active, latest, memberIds, config) => {
-      await persist(current, active, { ...(latest ?? emptyWorkRecipients()), memberIds }, latest, config)
-    })
-  }
-  return { open, kind, loading, loaded, busy, error, failed, saved, matchCount, rows, externalOptions,
-    canSave, canAutoMatchDraft, enabled, empty, groupDirty, kinds, summaries, prepare, show, close, reload: () => load(kind.value, true),
-    refreshGroup: (next: GroupRecipientKind) => readDirectory(next, true), assign, autoMatch, autoMatchAndSave, requestSave, retry }
+  return { open, kind, loading, loaded, busy, error, saved, matchCount, rows, externalOptions,
+    canSave, canAutoMatchDraft, enabled, groupDirty, kinds, summaries, prepare, show, close, reload: () => load(kind.value, true),
+    refreshGroup: (next: GroupRecipientKind) => readDirectory(next, true), assign, autoMatch, autoMatchAndSave, requestSave }
 }
 
 export type WorkRecipientsWorkspace = ReturnType<typeof useWorkRecipients>
