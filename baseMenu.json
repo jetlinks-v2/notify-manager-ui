@@ -1,7 +1,23 @@
 [
   {
-    "code": "system",
-    "owner": "iot",
+      "code": "system",
+      "name": "系统设置",
+      "owner": "iot",
+      "i18nMessages": {
+          "name": {
+              "zh_CN": "系统设置",
+              "en_US": "System Settings",
+              "en": "System Settings",
+              "ja": "システム設定",
+              "ja_JP": "システム設定"
+          }
+      },
+      "id": "fd1670b860ae58cc58bcd01d027ccd35",
+      "url": "/system",
+      "icon": "icon-xitongshezhi",
+      "sortIndex": 100,
+      "permissions": [],
+      "buttons": [],
     "children": [
       {
         "code": "system/MessageNotification",
