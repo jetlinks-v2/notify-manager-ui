@@ -10,7 +10,6 @@ import {
   classifyNotificationFailure, NotificationRequestError, resolveNotificationChannel, usesBusinessChannelKey, withNotificationChannel,
   type NotificationChannel, type NotificationFailureKind, type NotifierConfig,
 } from '../../shared'
-import { applyWorkRecipients, isWorkChannel, readWorkRecipients } from '../../shared/workRecipients'
 import { wechatCorpChannel } from '../wechat/templateDefaults'
 import { createChannelMessageTemplate, dingTalkRobotChannel, readTemplateSetup, smsChannel, supportsTemplateSetup, templateSetupIssues } from './templateDefaults'
 
@@ -59,7 +58,6 @@ export async function fillMessageTemplates(
   const channelProvider = channelProviderFor(channel)
   const keyed = usesBusinessChannelKey(channel.id)
   let directory: NoticeChannelConfig[]
-  let recipients: ReturnType<typeof readWorkRecipients>
   let configurationName: string | undefined
   try {
     const saved = await api.getConfig(config.id)
@@ -70,7 +68,6 @@ export async function fillMessageTemplates(
       throw new NotificationRequestError('error')
     }
     if (!active()) return result
-    recipients = isWorkChannel(channel.id) ? readWorkRecipients(saved.configuration) : undefined
     configurationName = channel.multipleConfigurations ? saved.name?.trim() : undefined
     directory = await api.queryTemplateDirectory()
   } catch (error) {
@@ -142,7 +139,7 @@ export async function fillMessageTemplates(
       }
       const defaults = smsContent === undefined ? values : { ...values, message: smsContent }
       const template = createChannelMessageTemplate(business, channel, config.id, defaults, translate)
-      const base: NoticeChannelTemplateItem = {
+      const item: NoticeChannelTemplateItem = {
         channel: {
           providerId: business.id,
           name: channelName,
@@ -160,7 +157,6 @@ export async function fillMessageTemplates(
         template: { ...template },
       }
 
-      const item = recipients && isWorkChannel(channel.id) ? applyWorkRecipients(base, channel.id, recipients) : base
       const insideMail = business.id ? undefined : await (insideMailRequest ??= api.queryInsideMailChannel())
       if (!active()) break
       writing = true

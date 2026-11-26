@@ -9,8 +9,7 @@ import {
 import { buildTemplatePayload, createTemplateDraft, newTemplateDraft, templateDraftFingerprint, type TemplateDraft } from './model'
 import { createPrototypeTemplate, hasPrototypeTemplate, prototypeAvailableVariables, type PrototypeTranslate } from './definition/templateDefaults'
 import { filterUnsupportedRecommendedVariables, mergeTemplateVariableDeclarations } from '../../../notice/template/hooks/noticeTemplateModel'
-import { applyWorkRecipients, assertWorkConfig, emptyWorkRecipients, isWorkChannel, readWorkRecipients,
-  workRecipientContent, type WorkRecipients } from '../shared/workRecipients'
+import { assertWorkConfig, isWorkChannel } from '../shared/workRecipients'
 import { useTemplateCatalog } from './hooks/useTemplateCatalog'
 import {
   bindingConfigId, buildBusinessTemplateItem, businessChannelBindings, businessChannelKey, businessDraftKey, businessIdentity, channelProviderFor,
@@ -366,12 +365,11 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
 
   /** First save includes the supported built-in channel alongside the edited template. */
   async function saveBusiness(current: TemplateDraftEntry, payload: ReturnType<typeof buildTemplatePayload>, fingerprint: string,
-    insideMail?: NoticeChannelConfig, recipients?: WorkRecipients) {
+    insideMail?: NoticeChannelConfig) {
     const selected = business.value
     const channel = currentChannel.value
     if (!selected?.provider || !channel) throw new NotificationRequestError('error')
-    const base = buildBusinessTemplateItem(selected, channel, current, payload)
-    const item = recipients && isWorkChannel(channel.id) ? applyWorkRecipients(base, channel.id, recipients) : base
+    const item = buildBusinessTemplateItem(selected, channel, current, payload)
     let saved: NoticeChannelTemplateItem
     let updated: NoticeChannelConfig
     if (selected.id) {
@@ -418,21 +416,16 @@ export function useTemplateWorkspace(access: WorkspaceAccess, api: MessageNotifi
     try {
       const insideMail = firstBusiness ? await api.queryInsideMailChannel() : undefined
       const id = `${payload.type}:${payload.provider}`
-      let recipients: WorkRecipients | undefined
       if (isWorkChannel(id) && payload.configId) {
         const config = await api.getConfig(payload.configId)
         assertWorkConfig(config, payload.configId, id)
-        recipients = readWorkRecipients(config.configuration)
-        if (recipients || current.baselineDraft.configId && current.baselineDraft.configId !== payload.configId) {
-          payload.template = workRecipientContent(id, payload.template, recipients ?? emptyWorkRecipients())
-        }
       }
       if ((firstBusiness || isWorkChannel(id)) && (revision !== detailRevision || !canSave.value || current.draft.configId !== payload.configId)) {
         if (revision === detailRevision) saveState.value = 'idle'
         return false
       }
       writing = true
-      if (business.value) await saveBusiness(current, payload, fingerprint, insideMail, recipients)
+      if (business.value) await saveBusiness(current, payload, fingerprint, insideMail)
       else {
         if (current.existing && payload.id) await api.updateTemplate({ ...payload, id: payload.id })
         else await api.createTemplate(payload)

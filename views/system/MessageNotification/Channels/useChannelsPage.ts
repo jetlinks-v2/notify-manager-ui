@@ -192,13 +192,7 @@ export function useChannelsPage() {
   }
   async function autoMatchMembers() {
     if (!canSyncMembers.value || operationBusy.value || workRecipients.open.value) return false
-    return afterMemberWrite(members.autoMatchAndSave())
-  }
-  async function afterMemberWrite(write: Promise<boolean>) {
-    const configId = selectedConfigId.value
-    const success = await write
-    if (success && configId === selectedConfigId.value && canManageWork.value) await workRecipients.retry()
-    return success
+    return members.autoMatchAndSave()
   }
   function updateMemberFilters(value: MemberFilterTerm[]) { if (!members.busy.value) members.filterTerms.value = value }
   function updateMemberStatus(value: MemberStatusFilter) { members.statusFilter.value = value }
@@ -346,7 +340,7 @@ export function useChannelsPage() {
     sending, workspace, trial, testModel: trial.model, fixTestConfiguration, afterTestClosed, refresh, save, showSend, configurationVisible,
     catalog, directoryState, providerFeedback, channelTitle, help, saveFields, focusField, activeHelpSection, helpFocusVersion,
     workChannel, canManageWork, workRecipients, closeWorkRecipients, reloadWorkRecipients,
-    saveMembers: () => afterMemberWrite(members.save()), unbindMember: (id: string) => afterMemberWrite(members.unbind(id)),
+    saveMembers: () => members.save(), unbindMember: (id: string) => members.unbind(id),
     members, memberDrawer, canSyncMembers, showMembers, autoMatchMembers, closeMembers, reloadMembers, memberDiscardOpen, decideMemberDiscard, updateMemberFilters, updateMemberStatus, resetMemberFilters,
   }
 }
