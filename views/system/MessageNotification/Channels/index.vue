@@ -46,7 +46,7 @@
                 <p>{{ help.description }}</p>
               </div>
               <div v-if="multipleConfigurations || (configurationVisible && trialSupported)" class="notification-page__actions">
-                <j-permission-button v-if="multipleConfigurations" type="primary" :has-permission="[notificationPermissions.channels.add]" :disabled="!configurationCanAdd" @click="configurationList.add"><template #icon><PlusOutlined aria-hidden="true" /></template>{{ t(isRobot ? 'messageNotification.channels.robot.add' : 'messageNotification.channels.add') }}</j-permission-button>
+                <j-permission-button v-if="multipleConfigurations" type="primary" placement="left" :has-permission="[notificationPermissions.channels.add]" :disabled="!configurationCanAdd" @click="configurationList.add"><template #icon><PlusOutlined aria-hidden="true" /></template>{{ t(isRobot ? 'messageNotification.channels.robot.add' : 'messageNotification.channels.add') }}</j-permission-button>
                 <j-permission-button v-else :has-permission="[notificationPermissions.channels.action]" :disabled="!canTrial || operationBusy" @click="showSend"><template #icon><SendOutlined aria-hidden="true" /></template>{{ t('messageNotification.channels.test') }}</j-permission-button>
               </div>
             </header>

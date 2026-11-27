@@ -763,6 +763,10 @@ AgentId 浏览器复核：9200 实际企业微信页已显示新字段和默认�
 
 ### Webhook 渠道配置列表
 
+页头共用「新增配置」按钮设置 `placement="left"`，使 Webhook 等多配置渠道的无权限气泡向左展开，避免在页面右侧溢出。仅调整 `views/system/MessageNotification/Channels/index.vue` 中该按钮的提示方向，保留新增权限及弹窗逻辑。
+
+气泡方向验证：SFC 脚本／模板编译、`git diff --check` 和 `pnpm -F jetlinks-web-core build -- --module-name notify-manager-ui` 通过；模块无独立 lint 脚本。`pnpm exec vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json` 报告 196 项诊断，未通过，`Channels/index.vue` 无诊断。真实页面悬停尚未验证，待以无新增权限账号访问 `/system/notification/channels?channel=webhook:http`，确认「新增配置」保持禁用、气泡向左且不新增滚动条；类型问题修复后重跑上述类型检查。
+
 `Channels/index.vue` 按多配置能力展示列表。首次和后续配置均从页头「新增配置」打开弹窗，已有配置从行菜单进入编辑。`Channels/configuration/configurationPresentation.ts` 使用现有查询接口返回的完整 Webhook 接收地址，`Channels/configuration/ChannelConfigurationList.vue` 用 `j-ellipsis` 单行省略，悬停可查看完整地址。`Channels/configuration/useChannelConfigurations.ts` 复用逐行操作和弹窗草稿。保存成功后按配置 ID 及本模块的[模板自动生成规则](#邮件钉钉与-webhook-随渠道创建消息模板)补齐模板。请求体的编辑和预览位于消息模板页。
 
 Webhook 和钉钉群机器人逐行删除复用 `Channels/configuration/deleteChannelConfiguration.ts`。具备消息模板查询及删除权限时，确认框提示清理相应模板和投递配置。前端按所选配置 ID 查询专属模板，从现有业务目录核对投递绑定，依次调用 `DELETE /notify/channel/{id}`、`DELETE /notifier/template/{id}` 和 `DELETE /notifier/config/{id}`。`baseMenu.json` 的「清除配置」动作同时声明 `notifier` 和 `notify-channel` 的查询与删除权限，供菜单同步后为该动作授权。其他实例、通用模板及个人订阅保留。
