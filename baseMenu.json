@@ -73,10 +73,10 @@
             "buttons": [
               {
                 "id": "query",
-                "name": "查询",
+                "name": "查看",
                 "i18nMessages": {
-                  "zh_CN": "查询",
-                  "zh": "查询",
+                  "zh_CN": "查看",
+                  "zh": "查看",
                   "en_US": "Query",
                   "en": "Query",
                   "ja_JP": "照会",
@@ -262,10 +262,10 @@
             "buttons": [
               {
                 "id": "query",
-                "name": "查询",
+                "name": "查看",
                 "i18nMessages": {
-                  "zh_CN": "查询",
-                  "zh": "查询",
+                  "zh_CN": "查看",
+                  "zh": "查看",
                   "en_US": "Query",
                   "en": "Query",
                   "ja_JP": "照会",
@@ -449,10 +449,10 @@
             "buttons": [
               {
                 "id": "query",
-                "name": "查询",
+                "name": "查看",
                 "i18nMessages": {
-                  "zh_CN": "查询",
-                  "zh": "查询",
+                  "zh_CN": "查看",
+                  "zh": "查看",
                   "en_US": "Query",
                   "en": "Query",
                   "ja_JP": "照会",
