@@ -4,7 +4,7 @@
       <template #left>
         <aside class="notification-page__sidebar message-templates__directory" :aria-label="t('messageNotification.templates.title')">
           <TemplateDirectory :templates="templates" :business-types="businessTypes" :config-id="directoryConfigId"
-            :directory-state="directoryState" :state="directoryState" :selected-id="selectedDirectoryKey" :disabled="busy" @select="selectTemplate" @reload="reload" />
+            :directory-state="directoryDisplayState" :state="directoryDisplayState" :selected-id="selectedDirectoryKey" :disabled="busy" @select="selectTemplate" @reload="reload" />
         </aside>
       </template>
       <template #right>
@@ -27,22 +27,12 @@
                   <AIcon type="InboxOutlined" aria-hidden="true" /> {{ t('messageNotification.templates.fillInsideMail') }}
                 </a-button>
               </template>
+              <a-button v-if="showCreateTemplate" :type="draft || businessLinkPending ? 'default' : 'primary'" :disabled="busy" @click="createTemplate">
+                {{ t('messageNotification.templates.create') }}
+              </a-button>
               <a-button v-if="draft && !editing && detailState === 'ready'" type="primary" :disabled="!canEdit || busy" @click="startEditing">
                 {{ t('messageNotification.templates.edit') }}
               </a-button>
-              <a-button v-else-if="!draft && !business && !businessLinkPending" type="primary" :disabled="!canAdd || !canQuery || busy" @click="createTemplate">
-                {{ t('messageNotification.templates.create') }}
-              </a-button>
-              <a-dropdown v-if="!business" :trigger="['click']" placement="bottomRight">
-                <a-button type="text" :aria-label="t('messageNotification.templates.more')"><AIcon type="EllipsisOutlined" /></a-button>
-                <template #overlay>
-                  <a-menu>
-                    <a-menu-item key="create" :disabled="!canAdd || !canQuery || busy" @click="createTemplate">
-                      <AIcon type="PlusOutlined" /> {{ t('messageNotification.templates.create') }}
-                    </a-menu-item>
-                  </a-menu>
-                </template>
-              </a-dropdown>
             </template>
           </DetailHeader>
           <div v-if="compact" class="message-templates__mobile-picker">
@@ -108,8 +98,9 @@ const {
   canFillInsideMail, fillingInsideMail, fillInsideMail,
   businessLinkPending, businessLinkState, importOptions,
   t, compact, workspace, channels, channelId, templates, configs, listState, configState, channelConfigurationStates, businessTypes, directoryState,
+  directoryDisplayState, showCreateTemplate,
   detailState, activeKey, draft, entry, business, dirty, saving, canSave, canQuery, editing, title, description,
-  canAdd, canEdit, canConfigure, busy, uploading, validationMessage, channelOptions, templateOptions,
+  canEdit, canConfigure, busy, uploading, validationMessage, channelOptions, templateOptions,
   selectedDirectoryKey, directoryConfigId, listFailure, detailFailure, feedbackState, saveFailure, saveState, confirmation,
   isDefault, canRestoreDefault, missingConfiguration, hasContent, catalogState, metadata, metadataState, availableVariables, saveOutcomeUnknown,
   currentChannel, activeConfig, configurationsByChannel, activeConfigId, templateStatus, setUploading, reload, changeChannel, selectConfiguration, selectTemplate, createTemplate, save,

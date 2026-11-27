@@ -45,6 +45,32 @@ try {
   await channels.screenshot({ path: `${output}/voice-channel.png`, fullPage: true })
   report.passed.push('voice:aliyun opens the matching provider configuration')
 
+  const readonly = await open('records', '?directory=tree')
+  await readonly.evaluate(async () => {
+    const { deniedPermissions, router } = window.__notificationSmoke
+    for (const action of ['add', 'update']) deniedPermissions.add(`system/MessageNotification/Templates:${action}`)
+    await router.push({ path: '/templates', query: { channel: 'email:embedded' } })
+  })
+  const readonlyDirectory = readonly.locator('.template-directory')
+  await readonlyDirectory.getByText(await translate(readonly, 'messageNotification.templates.empty'), { exact: true }).waitFor()
+  assert.equal(await readonlyDirectory.locator('.ant-alert').count(), 0)
+  assert.equal(await (await button(readonly, 'messageNotification.templates.more')).count(), 0)
+  assert.equal(await (await button(readonly, 'messageNotification.templates.create')).count(), 0)
+  await readonly.locator('.message-templates__mobile-picker .ant-select').click()
+  await readonly.locator('.ant-select-dropdown').getByText('维护通知 (template-maintenance)', { exact: true }).click()
+  await readonly.locator('.template-preview').getByText('计划维护内容', { exact: true }).waitFor()
+  assert.equal(await readonly.evaluate(() => window.__notificationSmoke.calls.some(([method]) => method === 'queryTemplateDirectory')), false)
+  report.passed.push('query-only users see the empty directory and can preview independent templates from a read-only workspace')
+  await readonly.close()
+
+  const standalone = await open('templates?channel=email:embedded&templateId=template-maintenance')
+  await standalone.locator('.template-preview').getByText('计划维护内容', { exact: true }).waitFor()
+  assert.equal(await (await button(standalone, 'messageNotification.templates.more')).count(), 0)
+  await (await button(standalone, 'messageNotification.templates.create')).click()
+  await standalone.locator('.template-editor').waitFor()
+  report.passed.push('authorized users can create an independent template directly from its page header')
+  await standalone.close()
+
   const linked = await open('templates?topicProvider=alarm-device-relieve&channelProvider=notifier-email', '?directory=tree')
   await linked.waitForFunction(() => window.__notificationSmoke.calls.some(([method, input]) => method === 'getBusinessTemplate' && input.providerId === 'relieve-config'))
   await linked.locator('.template-preview').getByText('告警解除通知内容', { exact: true }).waitFor()
@@ -243,6 +269,7 @@ try {
   await missing.close()
 
   const retry = await open('templates?topicProvider=alarm-device', '?directory=tree&fail=queryTemplateDirectory')
+  await retry.locator('.template-directory .ant-alert-warning').waitFor()
   await retry.locator('.message-templates__detail .ant-alert-warning').waitFor()
   assert.equal(await retry.evaluate(() => window.__notificationSmoke.router.currentRoute.value.query.templateId), undefined)
   await retry.locator('.message-templates__detail .ant-alert-warning button').click()
