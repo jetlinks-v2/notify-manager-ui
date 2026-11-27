@@ -81,6 +81,10 @@ AgentId 说明验证（2026-11-19）：模块目录执行 `node --test tests/mes
 
 运行时消息渠道的桌面配置工作区扣除间距后，表单与图文说明各占 50%，分别滚动，1024px 及以下上下排列。主页面始终显示表单控件，保存后仍可继续编辑，字段底部辅助文案归入右侧说明；校验错误、必填标记及凭据占位提示继续显示。底部仅提供整表“保存”。输入和失焦只改草稿，保留权限、凭据保护、提交锁与未保存离开提醒。钉钉群机器人只调整主页面列表 / 说明布局，编辑弹窗保持原样。
 
+具备查询权限时，未配置的单配置渠道也通过 `Channels/useChannelWorkspace.ts` 初始化表单并展示右侧图文说明。缺少对应的新增或修改权限时，表单只读，`Channels/index.vue` 底栏的 `j-permission-button` 按新增或修改权限禁用「保存」。
+
+隔离浏览器 `tests/messageNotificationBrowser/smoke.mjs` 的渠道回归通过 11 组，覆盖未配置时缺少新增权限及配置展示后撤销修改权限。渠道相关测试 152 项、定向样式检查与模块生产构建均通过。按下文命令运行 `vue-tsc` 仍有 196 条既有诊断，改动前后逐项一致。
+
 底栏仅保存的复验：`Channels/index.vue` 移除“撤销修改”，浏览器夹具通过离开确认丢弃未保存草稿。`smoke.mjs` 10 组、`channelHelp.mjs` 8 组、`emailSmtp.mjs` 5 组、`trials.mjs` 10 组全部通过，覆盖唯一保存按钮的桌面 / 窄屏左对齐与可达性、提交锁、保存失败重试、离开确认和凭据保护；页面错误及真实业务请求为 0。报告与截图位于 `/tmp/jetlinks-channel-help/save-only/`；下述单元、机器人弹窗及类型检查复用前序验证证据。
 
 页头按钮调整历史（右侧当前已常驻展示）：已删除 `Channels/index.vue` 页头的“配置说明”按钮，沿用右侧说明默认展开与收起行为；收起后重新进入页面可恢复默认展开。同步调整已有浏览器夹具，`channelHelp.mjs` 8 组、`robotSigning.mjs` 8 组、`trials.mjs` 10 组通过，覆盖八类渠道、机器人列表及空状态、三语与窄屏按钮移除、说明展示与收起恢复。机器人首次运行末尾发生开发服务模块初始化错误，单独复跑通过；最终报告无页面错误或真实业务请求。按下述命令验证：模块构建通过（35.75 秒），定向样式检查与 `git diff --check` 通过，无独立 lint 脚本；类型检查前后均为 196 条既有诊断，无新增或移除，完整类型检查仍未通过。证据位于 `/var/folders/kd/xy867r053zj3phhskmvc8vx40000gn/T/jetlinks-remove-channel-help-222bf69k/`；未操作真实渠道配置或发送消息。
@@ -105,7 +109,7 @@ AgentId 说明验证（2026-11-19）：模块目录执行 `node --test tests/mes
 
 1. 在 `views/system/MessageNotification/Channels/` 添加必填的企业微信 AgentId，与企业 ID、Secret 一次保存。AgentId 保存到 `configuration.alarmTemplateDefaults.agentId`，已有配置可从历史 `configuration.agentId` 回显。接收部门、用户、标签和内容细节在消息模板中编辑。
 2. 保存成功后，从 `GET /notify/channel/all-for-save` 读取当前账号可管理的消息类型。设备告警、场景联动、设备告警解除、系统公告及其他有专用定义的类型复用 `Templates/definition/templateDefaults.ts`。扩展类型使用通用通知正文变量 `${message}`，每份模板均带入当前 `configId` 和 AgentId。新建企业微信绑定默认启用。已有类型使用单渠道保存接口，首次落库使用聚合保存，将消息类型设为启用并提交 `defaultSubscribed: false`，个人订阅由用户勾选。
-3. 补齐前复查消息类型与微信绑定，跳过已有绑定。保存响应确认状态为启用后计入创建成功。表单反馈模板创建、跳过和失败，结果不明时停止本轮写入，重试从重新校对已保存配置和消息类型目录开始。
+3. 补齐前复查消息类型与微信绑定，跳过已有绑定。保存响应确认状态为启用后计入创建成功。创建和跳过数量在整批成功后显示，接口失败反馈沿用下文的渠道共用处理。结果不明时停止本轮写入，重试从重新校对已保存配置和消息类型目录开始。
 4. 企业微信模板内容可单独编辑，保存时沿用渠道绑定的状态。个人中心从 `/notify/channel/all` 获取已启用且可访问的消息类型和渠道绑定，按需引导用户绑定微信接收账号。
 
 现有保存接口采用更新式保存，跨会话的读写期间仍可能发生竞态，不同业务也可能部分成功。
@@ -143,6 +147,10 @@ AgentId 说明验证（2026-11-19）：模块目录执行 `node --test tests/mes
 
 `Channels/templateSetup/fillMessageTemplates.ts` 回读当前渠道和消息类型目录，通过现有单渠道和聚合接口创建缺失的模板。钉钉群机器人与 Webhook 的新绑定以「渠道类型名·配置名」填写 `channel.name`，例如「钉钉·小黑」和「WebHook·告警回调」。绑定名称按数据库列宽最多保留 128 个字符，旧配置缺少名称时沿用服务商的默认名称。新绑定默认启用，首次创建类型时处理内置站内信，个人订阅由用户勾选。工作通知、群机器人和 Webhook 按各自的配置实例读取绑定。已有绑定优先，消息模板页按配置 ID 打开对应内容。渠道和模板分别保存，遇到部分成功可在渠道页或机器人行菜单用「补齐消息模板」重试缺失项。
 
+运行时各渠道共用 `views/system/MessageNotification/Channels/templateSetup/ChannelTemplateSetup.vue` 展示补齐结果。保存或补齐模板遇到接口失败时，页面只使用平台通用错误通知，保留「重试补齐」入口。`Channels/templateSetup/useChannelTemplateSetup.ts` 对响应校验失败补发一条通用通知。整批成功时显示创建和跳过数量。超时或结果不明时，重试先回读已保存绑定。
+
+`tests/messageNotificationBrowser/channelTemplates.mjs` 在隔离浏览器验证 Webhook 保存返回 HTTP 500、钉钉工作通知保存返回 HTTP 200 但响应体失败时，均只弹出一条通用通知。部分成功后的重试跳过已建立的绑定。相关回归 201 项、定向样式检查和模块构建通过。按本节命令运行 `vue-tsc` 仍报告 196 条既有诊断，改动前后逐项一致。
+
 ### 渠道首次配置与编辑
 
 `Channels/index.vue` 的群机器人弹窗和页面内表单共用 `Channels/templateSetup/useChannelTemplateSetup.ts`。默认模板参数仅在首次配置期间展示和校验，`Channels/configuration/channelHelp.ts` 同步显示短信和语音的模板填写说明。编辑已保存的渠道可直接保存渠道参数，业务模板可在「消息模板」中编辑。企业微信和钉钉的 AgentId 作为渠道应用参数继续提供。
@@ -162,7 +170,11 @@ AgentId 说明验证（2026-11-19）：模块目录执行 `node --test tests/mes
 - **语音**选择文本转语音并填写阿里云模板编号，或选择语音通知并填写录音文件 ID。文本转语音使用各业务的默认正文，自动提取变量。播放次数沿用业务默认值。
 - **短信**首次配置时先点「保存凭据」，在当前创建流程选择该账号已审核通过的短信模板和签名，再点「保存」。生成的业务模板使用所选模板的审核原文。编辑已保存渠道时使用普通保存。后续可在「消息模板」管理各业务的短信模板和签名。
 
-`Channels/templateSetup/useSmsTemplateOptions.ts` 通过 `api/notice/messageNotification.ts` 按首次配置所用的通知配置 ID 独立加载 `/notifier/sms/aliyun/{configId}/templates` 和 `/notifier/sms/aliyun/{configId}/signs`。任一列表就绪即可选择对应项，空列表和查询失败按模板或签名提示，并提供「重新加载」。首次保存默认配置需要两组已审核的选项，已选择的值在重试查询时保留。渠道默认值保存在 `configuration.messageTemplateDefaults`。更换凭据时，`Channels/channelSchema.ts` 在保存请求里清除原账号的选值。`Channels/templateSetup/fillMessageTemplates.ts` 创建第一份缺失的短信模板前，会重新核对模板、签名及审核原文。渠道试发独立读取 `configuration.testTemplate`。
+`views/system/MessageNotification/Channels/templateSetup/ChannelTemplateSetup.vue` 在短信模板或签名查询成功但没有候选项时，允许展开对应的空下拉框。表单中的查询警告和「重新加载」用于查询失败。保存模板默认值需选齐已审核的模板和签名。
+
+`tests/messageNotificationBrowser/channelTemplates.mjs` 使用隔离数据验证两项为空时均可展开，以及查询失败后重试。147 项相关测试、定向样式检查和模块构建通过。工作区未配置独立 lint 脚本。从 `runtime-ui/` 执行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json` 仍报告 196 条既有诊断，改动前后逐项一致。
+
+`Channels/templateSetup/useSmsTemplateOptions.ts` 通过 `api/notice/messageNotification.ts` 按首次配置所用的通知配置 ID 独立加载 `/notifier/sms/aliyun/{configId}/templates` 和 `/notifier/sms/aliyun/{configId}/signs`。任一列表查询成功后，对应下拉框即可展开。查询失败按模板或签名提示，并提供「重新加载」。首次保存默认配置需要两组已审核的选项，已选择的值在重试查询时保留。渠道默认值保存在 `configuration.messageTemplateDefaults`。更换凭据时，`Channels/channelSchema.ts` 在保存请求里清除原账号的选值。`Channels/templateSetup/fillMessageTemplates.ts` 创建第一份缺失的短信模板前，会重新核对模板、签名及审核原文。渠道试发独立读取 `configuration.testTemplate`。
 
 隔离浏览器回归 `tests/messageNotificationBrowser/channelTemplates.mjs` 覆盖短信首次配置的两次保存、选项查询失败与重试，以及更换账号时清除旧默认选值。语音回归覆盖首次配置切换录音文件、窄屏保存，以及再次保存渠道后保留已单独修改的业务模板。
 
@@ -1023,6 +1035,10 @@ node --max_old_space_size=16384 --max-semi-space-size=64 ../node_modules/vite/bi
 ## 消息模板查询权限
 
 旧 `notice/template` 单通道查询需要 `notify-channel:query` 与 `template:query`。新消息模板菜单 `system/MessageNotification/Templates` 的新增 / 编辑动作映射 `notify-channel:query/save`、`template:query/save` 与 `notifier:query`；查询动作只保留独立模板和通知器查询，不授予保存权限，也不请求 `/all-for-save`。业务绑定与只读路径见上方“业务入口与个人订阅联动”。既有环境需同步菜单、更新角色授权并刷新登录态后再验收；静态配置修改不会更新已登录账号权限。
+
+`views/system/MessageNotification/Templates/index.vue` 和 `views/system/MessageNotification/Templates/hooks/useTemplatePage.ts` 将仅查询角色的左侧业务目录展示为「暂无模板」，可在右侧下拉框查看独立模板。「新增模板」按钮仅对同时具备查询和新增权限的用户显示，可直接创建独立模板。页头已移除「更多」菜单。业务目录请求失败时可从目录重试。
+
+本地页面已复核只读空态和「新增模板」的隐藏效果。`tests/messageNotificationBrowser/navigation.mjs` 的 15 项检查覆盖只读页头、独立模板预览、授权新增和目录重试。446 项模块测试、定向样式检查和生产构建通过。工作区无独立 lint 脚本。在 `runtime-ui/` 运行 `./node_modules/.bin/vue-tsc --noEmit --pretty false -p modules/notify-manager-ui/tsconfig.json`，仍报告与改动前逐项一致的 196 条既有诊断。
 
 ## 视觉告警跳转与跨标签刷新
 

@@ -1,7 +1,9 @@
 import { computed, onScopeDispose, ref, shallowRef, type Ref } from 'vue'
+import { notification } from 'ant-design-vue'
+import { isAxiosError, isCancel } from 'axios'
 import { messageNotificationApi } from '../../../../../api/notice/messageNotification'
 import type { PrototypeTranslate } from '../../Templates/definition/templateDefaults'
-import { publishNotificationConfigurationChange, type NotificationChannel } from '../../shared'
+import { NotificationRequestError, publishNotificationConfigurationChange, type NotificationChannel } from '../../shared'
 import type { useChannelWorkspace } from '../useChannelWorkspace'
 import { messageTemplateDefaultsKey, wechatCorpChannel } from '../wechat/templateDefaults'
 import {
@@ -127,11 +129,28 @@ export function useChannelTemplateSetup(
     context.generating.value = true
     feedback.value = undefined
     try {
-      const result = await fillMessageTemplates(messageNotificationApi, baseline, channel, active, context.translate)
+      let requestFailed = false
+      let responseCheckFailed = false
+      const result = await fillMessageTemplates(messageNotificationApi, baseline, channel, active, context.translate, error => {
+        const cause = error instanceof NotificationRequestError ? error.original : error
+        if (isCancel(cause) || (cause instanceof Error && cause.message === 'verify_canceled')) return
+        if (isAxiosError(cause)) requestFailed = true
+        else responseCheckFailed = true
+      })
       if (result.created || result.skipped || result.unknown) {
         publishNotificationConfigurationChange({ channel: channel.id, id: baseline.id, action: 'message-templates-created' })
       }
-      if (active()) feedback.value = { id: baseline.id, result }
+      if (active()) {
+        feedback.value = { id: baseline.id, result }
+        // HTTP 拒绝由请求层通知，响应校验失败才补发通用错误通知。
+        if (responseCheckFailed && !requestFailed) {
+          notification.error({
+            key: 'channel-template-request-failed',
+            message: '',
+            description: context.translate('messageNotification.state.error'),
+          })
+        }
+      }
     } finally {
       context.generating.value = false
     }

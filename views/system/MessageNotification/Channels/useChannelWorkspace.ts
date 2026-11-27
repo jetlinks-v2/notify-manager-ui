@@ -172,7 +172,11 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
         return
       }
       const candidate = requestedId ?? (rememberedId && 'id' in rememberedId ? rememberedId.id : undefined)
-      if (!multipleConfigurations.value && !configs.value.length && !requestedId && options.permissions.add.value) { createConfig(); return }
+      // 未配置的单配置渠道也要展示表单，提交仍由新增权限控制。
+      if (!multipleConfigurations.value && !configs.value.length && !requestedId) {
+        openNewDraft(selectedChannel)
+        return
+      }
       // Open existing data on entry; an explicit link must never fall back to a different record.
       const selected = selectNotificationConfig(configs.value, candidate) ?? (!requestedId ? configs.value[0] : undefined)
       await selectConfig(selected?.id)
@@ -181,23 +185,29 @@ export function useChannelWorkspace(options: ChannelWorkspaceOptions) {
     }
   }
 
-  /** Generate identity once per draft; automatic values form its clean snapshot and survive retries. */
   function createConfig() {
-    if (busy.value || options.blocked?.value || !channel.value || !options.permissions.add.value || !['ready', 'empty'].includes(state.value)) return
+    const selectedChannel = channel.value
+    if (!selectedChannel || !options.permissions.add.value || !['ready', 'empty'].includes(state.value)) return
     // 只在明确支持多配置的渠道开放新增，历史记录仍可按 ID 打开。
     if (!multipleConfigurations.value && configs.value.length) return
+    openNewDraft(selectedChannel)
+  }
+
+  /** Generate identity once per draft; automatic values form its clean snapshot and survive retries. */
+  function openNewDraft(selectedChannel: NotificationChannel) {
+    if (!options.permissions.query.value || busy.value || options.blocked?.value) return
     ++detailVersion
     const key = `${channelId.value}\0new`
     if (!drafts.has(key)) {
-      const baseName = options.channelName?.(channel.value) || channel.value.name || channel.value.id
+      const baseName = options.channelName?.(selectedChannel) || selectedChannel.name || selectedChannel.id
       const names = new Set([...configs.value.map(item => item.name), ...[...drafts.values()].map(item => item.draft.name)])
       let name = baseName
       for (let suffix = 2; names.has(name); suffix++) name = `${baseName} (${suffix})`
       let id = randomString(32)
       while (configs.value.some(item => item.id === id) || [...drafts.values()].some(item => item.draft.id === id)) id = randomString(32)
       const defaults = channelDefaults(definition.value)
-      const configuration = channel.value.id === 'email:embedded' ? initialEmailConfiguration(defaults, definition.value) : defaults
-      const draft: NotifierConfigPayload = { id, name, type: channel.value.type, provider: channel.value.provider, configuration }
+      const configuration = selectedChannel.id === 'email:embedded' ? initialEmailConfiguration(defaults, definition.value) : defaults
+      const draft: NotifierConfigPayload = { id, name, type: selectedChannel.type, provider: selectedChannel.provider, configuration }
       drafts.set(key, { key, draft, definition: definition.value, isNew: true, snapshot: JSON.stringify(draft), issues: [] })
     }
     activeKey.value = key

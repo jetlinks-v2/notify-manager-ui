@@ -11,7 +11,8 @@
       <template #editor="{ field, value, inputId, disabled, update }">
         <a-select v-if="field.key === 'code' || field.key === 'signName'" :id="inputId" show-search option-filter-prop="label"
           :value="value ? String(value) : undefined" :options="field.options" :loading="model.smsOptionsState?.[field.key] === 'loading'"
-          :disabled="disabled || model.smsOptionsState?.[field.key] !== 'ready'" :aria-label="field.label" aria-required="true"
+          :disabled="disabled || !['ready', 'empty'].includes(model.smsOptionsState?.[field.key] ?? 'idle')"
+          :aria-label="field.label" aria-required="true"
           :placeholder="t(field.key === 'code' ? 'NoticeCenter.template.placeholder.smsTemplate' : 'NoticeCenter.template.placeholder.signName')"
           :status="field.error ? 'error' : undefined" @update:value="update" />
         <a-input v-else :id="inputId" :value="String(value ?? '')" :disabled="disabled" :maxlength="field.maxLength" inputmode="numeric"
@@ -19,8 +20,8 @@
       </template>
     </InlineEditForm>
     <template v-if="showFeedback">
-      <a-alert v-if="summary" class="channel-template-setup__status" :type="failed ? 'warning' : 'info'"
-        :message="summary" :description="details" show-icon />
+      <a-alert v-if="summary" class="channel-template-setup__status" :type="smsDefaultsUnavailable ? 'warning' : 'info'"
+        :message="summary" :description="smsDefaultsUnavailable ? t(prefix + 'smsDefaults') : undefined" show-icon />
       <p v-else-if="model.noPermission" class="channel-template-setup__hint">{{ t(prefix + 'noPermission') }}</p>
       <div v-if="canFill || canView" class="channel-template-setup__actions">
         <a-button v-if="canFill" size="small" :loading="model.generating" :disabled="model.disabled" @click="emit('fill')">
@@ -45,6 +46,7 @@ const emit = defineEmits<{ change: [key: string, value: unknown]; focus: [key: s
 const prefix = 'messageNotification.channels.templateSetup.'
 const { t } = useI18n()
 const failed = computed(() => !!(props.model.result?.failed.length || props.model.result?.loadFailure))
+const smsDefaultsUnavailable = computed(() => props.model.result?.loadFailure === 'smsDefaults')
 const canFill = computed(() => props.model.canFill && (props.mode !== 'feedback' || failed.value))
 const canView = computed(() => !!(props.model.result?.created || props.model.result?.skipped))
 const showFields = computed(() => props.mode !== 'feedback' && !!props.model.fields.length)
@@ -56,14 +58,12 @@ const smsOptionsFeedback = computed(() => {
     { state: states.signName, item: t('NoticeCenter.template.field.signName') },
   ]
   return fields.flatMap(({ state, item }) => {
-    if (state === 'empty') return [t(prefix + 'smsOptionsEmpty', { item })]
     if (state === 'error' || state === 'forbidden' || state === 'unavailable') {
       return [t(prefix + 'smsOptionsFailed', { item, reason: t(`messageNotification.state.${state}`) })]
     }
     return []
   })
 })
-const showFeedback = computed(() => props.mode !== 'fields' && !!(props.model.result || props.model.noPermission || canFill.value))
 const groups = computed<InlineEditGroup[]>(() => [{
   key: 'message-template',
   fields: props.model.fields.map(field => ({
@@ -83,19 +83,12 @@ const formMessages = computed<InlineEditMessages>(() => ({
 }))
 const summary = computed(() => {
   const result = props.model.result
-  if (!result) return ''
-  if (result.loadFailure) return t(prefix + 'loadFailure')
-  if (!result.created && !result.skipped && !result.failed.length) return t(prefix + 'empty')
-  return t(prefix + 'summary', { created: result.created, skipped: result.skipped, failed: result.failed.length })
+  if (smsDefaultsUnavailable.value) return t(prefix + 'loadFailure')
+  if (!result || failed.value) return ''
+  if (!result.created && !result.skipped) return t(prefix + 'empty')
+  return t(prefix + 'summary', { created: result.created, skipped: result.skipped, failed: 0 })
 })
-const details = computed(() => {
-  const result = props.model.result
-  if (result?.loadFailure === 'smsDefaults') return t(prefix + 'smsDefaults')
-  if (result?.loadFailure) return t(`messageNotification.state.${result.loadFailure}`)
-  if (!result?.failed.length) return undefined
-  const topics = result.failed.join(t(prefix + 'separator'))
-  return t(prefix + (result.unknown ? 'unknown' : 'failed'), { topics })
-})
+const showFeedback = computed(() => props.mode !== 'fields' && !!(summary.value || props.model.noPermission || canFill.value || canView.value))
 </script>
 
 <style scoped>

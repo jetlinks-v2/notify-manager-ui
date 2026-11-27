@@ -25,11 +25,17 @@ const summary = (page, created, skipped, failed = 0) => page.getByText(`已创�
 
 async function open(channel, width = 1440, flags = '') {
   const page = await browser.newPage({ viewport: { width, height: width < 768 ? 844 : 1000 }, serviceWorkers: 'block' })
+  const failureStatus = Number(new URLSearchParams(flags).get('templateSaveFailure'))
   page.on('pageerror', error => problems.push(error.message))
   await page.routeWebSocket('**/*', () => {})
   await page.route('**/*', route => {
     const request = route.request()
-    if (['fetch', 'xhr'].includes(request.resourceType()) || new URL(request.url()).origin !== entry.origin) {
+    const url = new URL(request.url())
+    if (failureStatus && request.method() === 'PUT' && url.origin === entry.origin
+      && /\/notify\/channel\/.*\/_save-with-templates?$/.test(url.pathname)) {
+      return route.fulfill({ status: failureStatus, json: { success: false, status: 500, message: '模板保存接口测试失败' } })
+    }
+    if (['fetch', 'xhr'].includes(request.resourceType()) || url.origin !== entry.origin) {
       problems.push(`Unexpected request ${request.url()}`)
       return route.abort()
     }
@@ -38,6 +44,17 @@ async function open(channel, width = 1440, flags = '') {
   await page.goto(`${entry.href}?wechatTemplates&fresh&${flags}#/channels?channel=${encodeURIComponent(channel)}`)
   await page.waitForFunction(() => document.documentElement.dataset.notificationSmoke === 'ready')
   return page
+}
+
+async function retryAfterTemplateFailure(page, description) {
+  const notifications = page.locator('.ant-notification-notice')
+  await notifications.getByText(description, { exact: true }).waitFor()
+  const actions = feedback(page)
+  const retry = editButton(actions, '重试补齐')
+  await retry.waitFor()
+  assert.equal(await notifications.count(), 1)
+  assert.equal(await actions.locator('.channel-template-setup__status').count(), 0)
+  await retry.click()
 }
 
 async function savedTemplates(page, type, provider) {
@@ -90,6 +107,27 @@ async function addRobot(page) {
 }
 
 try {
+  const emptySms = await open('sms:aliyunSms', 1440, 'fail=pendingSmsOptions')
+  const emptyForm = setup(emptySms)
+  for (const [key, value] of [['accessKeyId', 'fixture-key'], ['secret', 'fixture-secret']]) {
+    await channelField(emptySms, await t(emptySms, `messageNotification.channels.fields.${key}`)).locator('input').fill(value)
+  }
+  await editButton(emptySms, '保存凭据').click()
+  await emptySms.waitForFunction(() => window.__notificationSmoke.calls.filter(([method]) => method === 'remoteOption').length === 2)
+  await emptyForm.locator('.ant-select-loading').first().waitFor({ state: 'hidden' })
+  assert.equal(await emptyForm.locator('.ant-alert').count(), 0)
+  const emptyDropdown = emptySms.locator('.ant-select-dropdown:visible')
+  for (const label of ['短信模板编号', '短信签名']) {
+    const select = channelField(emptySms, label).getByRole('combobox')
+    await select.click()
+    await emptyDropdown.waitFor()
+    assert.equal(await emptyDropdown.locator('.ant-select-item-option').count(), 0)
+    await select.press('Escape')
+    await emptyDropdown.waitFor({ state: 'hidden' })
+  }
+  assert.equal(await editButton(emptySms.locator('.notification-channels__footer'), '保存').isDisabled(), true)
+  await emptySms.close()
+
   const email = await open('email:embedded')
   const host = channelField(email, await t(email, 'messageNotification.channels.fields.host')).getByRole('combobox')
   await host.fill('smtp.fixture.test')
@@ -138,10 +176,8 @@ try {
       await form.getByText(/短信模板查询失败/).waitFor()
       assert.equal(await code.isDisabled(), true)
       await channelField(page, '短信签名').locator('.ant-select:not(.ant-select-disabled)').waitFor()
-      await page.evaluate(() => window.__notificationSmoke.failures.add('pendingSmsSign'))
       await editButton(form, await t(page, 'messageNotification.common.retry')).click()
-      await form.getByText(/当前通知配置暂无可用的短信签名/).waitFor()
-      assert.equal(await sign.isDisabled(), true)
+      await form.getByText(/短信模板查询失败/).waitFor({ state: 'hidden' })
       const saved = await snapshot(page)
       assert.equal(saved.configs.length, 1)
       const path = `/notifier/sms/aliyun/${saved.configs[0].id}/`
@@ -149,12 +185,6 @@ try {
       assert.equal(saved.calls.some(([method]) => method === 'saveBusinessTemplate' || method === 'saveBusinessTemplates'), false)
       await code.click()
       await page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: '设备告警 (SMS_FIXTURE)' }).click()
-      assert.equal(await editButton(page.locator('.notification-channels__footer'), '保存').isDisabled(), true)
-      assert.equal((await snapshot(page)).calls.some(([method]) => ['updateConfig', 'saveBusinessTemplate', 'saveBusinessTemplates'].includes(method)), false)
-      await page.evaluate(() => window.__notificationSmoke.failures.delete('pendingSmsSign'))
-      await editButton(form, await t(page, 'messageNotification.common.retry')).click()
-      await channelField(page, '短信签名').locator('.ant-select:not(.ant-select-disabled)').waitFor()
-      await channelField(page, '短信模板编号').getByText('设备告警 (SMS_FIXTURE)', { exact: true }).waitFor()
       await saveChannelDraft(page)
       await form.getByText(await t(page, 'messageNotification.channels.validation.required'), { exact: true }).waitFor()
       await sign.click()
@@ -236,7 +266,7 @@ try {
     await page.close()
   }
 
-  const work = await open('dingTalk:dingTalkMessage', 1440, 'dingTalkRecipients&fail=dingTalkUsers')
+  const work = await open('dingTalk:dingTalkMessage', 1440, 'dingTalkRecipients&fail=dingTalkUsers&templateSaveFailure=200&fail=saveBusinessTemplates')
   for (const [key, value] of [['appKey', 'fixture-key'], ['appSecret', 'fixture-secret']]) {
     await channelField(work, await t(work, `messageNotification.channels.fields.${key}`)).locator('input').fill(value)
   }
@@ -247,8 +277,12 @@ try {
   await agent.getByText(await t(work, 'messageNotification.channels.validation.required'), { exact: true }).waitFor()
   assert.equal((await snapshot(work)).configs.length, 0)
   await agent.locator('input').fill('1024')
-  await saveChannelDraft(work)
-  await summary(work, 4, 0)
+  await Promise.all([
+    work.waitForResponse(response => response.url().endsWith('/_save-with-templates') && response.status() === 200),
+    saveChannelDraft(work),
+  ])
+  await retryAfterTemplateFailure(work, await t(work, 'messageNotification.state.error'))
+  await summary(work, 3, 1)
   const workSaved = await savedTemplates(work, 'dingTalk', 'dingTalkMessage')
   assert.equal(workSaved.config.configuration.messageTemplateDefaults, undefined)
   assert.ok(workSaved.generated.every(item => item.template.agentId === '1024' && item.template.message))
@@ -315,17 +349,19 @@ try {
   assert.deepEqual((await savedTemplates(robot, 'dingTalk', 'dingTalkRobotWebHook')).generated, robotSaved.generated)
   await robot.close()
 
-  const webhook = await open('webhook:http', 1440, 'fail=saveBusinessTemplate')
+  const webhook = await open('webhook:http', 1440, 'templateSaveFailure=500&fail=saveBusinessTemplate')
   await editButton(webhook, await t(webhook, 'messageNotification.channels.add')).click()
   const webhookModal = webhook.locator('.channel-configuration-modal')
   await text(webhookModal, await t(webhook, 'messageNotification.channels.fields.name')).fill('告警回调')
   await text(webhookModal, await t(webhook, 'messageNotification.channels.webhook.address')).fill('https://fixture.example.test/webhook')
   assert.equal(await webhook.locator('.webhook-preview').count(), 0)
   assert.equal(await webhook.getByText('请求示例', { exact: true }).count(), 0)
-  await saveChannelDraft(webhook)
+  await Promise.all([
+    webhook.waitForResponse(response => response.url().endsWith('/_save-with-template') && response.status() === 500),
+    saveChannelDraft(webhook),
+  ])
   await webhookModal.waitFor({ state: 'hidden' })
-  await summary(webhook, 0, 0, 1)
-  await editButton(feedback(webhook), '重试补齐').click()
+  await retryAfterTemplateFailure(webhook, '模板保存接口测试失败')
   await summary(webhook, 4, 0)
   const web = await savedTemplates(webhook, 'webhook', 'http')
   assert.ok(web.bindings.every(binding => binding.name === 'Webhook·告警回调'))
