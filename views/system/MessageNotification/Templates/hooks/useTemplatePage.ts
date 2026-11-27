@@ -35,8 +35,11 @@ export function useTemplatePage() {
   const { hasPerm: canQueryConfig } = usePermission(ref(notificationPermissions.channels.query))
   const canManage = computed(() => canQuery.value && (canAdd.value || canUpdate.value))
   const directory = useTemplateBusinessDirectory(canManage)
+  // 仅有查询权限时会跳过业务目录请求，侧栏按空目录展示。
+  const directoryDisplayState = computed(() => canQuery.value && !canManage.value ? 'empty' : directory.directoryState.value)
   const workspace = useTemplateWorkspace({ query: canQuery, add: canAdd, update: canUpdate }, messageNotificationApi, t)
   const { channelId, templates, draft, business, channels, detailState, listState, saving } = workspace
+  const showCreateTemplate = computed(() => canQuery.value && canAdd.value && !business.value)
   const businessNavigation = useTemplateBusinessNavigation(computed(() => route.query), directory.businessTypes, directory.directoryState, channels)
   const configurationNavigation = useNotificationConfigNavigation(() => workspace.refreshConfigs(), 'system/MessageNotification/Channels')
   const canConfigure = computed(() => canQueryConfig.value && configurationNavigation.available.value)
@@ -300,8 +303,8 @@ export function useTemplatePage() {
 
   return {
     canManage, selectedBusiness: business, selectedBusinessId, businessActionState,
-    businessLinkPending: businessNavigation.requested, businessLinkState: businessNavigation.state, importOptions,
-    t, compact, workspace, ...workspace, ...directory, canQuery, canAdd, canEdit, canConfigure, busy, uploading,
+    businessLinkPending: businessNavigation.requested, businessLinkState: businessNavigation.state, importOptions, directoryDisplayState, showCreateTemplate,
+    t, compact, workspace, ...workspace, ...directory, canQuery, canEdit, canConfigure, busy, uploading,
     canFillInsideMail, fillingInsideMail, fillInsideMail,
     editing, title, description, activeConfig, activeConfigId, directoryConfigId, templateStatus, selectedDirectoryKey, selectedTemplateId, templateOptions,
     validationMessage, channelOptions, listFailure, detailFailure, feedbackState, saveFailure,

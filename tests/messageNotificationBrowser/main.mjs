@@ -45,6 +45,7 @@ const calls = []
 const failures = new Set()
 const deniedPermissions = reactive(new Set())
 const flags = new URLSearchParams(location.search)
+const templateSaveFailure = flags.has('templateSaveFailure')
 // Keep loading feedback observable without contacting a real notification service.
 const writeDelay = Math.min(5000, Math.max(0, Number(flags.get('writeDelay')) || 0))
 for (const operation of flags.getAll('fail')) failures.add(operation)
@@ -220,7 +221,7 @@ notificationRequest.get = async (path, params) => {
       ? { templateCode: 'SMS_ROTATED', templateName: '新账号通知', templateContent: '新账号通知 ${message}' }
       : { templateCode: 'SMS_FIXTURE', templateName: '设备告警', templateContent: '设备 ${detail.targetName} 发生告警：${detail.alarmConfigName}' }
     const item = smsRoute[2] === 'templates' ? template : { signName: rotated ? '新账号签名' : '测试签名' }
-    const auditStatus = smsRoute[2] === 'signs' && failures.has('pendingSmsSign') ? 'AUDIT_STATE_INIT' : 'AUDIT_STATE_PASS'
+    const auditStatus = failures.has('pendingSmsOptions') ? 'AUDIT_STATE_INIT' : 'AUDIT_STATE_PASS'
     return { success: true, result: [{ ...item, auditStatus }] }
   }
   if (flags.has('workRecipients') && path.endsWith('/tags')) return { success: true, result: [
@@ -242,7 +243,15 @@ notificationRequest.get = async (path, params) => {
   if (/department|user|tag/.test(path)) return { success: true, result: [] }
   throw new Error(`Unexpected request in isolated fixture: ${path}`)
 }
-for (const method of ['post', 'put', 'patch', 'remove']) notificationRequest[method] = async path => { throw new Error(`Unexpected ${method} in isolated fixture: ${path}`) }
+for (const method of ['post', 'put', 'patch', 'remove']) {
+  const request = notificationRequest[method]
+  notificationRequest[method] = async (path, ...args) => {
+    if (templateSaveFailure && method === 'put' && /^\/notify\/channel\/.+\/_save-with-templates?$/.test(path)) {
+      return request(path, ...args)
+    }
+    throw new Error(`Unexpected ${method} in isolated fixture: ${path}`)
+  }
+}
 if (flags.has('workRecipients')) notificationRequest.post = async path => {
   record('recipientDirectory', path)
   if (path === '/organization/_all/tree' && flags.has('departmentTree')) return { success: true, result: [
@@ -308,6 +317,14 @@ function persistBusinessTemplate(providerId, item) {
   return { channel: clone(channel), template: clone(template) }
 }
 
+// 失败用例通过真实请求拦截器，浏览器测试会在本地截获这两类保存请求。
+const requestSaveBusinessTemplate = messageNotificationApi.saveBusinessTemplate
+const requestSaveBusinessTemplates = messageNotificationApi.saveBusinessTemplates
+if (templateSaveFailure) {
+  const { initAxios } = await import('@jetlinks-web-core/package')
+  initAxios({ axiosSettings: { filter_url: ['/notify/channel/'] } })
+}
+
 // Test-only facade replaces every mutation/read entry before any page is mounted.
 Object.assign(messageNotificationApi, {
   getCurrentEmail: async () => { record('getCurrentEmail', {}); return flags.has('noEmail') ? '' : 'tester@example.test' },
@@ -359,11 +376,16 @@ Object.assign(messageNotificationApi, {
     return channel ? { channel: { ...clone(channel), providerId }, template: clone(templates.find(row => row.id === channel.channelConfiguration?.templateId) || null) } : undefined
   },
   saveBusinessTemplate: async (providerId, channelProvider, item) => {
+    const useRequest = templateSaveFailure && failures.delete('saveBusinessTemplate')
     record('saveBusinessTemplate', { providerId, channelProvider, item })
+    if (useRequest) return requestSaveBusinessTemplate(providerId, channelProvider, item)
     const saved = persistBusinessTemplate(providerId, item)
     return { ...saved, channel: { ...saved.channel, state: item.channel.state ?? 'enabled' } }
   },
-  saveBusinessTemplates: async (provider, info) => { record('saveBusinessTemplates', { provider, info });
+  saveBusinessTemplates: async (provider, info) => {
+    const useRequest = templateSaveFailure && failures.delete('saveBusinessTemplates')
+    record('saveBusinessTemplates', { provider, info })
+    if (useRequest) return requestSaveBusinessTemplates(provider, info)
     const business = businessTypes.find(row => !row.id && row.provider === provider)
     if (!business) throw new Error('Unsaved fixture not found')
     Object.assign(business, clone(info.provider), { id: `fixture-topic-${provider}`, channels: [] })

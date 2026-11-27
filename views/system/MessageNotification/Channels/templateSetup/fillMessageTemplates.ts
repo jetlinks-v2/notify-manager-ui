@@ -51,6 +51,7 @@ export async function fillMessageTemplates(
   channel: NotificationChannel,
   active: () => boolean,
   translate: PrototypeTranslate,
+  onFailure: (error: unknown) => void = () => {},
 ): Promise<TemplateFillResult> {
   const result: TemplateFillResult = { created: 0, skipped: 0, failed: [], unknown: false }
   const values = readTemplateSetup(channel.id, config.configuration)
@@ -71,6 +72,7 @@ export async function fillMessageTemplates(
     configurationName = channel.multipleConfigurations ? saved.name?.trim() : undefined
     directory = await api.queryTemplateDirectory()
   } catch (error) {
+    onFailure(error)
     result.loadFailure = classifyNotificationFailure(error)
     return result
   }
@@ -128,6 +130,7 @@ export async function fillMessageTemplates(
         try {
           smsContent = await api.getSmsTemplateContent(config.id, values.code.trim(), values.signName.trim())
         } catch (error) {
+          onFailure(error)
           result.loadFailure = classifyNotificationFailure(error)
           break
         }
@@ -182,6 +185,7 @@ export async function fillMessageTemplates(
       }
       result.created += 1
     } catch (error) {
+      onFailure(error)
       result.failed.push(business?.name || code)
       // A timeout or malformed save response can follow a committed write. Only retry after fresh reads.
       if (writing && !hasDefiniteSaveRejection(error)) {

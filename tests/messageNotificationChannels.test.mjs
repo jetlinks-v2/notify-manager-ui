@@ -984,16 +984,21 @@ test('dynamic workspace supports first save, stable identity, drafts and safe me
   assert.equal(workspace.entry.value, undefined)
 })
 
-test('new zero-field providers can save defaults, while users without add permission get no draft', async () => {
+test('zero-field providers show a read-only draft until add permission is granted', async () => {
   const io = testApi([])
   const permissionsRef = permissions()
   const workspace = useChannelWorkspace({ api: io.api, permissions: permissionsRef, channels: vue.ref([customChannel]), loadDefinition: async () => channelDefinition(customChannel, { properties: [] }) })
   permissionsRef.add.value = false
   await workspace.activate(customChannel.id)
   assert.equal(workspace.state.value, 'empty')
-  assert.equal(workspace.entry.value, undefined)
+  assert.equal(workspace.entry.value.isNew, true)
+  assert.deepEqual(workspace.entry.value.draft.configuration, {})
+  assert.equal(workspace.canEdit.value, false)
+  assert.equal(await workspace.save(), false)
+  assert.equal(io.calls.filter(([method]) => method === 'createConfig').length, 0)
+
   permissionsRef.add.value = true
-  await workspace.activate(customChannel.id)
+  assert.equal(workspace.canEdit.value, true)
   assert.equal(workspace.dirty.value, false)
   assert.equal(await workspace.save(), true)
   assert.equal(io.calls.filter(([method]) => method === 'createConfig').length, 1)
